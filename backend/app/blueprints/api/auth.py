@@ -3,7 +3,7 @@ from main import limiter, oauth
 from config import GOOGLE_CLIENT_ID, PUBLIC_BASE_URL, FRONTEND_URL
 from services.auth import login_password, login_google, AuthError
 from services.token import create_token
-from security import require_api_auth
+from security import require_api_auth, require_api_role
 
 auth_api = Blueprint("auth_api", __name__, url_prefix="/auth")
 
@@ -27,6 +27,7 @@ def login():
 
 @auth_api.route("/me")
 @require_api_auth
+@require_api_role("photographer")
 def me():
     payload = g.token_payload
     return jsonify({"email": payload["email"], "roles": payload["roles"]})

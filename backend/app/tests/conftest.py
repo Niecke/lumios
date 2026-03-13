@@ -8,7 +8,7 @@ import os
 import sys
 
 # --- Env vars must come first, before any app imports ---
-os.environ.setdefault("MYSQL_PASSWORD", "test_password")
+os.environ.setdefault("POSTGRES_PASSWORD", "test_password")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-at-least-32-chars-long!")
 os.environ.setdefault("DEBUG", "true")          # disables Talisman HTTPS enforcement
 os.environ.setdefault("MIN_PASSWORD_LENGTH", "8")
