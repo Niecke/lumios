@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+
+{% block title %}Document Library{% endblock %}
+
+{% block head %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/documents.css') }}">
+<script src="{{ url_for('static', filename='js/documents.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+<h1>My Documents</h1>
+<p class="doc-quota">{{ doc_count }} / {{ max_docs }} documents used</p>
+
+<div class="card">
+    <h2>Upload Documents</h2>
+    <div id="drop-zone" class="drop-zone">
+        <div class="drop-hint">&#128196;</div>
+        <p><strong>Drag &amp; drop files here</strong>, or click to browse</p>
+        <p><small>Max 64 MB per file &bull; PDF, JPEG, PNG and all other formats supported</small></p>
+        <input type="file" id="file-input" style="display:none" multiple
+               accept="*/*">
+    </div>
+    <div id="upload-status" class="upload-status"></div>
+</div>
+
+{% if documents %}
+<div class="doc-grid">
+    {% for doc in documents %}
+    <div class="doc-card">
+        <div class="doc-thumbnail">
+            {% if doc.thumbnail %}
+            <img src="{{ url_for('documents.thumbnail', doc_id=doc.id) }}"
+                 alt="{{ doc.title }}">
+            {% else %}
+            <span class="doc-icon">&#128196;</span>
+            {% endif %}
+        </div>
+        <div class="doc-info">
+            <div class="doc-title">{{ doc.title }}</div>
+            <div class="doc-meta">
+                {{ doc.original_filename }}<br>
+                {{ (doc.file_size / 1024) | round(1) }} KB<br>
+                {{ doc.created_at.strftime('%Y-%m-%d') }}
+            </div>
+        </div>
+        <div class="doc-actions">
+            <a href="{{ url_for('documents.download', doc_id=doc.id) }}"
+               class="btn btn-secondary">Download</a>
+            <a href="{{ url_for('documents.edit', doc_id=doc.id) }}"
+               class="btn btn-secondary">Edit</a>
+            <form method="POST"
+                  action="{{ url_for('documents.delete', doc_id=doc.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Delete &quot;{{ doc.title }}&quot;?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-danger">Delete</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="card">
+    <p style="text-align:center; color:#5f6368">
+        No documents yet. Upload your first document above.
+    </p>
+</div>
+{% endif %}
+{% endblock %}

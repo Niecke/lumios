@@ -1,0 +1,12 @@
+{
+    "python.defaultInterpreterPath": "/home/niecke/git/doc-store-server/.venv/bin/python",
+    "python.analysis.extraPaths": [
+        "/home/niecke/git/doc-store-server/app",
+        "/home/niecke/git/doc-store-server/.venv/lib/python3.14/site-packages"
+    ],
+
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    //"editor.formatOnSave": true
+  }
+}

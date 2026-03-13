@@ -1,4 +1,4 @@
-# lumios
+# doc-store-server
 
 The entrypoint.sh is deprecated since the pyhton distroless container image does not contain any shell. It was replaced by the entrypoint.py.
 
@@ -44,8 +44,6 @@ python -m pytest --cov=app --cov-report=term-missing --cov-report=html
 ```
 
 ## Database setup
-
-podman build -t luminos-backend .
 
 podman-compose run --rm app flask db init
 

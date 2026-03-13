@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Welcome to Your App!</h1>
+    <p class="user">
+        Current User: {{ current_user.email }}
+    </p>
+    <p class="roles">
+        Current Roles: [{% for role in current_user.roles %}{{ role.name }}{% if not loop.last %}, {% endif %}{% endfor %}]
+    </p>
+</div>
+{% endblock %}
