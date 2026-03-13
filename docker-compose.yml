@@ -49,16 +49,16 @@ services:
     restart: unless-stopped
 
   backend:
-    build: .
+    build: backend/.
     container_name: lumios-backend
     env_file: .env
     ports:
       - "8080:8080"
     volumes:
-      - ./app:/app:Z
-      - ./requirements.txt:/requirements.txt:Z
+      - ./backend/app:/app:Z
+      - ./backend/requirements.txt:/requirements.txt:Z
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 15s
       timeout: 5s
       retries: 5

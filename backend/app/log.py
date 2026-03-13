@@ -1,6 +1,8 @@
 import json
 import logging
+import os
 import sys
+import threading
 
 
 def setup_app_logger(app) -> None:
@@ -30,6 +32,8 @@ class JsonFormatter(logging.Formatter):
             "msg": record.getMessage(),
             "level": record.levelname.lower(),
             "method": f"{record.module}.{record.funcName}",
+            "pid": os.getpid(),
+            "tid": threading.get_ident(),
         }
         if record.exc_info:
             entry["exception"] = self.formatException(record.exc_info)
