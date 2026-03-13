@@ -11,12 +11,12 @@
     <nav class="navbar">
         <div class="nav-brand">Your App</div>
         <div class="nav-menu">
-            <a href="{{ url_for('main.index') }}">Home</a>
+            <a href="{{ url_for('admin.index') }}">Home</a>
             {% if current_user.is_authenticated %}
 {% if require_role('admin') %}
                 <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
                 {% endif %}
-                <form method="POST" action="{{ url_for('main.logout') }}">
+                <form method="POST" action="{{ url_for('auth.logout') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit">Logout</button>
                 </form>

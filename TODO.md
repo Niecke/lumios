@@ -1,3 +1,3 @@
-- [ ] remove unused code
+- [x] remove unused code
 - [ ] change to Postgres
 - [ ] integrate Google Login

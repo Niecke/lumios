@@ -115,9 +115,9 @@ def create_app(test_config=None):
     def inject_config():
         return dict(MIN_PASSWORD_LENGTH=MIN_PASSWORD_LENGTH)
 
-    # Register blueprints/routes
-    from routes import bp as main_bp
-    app.register_blueprint(main_bp)
+    # Register blueprints
+    from blueprints.auth import auth
+    app.register_blueprint(auth)
 
     from blueprints.admin import admin
     app.register_blueprint(admin)

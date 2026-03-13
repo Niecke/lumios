@@ -5,6 +5,12 @@ from security import login_required, require_role
 
 admin = Blueprint('admin', __name__)
 
+@admin.route('/')
+@login_required
+@require_role('admin')
+def index():
+    return render_template('index.html')
+
 @admin.route('/admin/dashboard', methods=['GET', 'POST'])
 @login_required
 @require_role('admin')
