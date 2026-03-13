@@ -28,6 +28,26 @@ services:
       timeout: 3s
       retries: 5
 
+  minio:
+    image: docker.io/minio/minio:latest
+    container_name: lumios-minio
+    env_file: .env
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console
+    volumes:
+      - lumios_minio_data:/data:Z
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   backend:
     build: .
     container_name: lumios-backend
@@ -47,3 +67,4 @@ services:
 
 volumes:
   lumios_postgres_data:
+  lumios_minio_data:
