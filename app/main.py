@@ -122,4 +122,7 @@ def create_app(test_config=None):
     from blueprints.admin import admin
     app.register_blueprint(admin)
 
+    from blueprints.health import health
+    app.register_blueprint(health)
+
     return app
