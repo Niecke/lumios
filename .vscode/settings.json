@@ -1,0 +1,11 @@
+{
+    "python.defaultInterpreterPath": "/home/niecke/git/lumios/backend/.venv/bin/python",
+    "python.analysis.extraPaths": [
+        "/home/niecke/git/lumios/backend/app"
+    ],
+
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter",
+    "editor.formatOnSave": true
+  }
+}

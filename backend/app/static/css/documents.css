@@ -1,0 +1,125 @@
+/* Document library */
+.doc-quota {
+    color: #5f6368;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.doc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.doc-card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.doc-thumbnail {
+    width: 100%;
+    height: 150px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8f9fa;
+    overflow: hidden;
+}
+
+.doc-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.doc-icon {
+    color: #5f6368;
+    font-size: 3.5rem;
+    line-height: 1;
+}
+
+.doc-info {
+    padding: 0.75rem;
+    flex-grow: 1;
+}
+
+.doc-title {
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+    word-break: break-word;
+}
+
+.doc-meta {
+    font-size: 0.78rem;
+    color: #5f6368;
+    line-height: 1.6;
+}
+
+.doc-actions {
+    padding: 0.5rem 0.75rem;
+    border-top: 1px solid #f1f3f4;
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.doc-actions a,
+.doc-actions button {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.78rem;
+}
+
+.doc-actions .btn-danger {
+    background: #ea4335;
+    color: white;
+    border-color: transparent;
+}
+
+.doc-actions .btn-danger:hover {
+    background: white;
+    color: #ea4335;
+    border-color: #ea4335;
+}
+
+/* Drag-and-drop upload zone */
+.drop-zone {
+    border: 2px dashed #dadce0;
+    border-radius: 8px;
+    padding: 2.5rem 2rem;
+    text-align: center;
+    color: #5f6368;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    background: white;
+    user-select: none;
+}
+
+.drop-zone.drag-over {
+    border-color: #1a73e8;
+    background: #e8f0fe;
+}
+
+.drop-zone p {
+    margin: 0.4rem 0;
+}
+
+.drop-zone .drop-hint {
+    font-size: 2.5rem;
+    line-height: 1;
+    margin-bottom: 0.5rem;
+}
+
+.upload-status {
+    display: none;
+    margin-top: 1rem;
+}
+
+.alert-info {
+    background: #e8f0fe;
+    border-left: 4px solid #1a73e8;
+}

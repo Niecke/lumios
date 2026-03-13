@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>All Users</h1>
+    
+    <a href="{{ url_for('admin.user_create') }}" class="btn">Add User</a>
+    
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>E-Mail</th>
+                    <th>Roles</th>
+                    <th>Active</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user.id }}</td>
+                    <td>{{ user.email }}</td>
+                    <td>
+                        {% if user.roles %}
+                            <span class="roles">
+                                {% for role in user.roles %}
+                                    <span class="badge">{{ role.name }}</span>
+                                    {% if not loop.last %}, {% endif %}
+                                {% endfor %}
+                            </span>
+                        {% else %}
+                            <span class="text-muted">None</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge {{ 'badge-success' if user.active else 'badge-error' }}">
+                            {{ 'Active' if user.active else 'Inactive' }}
+                        </span>
+                    </td>
+                    <td class="actions">
+                            <a href="{{ url_for('admin.user_edit', id=user.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+                            <form method="POST" action="{{ url_for('admin.user_delete', id=user.id) }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                            </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6">No users found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lumios Login</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/material.css') }}">
+</head>
+<body class="login-page">
+    <div class="login-box">
+        <h2>Lumios Login</h2>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="flash">{{ messages[0] }}</div>
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input name="email" placeholder="E-Mail" required autofocus>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">Login</button>
+        </form>
+
+        {% if google_enabled %}
+        <div class="divider">or</div>
+        <a href="{{ url_for('auth.google_login') }}" class="btn btn-google">Login with Google</a>
+        {% endif %}
+
+        <footer class="footer">
+            <p>&copy; 2026 Lumios</p>
+        </footer>
+    </div>
+</body>
+</html>

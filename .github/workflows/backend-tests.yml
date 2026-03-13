@@ -1,0 +1,36 @@
+name: Backend Tests
+
+on:
+  push:
+    paths:
+      - "backend/**"
+  pull_request:
+    paths:
+      - "backend/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt pytest
+
+      - name: Run tests
+        working-directory: backend
+        env:
+          POSTGRES_PASSWORD: test_password
+          SECRET_KEY: test-secret-key-at-least-32-chars-long!
+          DEBUG: "true"
+          PASSWORD_HASHER_TIME_COST: "1"
+          PASSWORD_HASHER_MEMORY_COST: "8"
+          PASSWORD_HASHER_PARALLELISM: "1"
+        run: python -m pytest
