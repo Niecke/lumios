@@ -1,10 +1,11 @@
 from flask import Flask, session
 from flask_migrate import Migrate
+from authlib.integrations.flask_client import OAuth
 from log import setup_app_logger
 from config import (
     POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB,
     SECRET_KEY, SQLALCHEMY_TRACK_MODIFICATIONS, SQLALCHEMY_ENGINE_OPTIONS, DEBUG, REDIS_URL,
-    MIN_PASSWORD_LENGTH
+    MIN_PASSWORD_LENGTH, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
 )
 from models import User
 from current_user import current_user
@@ -30,6 +31,7 @@ else:
     )
 
 migrate = Migrate()
+oauth = OAuth()
 
 def create_app(test_config=None):
     app = Flask(__name__)
@@ -75,6 +77,16 @@ def create_app(test_config=None):
     from models import db
     db.init_app(app)
     migrate.init_app(app, db)
+
+    # Google OAuth
+    app.config['GOOGLE_CLIENT_ID'] = GOOGLE_CLIENT_ID
+    app.config['GOOGLE_CLIENT_SECRET'] = GOOGLE_CLIENT_SECRET
+    oauth.init_app(app)
+    oauth.register(
+        name='google',
+        server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+        client_kwargs={'scope': 'openid email'},
+    )
 
     # Security extensions
     csrf.init_app(app)

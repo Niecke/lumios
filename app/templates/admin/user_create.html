@@ -3,33 +3,46 @@
 {% block content %}
 <div class="card">
     <h1>Create New User</h1>
-    
+
     <form method="POST">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
         <div class="form-group">
             <label for="email">E-Mail *</label>
-            <input type="text" id="email" name="email" 
-                    value="{{ email }}"
-                    class="form-control" required maxlength="255">
+            <input type="text" id="email" name="email"
+                   value="{{ email or '' }}"
+                   class="form-control" required maxlength="255">
         </div>
-        
+
         <div class="form-group">
-            <label for="password">Password *</label>
-            <input type="password" id="password" name="password" 
-                   class="form-control" required minlength="{{ MIN_PASSWORD_LENGTH }}">
+            <label>Account Type *</label>
+            <div>
+                <label><input type="radio" name="account_type" value="local" checked> Local (password)</label>
+                <label><input type="radio" name="account_type" value="google"> Google OAuth</label>
+            </div>
         </div>
-        
+
+        <div class="form-group" id="password-field">
+            <label for="password">Password *</label>
+            <input type="password" id="password" name="password"
+                   class="form-control" minlength="{{ MIN_PASSWORD_LENGTH }}">
+        </div>
+
         <div class="form-group">
             <label class="checkbox-label">
                 <input type="checkbox" name="active" checked>
                 Active Account
             </label>
         </div>
-        
+
         <div class="form-actions">
             <button type="submit" class="btn">Create User</button>
             <a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary">Cancel</a>
         </div>
     </form>
 </div>
+{% endblock %}
+
+{% block head %}
+<script src="{{ url_for('static', filename='js/user_create.js') }}" defer></script>
 {% endblock %}

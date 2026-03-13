@@ -28,9 +28,9 @@ services:
       timeout: 3s
       retries: 5
 
-  app:
+  backend:
     build: .
-    container_name: lumios-app
+    container_name: lumios-backend
     env_file: .env
     ports:
       - "8080:8080"

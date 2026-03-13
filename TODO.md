@@ -1,3 +1,4 @@
 - [x] remove unused code
-- [ ] change to Postgres
-- [ ] integrate Google Login
+- [x] change to Postgres
+- [x] integrate Google Login
+- [ ] enable Google+ API via terraform

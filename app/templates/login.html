@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your App</title>
+    <title>Lumios Login</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/material.css') }}">
 </head>
 <body class="login-page">
     <div class="login-box">
-        <h2>DocStore Login</h2>
+        <h2>Lumios Login</h2>
 
         {% with messages = get_flashed_messages() %}
             {% if messages %}
@@ -23,8 +23,13 @@
             <button type="submit">Login</button>
         </form>
 
+        {% if google_enabled %}
+        <div class="divider">or</div>
+        <a href="{{ url_for('auth.google_login') }}" class="btn btn-google">Login with Google</a>
+        {% endif %}
+
         <footer class="footer">
-            <p>&copy; 2026 Your App</p>
+            <p>&copy; 2026 Lumios</p>
         </footer>
     </div>
 </body>

@@ -36,6 +36,10 @@ SQLALCHEMY_ENGINE_OPTIONS["pool_timeout"] = int(os.getenv('SQLALCHEMY_ENGINE_OPT
 SQLALCHEMY_ENGINE_OPTIONS["pool_size"] = int(os.getenv('SQLALCHEMY_ENGINE_OPTIONS_POOL_SIZE', 5))
 SQLALCHEMY_ENGINE_OPTIONS["max_overflow"] = int(os.getenv('SQLALCHEMY_ENGINE_OPTIONS_MAX_OVERFLOW', 10))
 
+# Google OAuth (optional — Google login disabled when not set)
+GOOGLE_CLIENT_ID     = os.getenv('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
+
 # App security
 SECRET_KEY = os.getenv('SECRET_KEY')
 
