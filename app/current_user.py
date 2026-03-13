@@ -12,7 +12,7 @@ class CurrentUser:
 
     @property
     def is_authenticated(self):
-        return self._user is not None and self._user.is_authenticated()
+        return self._user is not None and self._user.is_authenticated
 
     @property
     def is_anonymous(self):

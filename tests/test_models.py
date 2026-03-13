@@ -80,8 +80,8 @@ class TestUserModel:
     def test_set_password_stores_hash(self):
         user = User(email="hash@example.com", active=True)
         user.set_password("PlainPassword1!")
-        assert user.password != "PlainPassword1!"
-        assert len(user.password) > 20
+        assert user.auth_string != "PlainPassword1!"
+        assert len(user.auth_string) > 20
 
     def test_set_password_too_short_raises(self):
         user = User(email="short@example.com", active=True)
@@ -92,7 +92,7 @@ class TestUserModel:
         # Exactly 8 characters should succeed (MIN_PASSWORD_LENGTH=8 in test env)
         user = User(email="minlen@example.com", active=True)
         user.set_password("Exactly8")  # 8 chars
-        assert user.password is not None
+        assert user.auth_string is not None
 
     def test_verify_password_correct(self):
         user = User(email="verify@example.com", active=True)
@@ -112,11 +112,11 @@ class TestUserModel:
 
     def test_is_authenticated_active_user(self):
         user = User(email="active@example.com", active=True)
-        assert user.is_authenticated() is True
+        assert user.is_authenticated is True
 
     def test_is_authenticated_inactive_user(self):
         user = User(email="inactive@example.com", active=False)
-        assert user.is_authenticated() is False
+        assert user.is_authenticated is False
 
     def test_user_role_assignment(self):
         role = Role(name="tester", description="Tester role")

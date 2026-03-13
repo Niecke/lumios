@@ -7,7 +7,9 @@ Create Date: 2026-03-13 19:02:58.673586
 """
 from alembic import op
 import sqlalchemy as sa
-
+from models import db, User, Role
+from config import INIT_ADMIN_PASSWORD
+from password_handler import hash_password
 
 # revision identifiers, used by Alembic.
 revision = '482fc9a1a659'
@@ -48,6 +50,21 @@ def upgrade():
         batch_op.create_index('ix_roles_users_user_id', ['user_id'], unique=False)
 
     # ### end Alembic commands ###
+
+    # Create admin role
+    admin_role = Role(name='admin') 
+    db.session.add(admin_role)
+    db.session.commit()
+    
+    # Create admin user
+    admin_user = User(
+        email='admin',
+        auth_string=hash_password(INIT_ADMIN_PASSWORD),
+        roles=[admin_role],
+        active=True,
+    )
+    db.session.add(admin_user)
+    db.session.commit()
 
 
 def downgrade():
