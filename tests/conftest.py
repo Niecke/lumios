@@ -1,5 +1,5 @@
 """
-Shared pytest fixtures for the doc-store-server test suite.
+Shared pytest fixtures for the lumios-backend test suite.
 
 Environment variables must be set BEFORE any app module is imported,
 because config.py has a fail-fast check at module load time.

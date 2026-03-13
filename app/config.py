@@ -21,11 +21,11 @@ PASSWORD_HASHER_MEMORY_COST = int(os.getenv('PASSWORD_HASHER_MEMORY_COST', '6553
 PASSWORD_HASHER_PARALLELISM = int(os.getenv('PASSWORD_HASHER_PARALLELISM', '4'))
 
 # Database
-MYSQL_USER     = str(os.getenv('MYSQL_USER', 'docstore'))
-MYSQL_PASSWORD = str(os.getenv('MYSQL_PASSWORD'))
-MYSQL_HOST     = str(os.getenv('MYSQL_HOST', 'docstore'))
-MYSQL_PORT     = int(os.getenv('MYSQL_PORT', 3306))
-MYSQL_DB       = str(os.getenv('MYSQL_DB', 'docstore'))
+POSTGRES_USER     = str(os.getenv('POSTGRES_USER', 'lumios'))
+POSTGRES_PASSWORD = str(os.getenv('POSTGRES_PASSWORD'))
+POSTGRES_HOST     = str(os.getenv('POSTGRES_HOST', 'postgres'))
+POSTGRES_PORT     = int(os.getenv('POSTGRES_PORT', 5432))
+POSTGRES_DB       = str(os.getenv('POSTGRES_DB', 'lumios'))
 
 SQLALCHEMY_TRACK_MODIFICATIONS = os.getenv("SQLALCHEMY_TRACK_MODIFICATIONS", "false").lower() in ("1", "true", "yes")
 
@@ -43,10 +43,10 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 REDIS_URL = os.getenv('REDIS_URL', None)
 
 # FAIL-FAST: Check required vars
-REQUIRED_VARS = ['MYSQL_PASSWORD', 'SECRET_KEY']
+REQUIRED_VARS = ['POSTGRES_PASSWORD', 'SECRET_KEY']
 missing = [var for var in REQUIRED_VARS if not os.getenv(var)]
 if missing:
     raise ValueError(f"Missing required environment variables: {', '.join(missing)}.\n"
                     f"Add to .env:\n"
-                    f"  MYSQL_PASSWORD=your_password\n"
+                    f"  POSTGRES_PASSWORD=your_password\n"
                     f"  SECRET_KEY=your-super-secret-key-at-least-32-chars")

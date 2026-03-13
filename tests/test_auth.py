@@ -134,8 +134,8 @@ class TestIndexRoute:
         assert response.status_code == 302
         assert "/login" in response.location
 
-    def test_index_accessible_when_logged_in(self, client, regular_user):
-        do_login(client, "user@test.com", "UserPass123!")
+    def test_index_accessible_when_logged_in(self, client, admin_user):
+        do_login(client, "admin@test.com", "AdminPass123!")
         response = client.get("/")
         assert response.status_code == 200
 

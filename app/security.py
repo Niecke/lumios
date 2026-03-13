@@ -19,8 +19,8 @@ def require_role(role_name):
                 return redirect(url_for('auth.login'))
             
             if not current_user.has_role(role_name):
-                flash(f'Role "{role_name}" required!', 'error')
-                return redirect(url_for('admin.index'))
+                flash(f'Access denied.', 'error')
+                return redirect(url_for('auth.login'))
             
             return f(*args, **kwargs)
         return decorated_function

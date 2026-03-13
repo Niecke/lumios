@@ -16,9 +16,9 @@ The entrypoint.sh is deprecated since the pyhton distroless container image does
 
 ## Local development
 
-podman build -t doc-store .
+podman build -t lumios-backend .
 
-podman run -it --rm --name doc-store -v ./app:/app:z -p 8080:8080 doc-store
+podman run -it --rm --name lumios-backend -v ./app:/app:z -p 8080:8080 lumios-backend
 
 podman-compose up -d --build
 
@@ -31,14 +31,14 @@ pip install -r requirements.txt -r requirements-test.txt
 ```
 
 ```
-MYSQL_PASSWORD=test SECRET_KEY=test-secret-key-at-least-32-chars-long! \
+POSTGRES_PASSWORD=test SECRET_KEY=test-secret-key-at-least-32-chars-long! \
 DEBUG=true PASSWORD_HASHER_TIME_COST=1 PASSWORD_HASHER_MEMORY_COST=8 PASSWORD_HASHER_PARALLELISM=1 \
 python -m pytest
 ```
 
 With coverage
 ```
-MYSQL_PASSWORD=test SECRET_KEY=test-secret-key-at-least-32-chars-long! \
+POSTGRES_PASSWORD=test SECRET_KEY=test-secret-key-at-least-32-chars-long! \
 DEBUG=true PASSWORD_HASHER_TIME_COST=1 PASSWORD_HASHER_MEMORY_COST=8 PASSWORD_HASHER_PARALLELISM=1 \
 python -m pytest --cov=app --cov-report=term-missing --cov-report=html
 ```

@@ -7,7 +7,6 @@ Create Date: 2026-03-13 19:02:58.673586
 """
 from alembic import op
 import sqlalchemy as sa
-from models import db, User, Role
 from config import INIT_ADMIN_PASSWORD
 from password_handler import hash_password
 
@@ -51,20 +50,24 @@ def upgrade():
 
     # ### end Alembic commands ###
 
-    # Create admin role
-    admin_role = Role(name='admin') 
-    db.session.add(admin_role)
-    db.session.commit()
-    
-    # Create admin user
-    admin_user = User(
-        email='admin',
-        auth_string=hash_password(INIT_ADMIN_PASSWORD),
-        roles=[admin_role],
-        active=True,
-    )
-    db.session.add(admin_user)
-    db.session.commit()
+    bind = op.get_bind()
+
+    bind.execute(sa.text(
+        "INSERT INTO role (name) VALUES ('admin')"
+    ))
+    role_id = bind.execute(sa.text("SELECT id FROM role WHERE name = 'admin'")).scalar()
+
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    bind.execute(sa.text(
+        "INSERT INTO \"user\" (email, active, account_type, auth_string, max_libraries, created_at) "
+        "VALUES (:email, true, 'local', :auth_string, 100, :created_at)"
+    ), {"email": "admin", "auth_string": hash_password(INIT_ADMIN_PASSWORD), "created_at": now})
+    user_id = bind.execute(sa.text('SELECT id FROM "user" WHERE email = \'admin\'')).scalar()
+
+    bind.execute(sa.text(
+        "INSERT INTO roles_users (user_id, role_id) VALUES (:user_id, :role_id)"
+    ), {"user_id": user_id, "role_id": role_id})
 
 
 def downgrade():

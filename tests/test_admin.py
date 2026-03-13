@@ -40,7 +40,7 @@ class TestAdminDashboard:
         # Should redirect to index with error flash, not show dashboard
         assert response.status_code == 200
         html = html_text(response)
-        assert 'Role "admin" required!' in html
+        assert 'Access denied.' in html
 
     def test_dashboard_accessible_to_admin(self, client, admin_user):
         login_admin(client, admin_user)
@@ -147,7 +147,7 @@ class TestAdminUserCreate:
         login_regular(client, regular_user)
         response = client.get("/admin/user_create", follow_redirects=True)
         html = html_text(response)
-        assert 'Role "admin" required!' in html
+        assert 'Access denied.' in html
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +168,7 @@ class TestAdminUserDelete:
             f"/admin/user_delete/{regular_user.id}", follow_redirects=True
         )
         html = html_text(response)
-        assert 'Role "admin" required!' in html
+        assert 'Access denied.' in html
 
     def test_user_delete_removes_user(self, client, admin_user, regular_user):
         user_id = regular_user.id
@@ -229,7 +229,7 @@ class TestAdminUserEdit:
             f"/admin/user_edit/{regular_user.id}", follow_redirects=True
         )
         html = html_text(response)
-        assert 'Role "admin" required!' in html
+        assert 'Access denied.' in html
 
     def test_user_edit_get_shows_form(self, client, admin_user, regular_user):
         login_admin(client, admin_user)

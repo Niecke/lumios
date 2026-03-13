@@ -45,7 +45,7 @@ class TestRequireRole:
         do_login(client, "user@test.com", "UserPass123!")
         response = client.get("/admin/dashboard", follow_redirects=True)
         html = unescape(response.data.decode())
-        assert 'Role "admin" required!' in html
+        assert 'Access denied.' in html
 
     def test_admin_route_redirects_to_index_for_regular_user(self, client, regular_user):
         do_login(client, "user@test.com", "UserPass123!")
