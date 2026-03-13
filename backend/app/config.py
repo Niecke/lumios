@@ -54,9 +54,15 @@ SQLALCHEMY_ENGINE_OPTIONS["max_overflow"] = int(
 # Google OAuth (optional — Google login disabled when not set)
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+# Must match the redirect URIs registered in Google Cloud Console exactly
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:8080")
+# URL of the frontend app — used to redirect back after OAuth callbacks
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 # App security
 SECRET_KEY = os.getenv("SECRET_KEY")
+JWT_SECRET = os.getenv("JWT_SECRET", SECRET_KEY)  # falls back to SECRET_KEY if not set
+JWT_EXPIRY_SECONDS = int(os.getenv("JWT_EXPIRY_SECONDS", 3600))
 
 # Redis (optional — enables Redis-backed sessions when set, falls back to filesystem)
 REDIS_URL = os.getenv("REDIS_URL", None)

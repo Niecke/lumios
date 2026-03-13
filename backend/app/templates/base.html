@@ -16,7 +16,7 @@
 {% if require_role('admin') %}
                 <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
                 {% endif %}
-                <form method="POST" action="{{ url_for('auth.logout') }}">
+                <form method="POST" action="{{ url_for('auth.do_logout') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit">Logout</button>
                 </form>

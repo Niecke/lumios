@@ -1,8 +1,7 @@
 {
-    "python.defaultInterpreterPath": "/home/niecke/git/lumios/.venv/bin/python",
+    "python.defaultInterpreterPath": "/home/niecke/git/lumios/backend/.venv/bin/python",
     "python.analysis.extraPaths": [
-        "/home/niecke/git/lumios/app",
-        "/home/niecke/git/lumios/.venv/lib/python3.14/site-packages"
+        "/home/niecke/git/lumios/backend/app"
     ],
 
   "[python]": {

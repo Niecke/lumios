@@ -155,4 +155,9 @@ def create_app(test_config=None):
 
     app.register_blueprint(health)
 
+    from blueprints.api import api
+
+    csrf.exempt(api)
+    app.register_blueprint(api)
+
     return app
