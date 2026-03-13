@@ -1,5 +1,6 @@
 from flask import g
 
+
 class CurrentUser:
     """Request-scoped current user proxy backed by flask.g."""
 
@@ -8,7 +9,7 @@ class CurrentUser:
 
     @property
     def _user(self):
-        return getattr(g, '_current_user', None)
+        return getattr(g, "_current_user", None)
 
     @property
     def is_authenticated(self):
@@ -34,5 +35,6 @@ class CurrentUser:
     @property
     def email(self):
         return self._user.email if self._user else ""
+
 
 current_user = CurrentUser()

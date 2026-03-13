@@ -11,13 +11,18 @@ PYTHON = sys.executable
 
 def _log(msg: str, level: str = "info") -> None:
     frame = inspect.currentframe().f_back
-    print(json.dumps({
-        "timestamp": time.time(),
-        "type": "startup",
-        "msg": msg,
-        "level": level,
-        "method": f"entrypoint.{frame.f_code.co_name}",
-    }), flush=True)
+    print(
+        json.dumps(
+            {
+                "timestamp": time.time(),
+                "type": "startup",
+                "msg": msg,
+                "level": level,
+                "method": f"entrypoint.{frame.f_code.co_name}",
+            }
+        ),
+        flush=True,
+    )
 
 
 def _flask_db_current() -> bool:
@@ -48,13 +53,21 @@ def main() -> None:
         "GUNICORN_WORKERS", str(2 * multiprocessing.cpu_count() + 1)
     )
     args = [
-        PYTHON, "-m", "gunicorn",
-        "--bind", "0.0.0.0:8080",
-        "--workers", workers,
-        "--worker-tmp-dir", "/dev/shm",
-        "--control-socket", "/dev/shm/gunicorn.ctl",
-        "--log-level", "info",
-        "--log-config", "/app/gunicorn_logging.conf",
+        PYTHON,
+        "-m",
+        "gunicorn",
+        "--bind",
+        "0.0.0.0:8080",
+        "--workers",
+        workers,
+        "--worker-tmp-dir",
+        "/dev/shm",
+        "--control-socket",
+        "/dev/shm/gunicorn.ctl",
+        "--log-level",
+        "info",
+        "--log-config",
+        "/app/gunicorn_logging.conf",
     ]
     if os.environ.get("DEBUG") == "true":
         args += ["--reload", "--reload-engine", "poll"]
