@@ -4,10 +4,6 @@ from argon2.exceptions import VerifyMismatchError
 from config import MIN_PASSWORD_LENGTH
 from datetime import datetime, timezone
 
-
-def _utcnow():
-    return datetime.now(timezone.utc)
-
 db = SQLAlchemy()
 
 roles_users = db.Table('roles_users',
@@ -25,41 +21,32 @@ class Role(db.Model):
 class User(db.Model):
     id = db.Column(db.Integer(), primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False)
-    password = db.Column(db.String(255), nullable=False)
-    active = db.Column(db.Boolean())
+    active = db.Column(db.Boolean(), nullable=False, default=True)
+    account_type = db.Column(db.String(16), nullable=False, default='local')
+    auth_string = db.Column(db.String(255), nullable=True)
+    max_libraries = db.Column(db.Integer(), nullable=False, default=100)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    deleted_at = db.Column(db.DateTime, nullable=True)
     roles = db.relationship('Role', secondary=roles_users, backref=db.backref('users', lazy='dynamic'))
 
+    @property
     def is_authenticated(self):
-        """Returns True if user is active"""
-        return self.active
-    
+        return self.active and self.deleted_at is None
+
     def set_password(self, password):
         if len(password) < MIN_PASSWORD_LENGTH:
             raise ValueError(f"Password needs to be longer than {MIN_PASSWORD_LENGTH}")
-        self.password = hash_password(password)
+        self.account_type = 'local'
+        self.auth_string = hash_password(password)
 
     def verify_password(self, password):
+        if self.account_type != 'local' or not self.auth_string:
+            return False
         try:
-            password_hasher.verify(self.password, password)
+            password_hasher.verify(self.auth_string, password)
         except VerifyMismatchError:
             return False
-        if password_hasher.check_needs_rehash(self.password):
+        if password_hasher.check_needs_rehash(self.auth_string):
             self.set_password(password)
             db.session.commit()
         return True
-
-class Document(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
-    title = db.Column(db.String(255), nullable=False)
-    original_filename = db.Column(db.String(255), nullable=False)
-    content_type = db.Column(db.String(100), nullable=False)
-    file_size = db.Column(db.Integer, nullable=False)
-    # LargeBinary(length>16777215) maps to LONGBLOB in MySQL (up to 4 GB)
-    data = db.Column(db.LargeBinary(length=4294967295), nullable=False)
-    thumbnail = db.Column(db.LargeBinary(length=4294967295), nullable=True)
-    thumbnail_content_type = db.Column(db.String(50), nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=_utcnow)
-    updated_at = db.Column(db.DateTime, nullable=False, default=_utcnow, onupdate=_utcnow)
-
-    user = db.relationship('User', backref=db.backref('documents', lazy=True))

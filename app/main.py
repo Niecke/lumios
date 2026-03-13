@@ -122,10 +122,4 @@ def create_app(test_config=None):
     from blueprints.admin import admin
     app.register_blueprint(admin)
 
-    from blueprints.documents import documents
-    app.register_blueprint(documents)
-
-    # Limit upload request size to 64 MB
-    app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024
-
     return app

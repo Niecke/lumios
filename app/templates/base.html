@@ -13,8 +13,7 @@
         <div class="nav-menu">
             <a href="{{ url_for('main.index') }}">Home</a>
             {% if current_user.is_authenticated %}
-                <a href="{{ url_for('documents.library') }}">My Documents</a>
-                {% if require_role('admin') %}
+{% if require_role('admin') %}
                 <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
                 {% endif %}
                 <form method="POST" action="{{ url_for('main.logout') }}">

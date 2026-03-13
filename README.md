@@ -45,8 +45,12 @@ python -m pytest --cov=app --cov-report=term-missing --cov-report=html
 
 ## Database setup
 
-podman build -t luminos-backend .
+```
+podman-compose up -d 
 
-podman-compose run --rm app flask db init
+chmod o+w ~/git/lumios/app/migrations/versions/
 
-podman-compose run --rm app flask db migrate -m "Add users table"
+podman exec -e FLASK_APP="main:create_app()" lumios-app /usr/bin/python3 -m flask db migrate -m "initial"
+
+chmod o-w ~/git/lumios/app/migrations/versions/
+```

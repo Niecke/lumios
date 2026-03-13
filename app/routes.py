@@ -35,7 +35,7 @@ def login():
         password = request.form.get('password')
         
         user = db.session.execute(select(User).filter_by(email=email)).scalar_one_or_none()
-        if user and user.is_authenticated() and user.verify_password(password):
+        if user and user.is_authenticated and user.verify_password(password):
             session.clear()
             session['user_id'] = user.id
             session['email'] = user.email
