@@ -56,7 +56,7 @@ data "google_client_openid_userinfo" "terraform" {}
 
 resource "google_service_account_iam_member" "terraform_token_creator" {
   service_account_id = google_service_account.cloudrun.name
-  role               = "roles/iam.serviceAccountTokenCreator"
+  role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:${data.google_client_openid_userinfo.terraform.email}"
 }
 
@@ -89,6 +89,18 @@ resource "google_secret_manager_secret" "gcs_hmac_secret" {
 resource "google_secret_manager_secret_version" "gcs_hmac_secret" {
   secret      = google_secret_manager_secret.gcs_hmac_secret.id
   secret_data = google_storage_hmac_key.cloudrun.secret
+}
+
+resource "google_secret_manager_secret_iam_member" "cloudrun_gcs_hmac_access_key" {
+  secret_id = google_secret_manager_secret.gcs_hmac_access_key.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.cloudrun.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "cloudrun_gcs_hmac_secret" {
+  secret_id = google_secret_manager_secret.gcs_hmac_secret.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.cloudrun.email}"
 }
 
 resource "google_cloud_run_v2_service" "backend" {
