@@ -1,4 +1,4 @@
-from flask import session, redirect, url_for, flash, request, jsonify, g
+from flask import redirect, url_for, flash, request, jsonify, g
 from functools import wraps
 from current_user import current_user
 import jwt
@@ -8,7 +8,7 @@ from services.token import decode_token
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if "user_id" not in session:
+        if not current_user.is_authenticated:
             return redirect(url_for("auth.login"))
         return f(*args, **kwargs)
 

@@ -4,6 +4,7 @@ from argon2.exceptions import VerifyMismatchError
 from config import MIN_PASSWORD_LENGTH
 from datetime import datetime, timezone
 from flask_migrate import Migrate
+import uuid as uuid_module
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -30,10 +31,14 @@ class User(db.Model):
     account_type = db.Column(db.String(16), nullable=False, default="local")
     auth_string = db.Column(db.String(255), nullable=True)
     max_libraries = db.Column(db.Integer(), nullable=False, default=100)
+    max_images_per_library = db.Column(db.Integer(), nullable=False, default=500)
     created_at = db.Column(
         db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
     deleted_at = db.Column(db.DateTime, nullable=True)
+    is_system = db.Column(
+        db.Boolean, nullable=False, default=False, server_default=db.false()
+    )
     roles = db.relationship(
         "Role", secondary=roles_users, backref=db.backref("users", lazy="dynamic")
     )
@@ -59,3 +64,74 @@ class User(db.Model):
             self.set_password(password)
             db.session.commit()
         return True
+
+
+class Library(db.Model):
+    id = db.Column(db.Integer(), primary_key=True)
+    uuid = db.Column(
+        db.String(36),
+        unique=True,
+        nullable=False,
+        index=True,
+        default=lambda: str(uuid_module.uuid4()),
+    )
+    user_id = db.Column(db.Integer(), db.ForeignKey("user.id"), nullable=False)
+    name = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    archived_at = db.Column(db.DateTime, nullable=True)
+    deleted_at = db.Column(db.DateTime, nullable=True)
+
+    photographer = db.relationship(
+        "User", backref=db.backref("libraries", lazy="dynamic")
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "uuid": self.uuid,
+            "name": self.name,
+            "created_at": self.created_at.isoformat(),
+            "archived_at": self.archived_at.isoformat() if self.archived_at else None,
+        }
+
+
+class Image(db.Model):
+    id = db.Column(db.Integer(), primary_key=True)
+    uuid = db.Column(
+        db.String(36),
+        unique=True,
+        nullable=False,
+        index=True,
+        default=lambda: str(uuid_module.uuid4()),
+    )
+    library_id = db.Column(db.Integer(), db.ForeignKey("library.id"), nullable=False)
+    s3_key = db.Column(db.String(255), nullable=False)
+    original_filename = db.Column(db.String(255), nullable=False)
+    content_type = db.Column(db.String(32), nullable=False)
+    size = db.Column(db.Integer(), nullable=False)
+    width = db.Column(db.Integer(), nullable=True)
+    height = db.Column(db.Integer(), nullable=True)
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    deleted_at = db.Column(db.DateTime, nullable=True)
+
+    library = db.relationship(
+        "Library", backref=db.backref("images", lazy="dynamic")
+    )
+
+    def to_dict(self, presigned_url: str | None = None):
+        return {
+            "id": self.id,
+            "uuid": self.uuid,
+            "filename": self.original_filename,
+            "content_type": self.content_type,
+            "size": self.size,
+            "width": self.width,
+            "height": self.height,
+            "created_at": self.created_at.isoformat(),
+            "url": presigned_url,
+        }
+

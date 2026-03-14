@@ -38,6 +38,7 @@ def upgrade():
         sa.Column("max_libraries", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("deleted_at", sa.DateTime(), nullable=True),
+        sa.Column("is_system", sa.Boolean(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("email"),
     )
@@ -70,13 +71,14 @@ def upgrade():
     now = datetime.now(timezone.utc)
     bind.execute(
         sa.text(
-            'INSERT INTO "user" (email, active, account_type, auth_string, max_libraries, created_at) '
-            "VALUES (:email, true, 'local', :auth_string, 100, :created_at)"
+            'INSERT INTO "user" (email, active, account_type, auth_string, max_libraries, created_at, is_system) '
+            "VALUES (:email, true, 'local', :auth_string, 100, :created_at, :is_system)"
         ),
         {
             "email": "admin",
             "auth_string": hash_password(INIT_ADMIN_PASSWORD),
             "created_at": now,
+            "is_system": True,
         },
     )
     user_id = bind.execute(

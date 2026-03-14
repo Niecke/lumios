@@ -2,10 +2,8 @@
 Tests for the JSON API auth endpoints: /api/v1/auth/*
 
 Coverage targets:
-  POST /api/v1/auth/login           password login
   GET  /api/v1/auth/me              fetch current user from JWT
-  GET  /api/v1/auth/google          OAuth redirect
-  GET  /api/v1/auth/google/callback OAuth callback handling
+  POST /api/v1/auth/google/verify   exchange Google ID token for lumios JWT
 """
 import pytest
 from unittest.mock import patch, MagicMock
@@ -64,69 +62,6 @@ def google_user(photographer_role):
 
 
 # ---------------------------------------------------------------------------
-# POST /api/v1/auth/login
-# ---------------------------------------------------------------------------
-
-class TestApiLogin:
-    def test_valid_credentials_returns_200(self, client, regular_user):
-        res = client.post(f"{BASE}/login", json={"email": "user@test.com", "password": "UserPass123!"})
-        assert res.status_code == 200
-
-    def test_response_contains_token(self, client, regular_user):
-        res = client.post(f"{BASE}/login", json={"email": "user@test.com", "password": "UserPass123!"})
-        data = res.get_json()
-        assert "token" in data
-        assert isinstance(data["token"], str)
-        assert data["token"].count(".") == 2  # JWT has 3 parts separated by dots
-
-    def test_token_is_valid_jwt(self, client, regular_user):
-        res = client.post(f"{BASE}/login", json={"email": "user@test.com", "password": "UserPass123!"})
-        token = res.get_json()["token"]
-        payload = decode_token(token)
-        assert payload["email"] == "user@test.com"
-
-    def test_response_contains_email_and_roles(self, client, regular_user):
-        res = client.post(f"{BASE}/login", json={"email": "user@test.com", "password": "UserPass123!"})
-        data = res.get_json()
-        assert data["email"] == "user@test.com"
-        assert isinstance(data["roles"], list)
-
-    def test_token_roles_match_user_roles(self, client, photographer_user):
-        res = client.post(f"{BASE}/login", json={"email": "photo@test.com", "password": "PhotoPass123!"})
-        token = res.get_json()["token"]
-        payload = decode_token(token)
-        assert "photographer" in payload["roles"]
-
-    def test_wrong_password_returns_401(self, client, regular_user):
-        res = client.post(f"{BASE}/login", json={"email": "user@test.com", "password": "WrongPass!"})
-        assert res.status_code == 401
-
-    def test_wrong_password_returns_error_message(self, client, regular_user):
-        res = client.post(f"{BASE}/login", json={"email": "user@test.com", "password": "WrongPass!"})
-        assert "error" in res.get_json()
-
-    def test_unknown_email_returns_401(self, client):
-        res = client.post(f"{BASE}/login", json={"email": "ghost@test.com", "password": "Pass123!"})
-        assert res.status_code == 401
-
-    def test_inactive_user_returns_401(self, client, inactive_user):
-        res = client.post(f"{BASE}/login", json={"email": "inactive@test.com", "password": "InactivePass123!"})
-        assert res.status_code == 401
-
-    def test_missing_body_returns_401(self, client):
-        res = client.post(f"{BASE}/login", data="not json", content_type="text/plain")
-        assert res.status_code == 401
-
-    def test_empty_json_returns_401(self, client):
-        res = client.post(f"{BASE}/login", json={})
-        assert res.status_code == 401
-
-    def test_email_is_stripped_of_whitespace(self, client, regular_user):
-        res = client.post(f"{BASE}/login", json={"email": "  user@test.com  ", "password": "UserPass123!"})
-        assert res.status_code == 200
-
-
-# ---------------------------------------------------------------------------
 # GET /api/v1/auth/me
 # ---------------------------------------------------------------------------
 
@@ -147,9 +82,9 @@ class TestApiMe:
         res = client.get(f"{BASE}/me")
         assert res.status_code == 401
 
-    def test_malformed_header_returns_401(self, client, regular_user):
+    def test_malformed_header_returns_401(self, client, photographer_user):
         # Missing "Bearer " prefix
-        token = make_token(regular_user)
+        token = make_token(photographer_user)
         res = client.get(f"{BASE}/me", headers={"Authorization": token})
         assert res.status_code == 401
 
@@ -161,13 +96,12 @@ class TestApiMe:
         res = client.get(f"{BASE}/me", headers=auth_header("bad.token.value"))
         assert res.get_json()["error"] == "Invalid token"
 
-    def test_expired_token_returns_401(self, client, regular_user):
-        # Build a token that expired 1 second ago
+    def test_expired_token_returns_401(self, client, photographer_user):
         from config import JWT_SECRET
         payload = {
-            "sub": str(regular_user.id),
-            "email": regular_user.email,
-            "roles": [],
+            "sub": str(photographer_user.id),
+            "email": photographer_user.email,
+            "roles": ["photographer"],
             "iat": datetime.now(timezone.utc) - timedelta(hours=2),
             "exp": datetime.now(timezone.utc) - timedelta(seconds=1),
         }
@@ -181,88 +115,105 @@ class TestApiMe:
         res = client.get(f"{BASE}/me", headers=auth_header(token))
         assert "photographer" in res.get_json()["roles"]
 
+    def test_user_without_photographer_role_returns_403(self, client, regular_user):
+        token = make_token(regular_user)
+        res = client.get(f"{BASE}/me", headers=auth_header(token))
+        assert res.status_code == 403
+
 
 # ---------------------------------------------------------------------------
-# GET /api/v1/auth/google
+# POST /api/v1/auth/google/verify
 # ---------------------------------------------------------------------------
 
-class TestApiGoogleLogin:
+class TestApiGoogleVerify:
+    ENDPOINT = f"{BASE}/google/verify"
+
+    def _mock_jwks(self, idinfo: dict):
+        """Return context managers that fake a successful JWKS verification."""
+        mock_key = MagicMock()
+        return (
+            patch("blueprints.api.auth.GOOGLE_FRONTEND_CLIENT_ID", "fake-client-id"),
+            patch("blueprints.api.auth._google_jwks.get_signing_key_from_jwt", return_value=mock_key),
+            patch("jwt.decode", return_value=idinfo),
+        )
+
     def test_returns_501_when_not_configured(self, client):
-        # GOOGLE_CLIENT_ID is not set in the test environment
-        with patch("blueprints.api.auth.GOOGLE_CLIENT_ID", None):
-            res = client.get(f"{BASE}/google")
+        with patch("blueprints.api.auth.GOOGLE_FRONTEND_CLIENT_ID", None):
+            res = client.post(self.ENDPOINT, json={"credential": "fake"})
         assert res.status_code == 501
 
-    def test_returns_error_json_when_not_configured(self, client):
-        with patch("blueprints.api.auth.GOOGLE_CLIENT_ID", None):
-            res = client.get(f"{BASE}/google")
+    def test_missing_credential_returns_400(self, client):
+        with patch("blueprints.api.auth.GOOGLE_FRONTEND_CLIENT_ID", "fake-client-id"):
+            res = client.post(self.ENDPOINT, json={})
+        assert res.status_code == 400
+
+    def test_invalid_google_token_returns_401(self, client):
+        with patch("blueprints.api.auth.GOOGLE_FRONTEND_CLIENT_ID", "fake-client-id"), \
+             patch("blueprints.api.auth._google_jwks.get_signing_key_from_jwt",
+                   side_effect=pyjwt.PyJWTError("invalid")):
+            res = client.post(self.ENDPOINT, json={"credential": "bad.token.value"})
+        assert res.status_code == 401
         assert "error" in res.get_json()
 
-    def test_redirects_to_google_when_configured(self, client):
-        mock_redirect = MagicMock(return_value=("", 302, {"Location": "https://accounts.google.com/o/oauth2/auth"}))
-        with patch("blueprints.api.auth.GOOGLE_CLIENT_ID", "fake-client-id"), \
-             patch("blueprints.api.auth.oauth.google.authorize_redirect", mock_redirect):
-            res = client.get(f"{BASE}/google")
-        mock_redirect.assert_called_once()
+    def test_network_error_returns_503(self, client):
+        with patch("blueprints.api.auth.GOOGLE_FRONTEND_CLIENT_ID", "fake-client-id"), \
+             patch("blueprints.api.auth._google_jwks.get_signing_key_from_jwt",
+                   side_effect=Exception("timeout")):
+            res = client.post(self.ENDPOINT, json={"credential": "bad.token.value"})
+        assert res.status_code == 503
 
+    def test_unknown_google_account_returns_401(self, client):
+        idinfo = {"email": "nobody@test.com", "sub": "google-sub-123"}
+        p1, p2, p3 = self._mock_jwks(idinfo)
+        with p1, p2, p3:
+            res = client.post(self.ENDPOINT, json={"credential": "valid.token.value"})
+        assert res.status_code == 401
 
-# ---------------------------------------------------------------------------
-# GET /api/v1/auth/google/callback
-# ---------------------------------------------------------------------------
+    def test_successful_verify_returns_200(self, client, google_user):
+        idinfo = {"email": "googleuser@test.com", "sub": "google-sub-abc"}
+        p1, p2, p3 = self._mock_jwks(idinfo)
+        with p1, p2, p3:
+            res = client.post(self.ENDPOINT, json={"credential": "valid.token.value"})
+        assert res.status_code == 200
 
-class TestApiGoogleCallback:
-    def test_exchange_failure_redirects_to_login_with_error(self, client):
-        with patch("blueprints.api.auth.oauth.google.authorize_access_token", side_effect=Exception("failed")):
-            res = client.get(f"{BASE}/google/callback", follow_redirects=False)
-        assert res.status_code == 302
-        assert "error=google_failed" in res.location
+    def test_successful_verify_response_contains_token_and_email(self, client, google_user):
+        idinfo = {"email": "googleuser@test.com", "sub": "google-sub-abc"}
+        p1, p2, p3 = self._mock_jwks(idinfo)
+        with p1, p2, p3:
+            res = client.post(self.ENDPOINT, json={"credential": "valid.token.value"})
+        data = res.get_json()
+        assert "token" in data
+        assert data["email"] == "googleuser@test.com"
+        assert isinstance(data["roles"], list)
 
-    def test_missing_userinfo_redirects_to_login_with_error(self, client):
-        with patch("blueprints.api.auth.oauth.google.authorize_access_token", return_value={}):
-            res = client.get(f"{BASE}/google/callback", follow_redirects=False)
-        assert res.status_code == 302
-        assert "error=google_failed" in res.location
-
-    def test_unknown_google_account_redirects_with_error(self, client):
-        fake_token = {"userinfo": {"email": "nobody@test.com", "sub": "google-sub-123"}}
-        with patch("blueprints.api.auth.oauth.google.authorize_access_token", return_value=fake_token):
-            res = client.get(f"{BASE}/google/callback", follow_redirects=False)
-        assert res.status_code == 302
-        assert "error=" in res.location
-        assert "google_failed" not in res.location  # it's an AuthError message, not google_failed
-
-    def test_successful_callback_redirects_to_frontend_login(self, client, google_user):
-        fake_token = {"userinfo": {"email": "googleuser@test.com", "sub": "google-sub-abc"}}
-        with patch("blueprints.api.auth.oauth.google.authorize_access_token", return_value=fake_token):
-            res = client.get(f"{BASE}/google/callback", follow_redirects=False)
-        assert res.status_code == 302
-        assert "#token=" in res.location
-
-    def test_successful_callback_token_is_valid_jwt(self, client, google_user):
-        fake_token = {"userinfo": {"email": "googleuser@test.com", "sub": "google-sub-abc"}}
-        with patch("blueprints.api.auth.oauth.google.authorize_access_token", return_value=fake_token):
-            res = client.get(f"{BASE}/google/callback", follow_redirects=False)
-        fragment = res.location.split("#token=")[1]
-        payload = decode_token(fragment)
+    def test_successful_verify_token_is_valid_jwt(self, client, google_user):
+        idinfo = {"email": "googleuser@test.com", "sub": "google-sub-abc"}
+        p1, p2, p3 = self._mock_jwks(idinfo)
+        with p1, p2, p3:
+            res = client.post(self.ENDPOINT, json={"credential": "valid.token.value"})
+        token = res.get_json()["token"]
+        payload = decode_token(token)
         assert payload["email"] == "googleuser@test.com"
 
-    def test_successful_callback_token_contains_roles(self, client, google_user):
-        fake_token = {"userinfo": {"email": "googleuser@test.com", "sub": "google-sub-abc"}}
-        with patch("blueprints.api.auth.oauth.google.authorize_access_token", return_value=fake_token):
-            res = client.get(f"{BASE}/google/callback", follow_redirects=False)
-        fragment = res.location.split("#token=")[1]
-        payload = decode_token(fragment)
+    def test_successful_verify_token_contains_roles(self, client, google_user):
+        idinfo = {"email": "googleuser@test.com", "sub": "google-sub-abc"}
+        p1, p2, p3 = self._mock_jwks(idinfo)
+        with p1, p2, p3:
+            res = client.post(self.ENDPOINT, json={"credential": "valid.token.value"})
+        payload = decode_token(res.get_json()["token"])
         assert "photographer" in payload["roles"]
 
-    def test_second_login_verifies_stored_sub(self, client, google_user):
-        # First login stores the sub
-        fake_token = {"userinfo": {"email": "googleuser@test.com", "sub": "google-sub-abc"}}
-        with patch("blueprints.api.auth.oauth.google.authorize_access_token", return_value=fake_token):
-            client.get(f"{BASE}/google/callback")
+    def test_second_verify_with_different_sub_returns_401(self, client, google_user):
+        # First verify stores the sub
+        first_idinfo = {"email": "googleuser@test.com", "sub": "google-sub-abc"}
+        p1, p2, p3 = self._mock_jwks(first_idinfo)
+        with p1, p2, p3:
+            client.post(self.ENDPOINT, json={"credential": "valid.token.value"})
 
-        # Second login with different sub should fail
-        fake_token_bad = {"userinfo": {"email": "googleuser@test.com", "sub": "different-sub"}}
-        with patch("blueprints.api.auth.oauth.google.authorize_access_token", return_value=fake_token_bad):
-            res = client.get(f"{BASE}/google/callback", follow_redirects=False)
-        assert "error=" in res.location
-        assert "#token=" not in res.location
+        # Second verify with a different sub must be rejected
+        second_idinfo = {"email": "googleuser@test.com", "sub": "different-sub"}
+        p1, p2, p3 = self._mock_jwks(second_idinfo)
+        with p1, p2, p3:
+            res = client.post(self.ENDPOINT, json={"credential": "valid.token.value"})
+        assert res.status_code == 401
+        assert "token" not in res.get_json()

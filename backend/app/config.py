@@ -45,15 +45,17 @@ SQLALCHEMY_ENGINE_OPTIONS["pool_timeout"] = int(
     os.getenv("SQLALCHEMY_ENGINE_OPTIONS_POOL_TIMEOUT", 30)
 )
 SQLALCHEMY_ENGINE_OPTIONS["pool_size"] = int(
-    os.getenv("SQLALCHEMY_ENGINE_OPTIONS_POOL_SIZE", 5)
+    os.getenv("SQLALCHEMY_ENGINE_OPTIONS_POOL_SIZE", 3)
 )
 SQLALCHEMY_ENGINE_OPTIONS["max_overflow"] = int(
-    os.getenv("SQLALCHEMY_ENGINE_OPTIONS_MAX_OVERFLOW", 10)
+    os.getenv("SQLALCHEMY_ENGINE_OPTIONS_MAX_OVERFLOW", 3)
 )
 
 # Google OAuth (optional — Google login disabled when not set)
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+# Separate OAuth client for the React frontend (GIS flow — no secret needed)
+GOOGLE_FRONTEND_CLIENT_ID = os.getenv("GOOGLE_FRONTEND_CLIENT_ID")
 # Must match the redirect URIs registered in Google Cloud Console exactly
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:8080")
 # URL of the frontend app — used to redirect back after OAuth callbacks
@@ -61,19 +63,28 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 # App security
 SECRET_KEY = os.getenv("SECRET_KEY")
-JWT_SECRET = os.getenv("JWT_SECRET", SECRET_KEY)  # falls back to SECRET_KEY if not set
+JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_EXPIRY_SECONDS = int(os.getenv("JWT_EXPIRY_SECONDS", 3600))
 
 # Redis (optional — enables Redis-backed sessions when set, falls back to filesystem)
 REDIS_URL = os.getenv("REDIS_URL", None)
 
+# S3-compatible object storage (use MinIO for local dev, GCS/S3 in production)
+S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
+# Public URL used when generating presigned URLs — must be reachable by the browser
+S3_PUBLIC_ENDPOINT_URL = os.getenv("S3_PUBLIC_ENDPOINT_URL", S3_ENDPOINT_URL)
+S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "")
+S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "")
+S3_BUCKET = os.getenv("S3_BUCKET", "lumios")
+
 # FAIL-FAST: Check required vars
-REQUIRED_VARS = ["POSTGRES_PASSWORD", "SECRET_KEY"]
+REQUIRED_VARS = ["POSTGRES_PASSWORD", "SECRET_KEY", "JWT_SECRET"]
 missing = [var for var in REQUIRED_VARS if not os.getenv(var)]
 if missing:
     raise ValueError(
         f"Missing required environment variables: {', '.join(missing)}.\n"
         f"Add to .env:\n"
         f"  POSTGRES_PASSWORD=your_password\n"
-        f"  SECRET_KEY=your-super-secret-key-at-least-32-chars"
+        f"  SECRET_KEY=your-super-secret-key-at-least-32-chars\n"
+        f"  JWT_SECRET=your-super-jwt-secret-change-me"
     )

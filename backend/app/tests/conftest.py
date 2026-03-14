@@ -4,13 +4,15 @@ Shared pytest fixtures for the lumios-backend test suite.
 Environment variables must be set BEFORE any app module is imported,
 because config.py has a fail-fast check at module load time.
 """
+
 import os
 import sys
 
 # --- Env vars must come first, before any app imports ---
 os.environ.setdefault("POSTGRES_PASSWORD", "test_password")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-at-least-32-chars-long!")
-os.environ.setdefault("DEBUG", "true")          # disables Talisman HTTPS enforcement
+os.environ.setdefault("JWT_SECRET", "test-secret-key-at-least-32-chars-long!")
+os.environ.setdefault("DEBUG", "true")  # disables Talisman HTTPS enforcement
 os.environ.setdefault("MIN_PASSWORD_LENGTH", "8")
 
 # Use minimal Argon2 parameters so password hashing is fast in tests
@@ -90,6 +92,7 @@ def client(app):
 # Reusable data fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def admin_role():
     role = Role(name="admin", description="Administrator")
@@ -129,6 +132,7 @@ def inactive_user():
 # ---------------------------------------------------------------------------
 # Helper functions (not fixtures) used across multiple test modules
 # ---------------------------------------------------------------------------
+
 
 def do_login(client, email, password):
     """POST to /login and follow the redirect."""

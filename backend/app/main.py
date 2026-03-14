@@ -107,12 +107,20 @@ def create_app(test_config=None):
     Talisman(
         app,
         force_https=not DEBUG,
+        strict_transport_security=not DEBUG,
         content_security_policy={
             "default-src": "'self'",
-            "script-src": "'self'",
-            "style-src": "'self'",
-            "img-src": "'self' data:",
+            # GIS client script
+            "script-src": "'self' https://accounts.google.com/gsi/client",
+            # GIS renders its button with inline styles
+            "style-src": "'self' https://accounts.google.com/gsi/ 'unsafe-inline'",
+            # Profile pictures come from Google's CDN
+            "img-src": "'self' data: https://lh3.googleusercontent.com",
             "font-src": "'self'",
+            # GIS uses an iframe for the One Tap / button flow
+            "frame-src": "https://accounts.google.com/gsi/",
+            # GIS makes XHR calls back to Google
+            "connect-src": "'self' https://accounts.google.com/gsi/",
         },
     )
 
@@ -156,8 +164,17 @@ def create_app(test_config=None):
     app.register_blueprint(health)
 
     from blueprints.api import api
+    from blueprints.api.auth import auth_api
+    from blueprints.api.libraries import libraries_api
+    from blueprints.api.images import images_api
 
+    # csrf.exempt only covers the named blueprint's own views. Child blueprints
+    # registered on a parent have their own blueprint name ("auth_api", not "api"),
+    # so each one must be exempted explicitly.
     csrf.exempt(api)
+    csrf.exempt(auth_api)
+    csrf.exempt(libraries_api)
+    csrf.exempt(images_api)
     app.register_blueprint(api)
 
     return app
