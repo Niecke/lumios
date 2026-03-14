@@ -1,5 +1,11 @@
 # lumios
 
+## Reminders
+
+What happens when the Storage deletes the files automatically. The metadata will still be there. This might not be the perfect solution.
+
+Right now all photos go through the backend service this is not efficient. Should be redesigned later.
+
 ## Frontend
 
 Development

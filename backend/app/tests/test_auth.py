@@ -1,6 +1,7 @@
 """
 Tests for authentication routes: /login, /logout, and the protected index /.
 """
+
 import pytest
 from conftest import do_login, do_logout
 
@@ -49,7 +50,9 @@ class TestLoginPost:
         html = response.data.decode()
         assert "Invalid email or password" in html
 
-    def test_inactive_user_has_no_session_after_login_attempt(self, client, inactive_user):
+    def test_inactive_user_has_no_session_after_login_attempt(
+        self, client, inactive_user
+    ):
         client.post(
             "/login",
             data={"email": "inactive@test.com", "password": "InactivePass123!"},

@@ -6,7 +6,13 @@ Uses boto3 — works with MinIO locally and any S3-compatible backend in product
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
-from config import S3_ENDPOINT_URL, S3_PUBLIC_ENDPOINT_URL, S3_ACCESS_KEY, S3_SECRET_KEY, S3_BUCKET
+from config import (
+    S3_ENDPOINT_URL,
+    S3_PUBLIC_ENDPOINT_URL,
+    S3_ACCESS_KEY,
+    S3_SECRET_KEY,
+    S3_BUCKET,
+)
 
 
 def _client(endpoint_url: str = S3_ENDPOINT_URL):
