@@ -82,6 +82,10 @@ gcloud iam service-accounts add-iam-policy-binding "terraform@<PROJECT_ID>.iam.g
 
 gcloud projects add-iam-policy-binding <PROJECT_ID> \
   --member="serviceAccount:terraform@<PROJECT_ID>.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.writer"
+
+gcloud projects add-iam-policy-binding <PROJECT_ID> \
+  --member="serviceAccount:terraform@<PROJECT_ID>.iam.gserviceaccount.com" \
   --role="roles/compute.admin"
 
 gcloud projects add-iam-policy-binding <PROJECT_ID> \
@@ -92,5 +96,12 @@ gcloud projects add-iam-policy-binding <PROJECT_ID> \
   --member="serviceAccount:terraform@<PROJECT_ID>.iam.gserviceaccount.com" \
   --role="roles/serviceusage.serviceUsageAdmin"
 
+gcloud projects add-iam-policy-binding <PROJECT_ID> \
+  --member="serviceAccount:terraform@<PROJECT_ID>.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.admin"
+
+
 gcloud services enable iamcredentials.googleapis.com
+
+gcloud services enable cloudresourcemanager.googleapis.com
 ```

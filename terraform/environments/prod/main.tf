@@ -9,3 +9,10 @@ module "network" {
 
   depends_on = [module.apis]
 }
+
+module "artifact_registry" {
+  source = "../../modules/artifact_registry"
+  region = var.region
+
+  depends_on = [module.apis]
+}
