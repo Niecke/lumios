@@ -57,3 +57,8 @@ variable "google_client_secret_secret_id" {
   description = "Secret Manager secret ID for the Google OAuth client secret"
   type        = string
 }
+
+variable "google_frontend_client_id_secret_id" {
+  description = "Secret Manager secret ID for the Google OAuth frontend client ID"
+  type        = string
+}

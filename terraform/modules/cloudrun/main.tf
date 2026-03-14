@@ -39,6 +39,12 @@ resource "google_secret_manager_secret_iam_member" "cloudrun_google_client_secre
   member    = "serviceAccount:${google_service_account.cloudrun.email}"
 }
 
+resource "google_secret_manager_secret_iam_member" "cloudrun_google_frontend_client_id" {
+  secret_id = var.google_frontend_client_id_secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.cloudrun.email}"
+}
+
 resource "google_storage_bucket_iam_member" "cloudrun_photos" {
   bucket = var.photos_bucket_name
   role   = "roles/storage.objectAdmin"
@@ -86,9 +92,10 @@ resource "google_secret_manager_secret_version" "gcs_hmac_secret" {
 }
 
 resource "google_cloud_run_v2_service" "backend" {
-  name     = "lumios-backend"
-  location = var.region
-  ingress  = "INGRESS_TRAFFIC_ALL"
+  name                = "lumios-backend"
+  location            = var.region
+  ingress             = "INGRESS_TRAFFIC_ALL"
+  deletion_protection = false
 
   template {
     service_account = google_service_account.cloudrun.email
@@ -170,6 +177,15 @@ resource "google_cloud_run_v2_service" "backend" {
         value_source {
           secret_key_ref {
             secret  = var.google_client_secret_secret_id
+            version = "latest"
+          }
+        }
+      }
+      env {
+        name = "GOOGLE_FRONTEND_CLIENT_ID"
+        value_source {
+          secret_key_ref {
+            secret  = var.google_frontend_client_id_secret_id
             version = "latest"
           }
         }
