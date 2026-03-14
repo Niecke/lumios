@@ -65,6 +65,16 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  frontend:
+    build: frontend/.
+    container_name: lumios-frontend
+    ports:
+      - "8081:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   lumios_postgres_data:
   lumios_minio_data:

@@ -3,13 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Your App{% endblock %}</title>
+    <title>{% block title %}Lumios Management{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/material.css') }}">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16x16.png') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
     {% block head %}{% endblock %}
 </head>
 <body>
     <nav class="navbar">
-        <div class="nav-brand">Your App</div>
+        <div class="nav-brand">Lumios Management</div>
         <div class="nav-menu">
             <a href="{{ url_for('admin.index') }}">Home</a>
             {% if current_user.is_authenticated %}
