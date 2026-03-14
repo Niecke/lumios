@@ -3,8 +3,8 @@
 - [x] integrate Google Login
 - [x] add basic frontend with login
 - [x] restrict the frontend login to photographers
-- [ ] review login process for the frontend
-- [ ] generate security and performance audit
+- [x] review login process for the frontend
+- [x] generate security and performance audit
 - [ ] add a way to upload fotos (basic function)
 - [ ] add terraform setup
 - [ ] deploy compute engine with terraform (redis+postgres)
