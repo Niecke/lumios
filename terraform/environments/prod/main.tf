@@ -22,3 +22,19 @@ module "storage" {
   region     = var.region
   project_id = var.project_id
 }
+
+module "secrets" {
+  source = "../../modules/secrets"
+
+  depends_on = [module.apis]
+}
+
+module "vm" {
+  source                      = "../../modules/vm"
+  zone                        = var.zone
+  network_self_link           = module.network.network_self_link
+  subnet_self_link            = module.network.subnet_self_link
+  postgres_password_secret_id = module.secrets.postgres_password_secret_id
+
+  depends_on = [module.apis, module.network, module.secrets]
+}
