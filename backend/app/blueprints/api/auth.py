@@ -26,11 +26,13 @@ def me():
     user = db.session.execute(
         select(User).filter_by(id=int(payload["sub"]))
     ).scalar_one_or_none()
-    return jsonify({
-        "email": payload["email"],
-        "roles": payload["roles"],
-        "max_libraries": user.max_libraries if user else None,
-    })
+    return jsonify(
+        {
+            "email": payload["email"],
+            "roles": payload["roles"],
+            "max_libraries": user.max_libraries if user else None,
+        }
+    )
 
 
 @auth_api.route("/google/verify", methods=["POST"])
@@ -72,9 +74,11 @@ def google_verify():
 
     roles = [r.name for r in user.roles]
     token = create_token(user.id, user.email, roles)
-    return jsonify({
-        "token": token,
-        "email": user.email,
-        "roles": roles,
-        "max_libraries": user.max_libraries,
-    })
+    return jsonify(
+        {
+            "token": token,
+            "email": user.email,
+            "roles": roles,
+            "max_libraries": user.max_libraries,
+        }
+    )
