@@ -16,3 +16,9 @@ module "artifact_registry" {
 
   depends_on = [module.apis]
 }
+
+module "storage" {
+  source     = "../../modules/storage"
+  region     = var.region
+  project_id = var.project_id
+}
