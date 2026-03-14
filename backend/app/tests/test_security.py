@@ -35,6 +35,23 @@ class TestLoginRequired:
         assert response.status_code == 302
         assert "/login" in response.location
 
+    def test_redirects_to_login_when_user_is_deactivated(self, client, app):
+        """A user whose active flag is cleared mid-session is rejected immediately."""
+        user = User(email="deactivated@test.com", active=True)
+        user.set_password("DeactPass1!")
+        db.session.add(user)
+        db.session.commit()
+
+        do_login(client, "deactivated@test.com", "DeactPass1!")
+
+        # Deactivate the user while the session is still live
+        user.active = False
+        db.session.commit()
+
+        response = client.get("/", follow_redirects=False)
+        assert response.status_code == 302
+        assert "/login" in response.location
+
 
 # ---------------------------------------------------------------------------
 # require_role decorator (tested via admin routes)

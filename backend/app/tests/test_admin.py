@@ -191,9 +191,8 @@ class TestAdminUserDelete:
         html = response.data.decode()
         assert "unknown" in html
 
-    def test_user_delete_internal_admin_blocked(self, client, admin_user):
-        # Create a user whose email is literally "admin" (the internal guard)
-        protected = User(email="admin", active=True)
+    def test_user_delete_system_user_blocked(self, client, admin_user):
+        protected = User(email="system@test.com", active=True, is_system=True)
         protected.set_password("ProtectedPass1!")
         db.session.add(protected)
         db.session.commit()
@@ -203,7 +202,7 @@ class TestAdminUserDelete:
             f"/admin/user_delete/{protected.id}", follow_redirects=True
         )
         html = response.data.decode()
-        assert "internal admin user can not be deleted" in html
+        assert "System users cannot be deleted." in html
         # Confirm user still exists
         assert db.session.get(User, protected.id) is not None
 
@@ -312,6 +311,23 @@ class TestAdminUserEdit:
         )
         db.session.refresh(regular_user)
         assert regular_user.email == "user@test.com"
+
+    def test_user_edit_system_user_email_change_blocked(self, client, admin_user):
+        system = User(email="system@test.com", active=True, is_system=True)
+        system.set_password("SystemPass1!")
+        db.session.add(system)
+        db.session.commit()
+
+        login_admin(client, admin_user)
+        response = client.post(
+            f"/admin/user_edit/{system.id}",
+            data={"email": "changed@evil.com", "password": "", "active": "on"},
+            follow_redirects=True,
+        )
+        html = html_text(response)
+        assert "email of a system user cannot be changed" in html
+        db.session.refresh(system)
+        assert system.email == "system@test.com"
 
     def test_user_edit_short_password_shows_error(self, client, admin_user, regular_user):
         login_admin(client, admin_user)

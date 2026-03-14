@@ -34,6 +34,7 @@ class User(db.Model):
         db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
     deleted_at = db.Column(db.DateTime, nullable=True)
+    is_system = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     roles = db.relationship(
         "Role", secondary=roles_users, backref=db.backref("users", lazy="dynamic")
     )

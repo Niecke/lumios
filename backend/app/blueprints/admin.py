@@ -84,6 +84,11 @@ def user_edit(id):
     all_roles = db.session.execute(select(Role)).scalars().all()
 
     if request.method == "POST":
+        submitted_email = request.form.get("email", "").strip()
+        if user.is_system and submitted_email and submitted_email != user.email:
+            flash("The email of a system user cannot be changed.", "error")
+            return render_template("admin/user_edit.html", user=user, all_roles=all_roles)
+
         password = request.form.get("password", "").strip()
         active = "active" in request.form
         selected_role_ids = set(int(r) for r in request.form.getlist("roles"))
@@ -132,8 +137,8 @@ def user_delete(id):
         flash(f'User ID "{id}" unknown!', "error")
         return redirect(url_for("admin.dashboard"))
 
-    if user.email == "admin":
-        flash(f"The internal admin user can not be deleted!", "error")
+    if user.is_system:
+        flash("System users cannot be deleted.", "error")
         return redirect(url_for("admin.dashboard"))
 
     db.session.delete(user)

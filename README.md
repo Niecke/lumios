@@ -38,7 +38,7 @@ podman-compose up -d
 
 chmod o+w ~/git/lumios/app/migrations/versions/
 
-podman exec -e FLASK_APP="main:create_app()" lumios-app /usr/bin/python3 -m flask db migrate -m "initial"
+podman exec -e FLASK_APP="main:create_app()" lumios-backend /usr/bin/python3 -m flask db migrate -m "initial"
 
 chmod o-w ~/git/lumios/app/migrations/versions/
 ```
