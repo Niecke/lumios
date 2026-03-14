@@ -1,10 +1,14 @@
 - [x] remove unused code
 - [x] change to Postgres
 - [x] integrate Google Login
-- [ ] add basic frontend with login
-- [ ] restrict the frontend login to photographers
+- [x] add basic frontend with login
+- [x] restrict the frontend login to photographers
+- [ ] review login process for the frontend
+- [ ] generate security and performance audit
 - [ ] add a way to upload fotos (basic function)
 - [ ] add terraform setup
 - [ ] deploy compute engine with terraform (redis+postgres)
 - [ ] enable Google+ API via terraform
 - [ ] deploy storage bucket with terraform
+- [ ] deploy backend via Cloud Run
+- [ ] deploy frontend via Cloud Run

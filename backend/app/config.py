@@ -61,19 +61,20 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 # App security
 SECRET_KEY = os.getenv("SECRET_KEY")
-JWT_SECRET = os.getenv("JWT_SECRET", SECRET_KEY)  # falls back to SECRET_KEY if not set
+JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_EXPIRY_SECONDS = int(os.getenv("JWT_EXPIRY_SECONDS", 3600))
 
 # Redis (optional — enables Redis-backed sessions when set, falls back to filesystem)
 REDIS_URL = os.getenv("REDIS_URL", None)
 
 # FAIL-FAST: Check required vars
-REQUIRED_VARS = ["POSTGRES_PASSWORD", "SECRET_KEY"]
+REQUIRED_VARS = ["POSTGRES_PASSWORD", "SECRET_KEY", "JWT_SECRET"]
 missing = [var for var in REQUIRED_VARS if not os.getenv(var)]
 if missing:
     raise ValueError(
         f"Missing required environment variables: {', '.join(missing)}.\n"
         f"Add to .env:\n"
         f"  POSTGRES_PASSWORD=your_password\n"
-        f"  SECRET_KEY=your-super-secret-key-at-least-32-chars"
+        f"  SECRET_KEY=your-super-secret-key-at-least-32-chars\n"
+        f"  JWT_SECRET=your-super-jwt-secret-change-me"
     )
