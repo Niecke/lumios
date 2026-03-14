@@ -46,7 +46,7 @@ services:
     secrets:
       - postgres_password
     volumes:
-      - /data/postgres:/var/lib/postgresql/data
+      - /data/postgres:/var/lib/postgresql
     ports:
       - "127.0.0.1:5432:5432"
 

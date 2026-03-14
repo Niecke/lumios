@@ -29,3 +29,8 @@ variable "postgres_password_secret_id" {
   description = "Secret Manager secret ID for the Postgres password"
   type        = string
 }
+
+variable "subnet_cidr" {
+  description = "Subnet CIDR — Cloud Run Direct VPC Egress IPs come from here, allowed to reach Postgres and Redis"
+  type        = string
+}
