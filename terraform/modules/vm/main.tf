@@ -30,7 +30,8 @@ resource "google_compute_instance" "vm" {
 
   network_interface {
     subnetwork = var.subnet_self_link
-    # No access_config block = no public IP
+    # public ip neede for installing software since Cloud NAT would cost >$32/month
+    access_config {}
   }
 
   service_account {
