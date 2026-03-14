@@ -87,3 +87,10 @@ resource "google_secret_manager_secret" "google_client_secret" {
     auto {}
   }
 }
+
+resource "google_secret_manager_secret" "google_frontend_client_id" {
+  secret_id = "lumios-google-frontend-client-id"
+  replication {
+    auto {}
+  }
+}
