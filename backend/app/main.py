@@ -107,6 +107,7 @@ def create_app(test_config=None):
     Talisman(
         app,
         force_https=not DEBUG,
+        strict_transport_security=not DEBUG,
         content_security_policy={
             "default-src": "'self'",
             # GIS client script
@@ -165,6 +166,7 @@ def create_app(test_config=None):
     from blueprints.api import api
     from blueprints.api.auth import auth_api
     from blueprints.api.libraries import libraries_api
+    from blueprints.api.images import images_api
 
     # csrf.exempt only covers the named blueprint's own views. Child blueprints
     # registered on a parent have their own blueprint name ("auth_api", not "api"),
@@ -172,6 +174,7 @@ def create_app(test_config=None):
     csrf.exempt(api)
     csrf.exempt(auth_api)
     csrf.exempt(libraries_api)
+    csrf.exempt(images_api)
     app.register_blueprint(api)
 
     return app

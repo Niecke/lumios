@@ -5,8 +5,12 @@
 - [x] restrict the frontend login to photographers
 - [x] review login process for the frontend
 - [x] generate security and performance audit
-- [ ] add a way to upload fotos (basic function)
+- [x] add a way to upload fotos (basic function)
+- [ ] create a Container for the frontend
 - [ ] add terraform setup
+- [ ] add artifact registry in GCP
+- [ ] build and publish frontend and backend to the registry via Github action
+- [ ] create versioning for front and backend?
 - [ ] deploy compute engine with terraform (redis+postgres)
 - [ ] enable Google+ API via terraform
 - [ ] deploy storage bucket with terraform

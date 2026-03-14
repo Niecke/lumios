@@ -2,6 +2,16 @@
 
 ## Frontend
 
+Development
+
+```
+cd frontend
+
+npm install
+
+npm run dev
+```
+
 ## Backend
 
 ### Local development

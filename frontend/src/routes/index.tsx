@@ -4,7 +4,7 @@
 // A "New Library" button opens a dialog where the user enters a name.
 // Inline rename and delete are available on each card.
 
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, redirect, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { authApi, type UserInfo } from "../api/auth";
@@ -144,9 +144,9 @@ function LibraryCard({ lib, onRenamed, onDeleted }: LibraryCardProps) {
 
   return (
     <div className="library-card">
-      <div className="library-card__media">
+      <Link to="/library/$libraryId" params={{ libraryId: String(lib.id) }} className="library-card__media">
         <span className="material-icons">photo_library</span>
-      </div>
+      </Link>
 
       {renaming ? (
         <form className="library-card__rename" onSubmit={submitRename}>
@@ -176,12 +176,12 @@ function LibraryCard({ lib, onRenamed, onDeleted }: LibraryCardProps) {
           </button>
         </form>
       ) : (
-        <div className="library-card__body">
+        <Link to="/library/$libraryId" params={{ libraryId: String(lib.id) }} className="library-card__body">
           <div className="library-card__name" title={lib.name}>
             {lib.name}
           </div>
           <div className="library-card__meta">Created {formatDate(lib.created_at)}</div>
-        </div>
+        </Link>
       )}
 
       {!renaming && (

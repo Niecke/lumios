@@ -1,0 +1,60 @@
+// images.ts — all communication with the backend images API
+
+import { tokenStore } from "./auth";
+
+export interface Image {
+  id: number;
+  uuid: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  width: number | null;
+  height: number | null;
+  created_at: string;
+  url: string;
+}
+
+export interface ImageList {
+  images: Image[];
+  count: number;
+  max_images_per_library: number | null;
+}
+
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = tokenStore.get();
+  const headers: Record<string, string> = {
+    ...(init?.headers as Record<string, string>),
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(path, { ...init, headers });
+
+  const contentType = res.headers.get("content-type") ?? "";
+  const data = contentType.includes("application/json") ? await res.json() : null;
+
+  if (!res.ok) {
+    throw new Error(
+      (data as { error?: string } | null)?.error ?? `Request failed (${res.status})`
+    );
+  }
+  return data as T;
+}
+
+export const imagesApi = {
+  list: (libraryId: number) =>
+    apiFetch<ImageList>(`/api/v1/libraries/${libraryId}/images`),
+
+  upload: (libraryId: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return apiFetch<Image>(`/api/v1/libraries/${libraryId}/images`, {
+      method: "POST",
+      body: form,
+    });
+  },
+
+  delete: (libraryId: number, imageId: number) =>
+    apiFetch<void>(`/api/v1/libraries/${libraryId}/images/${imageId}`, {
+      method: "DELETE",
+    }),
+};
