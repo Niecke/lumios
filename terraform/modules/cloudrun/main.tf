@@ -45,9 +45,20 @@ resource "google_storage_bucket_iam_member" "cloudrun_photos" {
   member = "serviceAccount:${google_service_account.cloudrun.email}"
 }
 
+# Allow the Terraform SA to create HMAC keys for the Cloud Run SA
+data "google_client_openid_userinfo" "terraform" {}
+
+resource "google_service_account_iam_member" "terraform_token_creator" {
+  service_account_id = google_service_account.cloudrun.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${data.google_client_openid_userinfo.terraform.email}"
+}
+
 # HMAC key for S3-compatible GCS access via boto3
 resource "google_storage_hmac_key" "cloudrun" {
   service_account_email = google_service_account.cloudrun.email
+
+  depends_on = [google_service_account_iam_member.terraform_token_creator]
 }
 
 resource "google_secret_manager_secret" "gcs_hmac_access_key" {
