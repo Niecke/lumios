@@ -106,6 +106,9 @@ gcloud projects add-iam-policy-binding <PROJECT_ID> \
   --member="serviceAccount:terraform@<PROJECT_ID>.iam.gserviceaccount.com" \
   --role="roles/artifactregistry.admin"
 
+gcloud projects add-iam-policy-binding <PROJECT_ID> \
+  --member="serviceAccount:terraform@<PROJECT_ID>.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.admin"
 
 gcloud services enable iamcredentials.googleapis.com
 
