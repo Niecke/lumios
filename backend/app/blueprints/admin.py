@@ -8,6 +8,7 @@ from flask import (
     current_app,
 )
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from models import db, User, Role
 from security import login_required, require_role
 
@@ -25,7 +26,11 @@ def index():
 @login_required
 @require_role("admin")
 def dashboard():
-    users = db.session.execute(select(User)).scalars().all()
+    users = (
+        db.session.execute(select(User).options(selectinload(User.roles)))
+        .scalars()
+        .all()
+    )
     return render_template("admin/dashboard.html", users=users)
 
 
@@ -87,7 +92,9 @@ def user_edit(id):
         submitted_email = request.form.get("email", "").strip()
         if user.is_system and submitted_email and submitted_email != user.email:
             flash("The email of a system user cannot be changed.", "error")
-            return render_template("admin/user_edit.html", user=user, all_roles=all_roles)
+            return render_template(
+                "admin/user_edit.html", user=user, all_roles=all_roles
+            )
 
         password = request.form.get("password", "").strip()
         active = "active" in request.form
