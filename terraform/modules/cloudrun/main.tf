@@ -52,7 +52,9 @@ resource "google_storage_hmac_key" "cloudrun" {
 
 resource "google_secret_manager_secret" "gcs_hmac_access_key" {
   secret_id = "lumios-gcs-hmac-access-key"
-  replication { auto {} }
+  replication { 
+    auto {} 
+  }
 }
 
 resource "google_secret_manager_secret_version" "gcs_hmac_access_key" {
@@ -62,7 +64,9 @@ resource "google_secret_manager_secret_version" "gcs_hmac_access_key" {
 
 resource "google_secret_manager_secret" "gcs_hmac_secret" {
   secret_id = "lumios-gcs-hmac-secret"
-  replication { auto {} }
+  replication {
+    auto {}
+  }
 }
 
 resource "google_secret_manager_secret_version" "gcs_hmac_secret" {

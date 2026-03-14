@@ -48,7 +48,9 @@ resource "google_secret_manager_secret_version" "secret_key" {
 
 resource "google_secret_manager_secret" "jwt_secret" {
   secret_id = "lumios-jwt-secret"
-  replication { auto {} }
+  replication {
+    auto {}
+  }
 }
 
 resource "google_secret_manager_secret_version" "jwt_secret" {
@@ -58,7 +60,9 @@ resource "google_secret_manager_secret_version" "jwt_secret" {
 
 resource "google_secret_manager_secret" "init_admin_password" {
   secret_id = "lumios-init-admin-password"
-  replication { auto {} }
+  replication {
+    auto {}
+  }
 }
 
 resource "google_secret_manager_secret_version" "init_admin_password" {
@@ -72,10 +76,14 @@ resource "google_secret_manager_secret_version" "init_admin_password" {
 #   gcloud secrets versions add lumios-google-client-secret --data-file=-
 resource "google_secret_manager_secret" "google_client_id" {
   secret_id = "lumios-google-client-id"
-  replication { auto {} }
+  replication {
+    auto {}
+  }
 }
 
 resource "google_secret_manager_secret" "google_client_secret" {
   secret_id = "lumios-google-client-secret"
-  replication { auto {} }
+  replication {
+    auto {}
+  }
 }
