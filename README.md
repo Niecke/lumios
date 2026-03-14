@@ -1,12 +1,16 @@
 # lumios
 
-## Local development
+## Frontend
+
+## Backend
+
+### Local development
 
 ```
 podman-compose up -d --build --force-recreate
 ```
 
-### Testing
+#### Testing
 
 ```
 cd backend
@@ -27,7 +31,7 @@ With coverage
 python -m pytest --cov=app --cov-report=term-missing --cov-report=html
 ```
 
-## Database setup
+### Database setup
 
 ```
 podman-compose up -d 

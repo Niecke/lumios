@@ -12,3 +12,4 @@
 - [ ] deploy storage bucket with terraform
 - [ ] deploy backend via Cloud Run
 - [ ] deploy frontend via Cloud Run
+- [ ] add debug logs with request bodys

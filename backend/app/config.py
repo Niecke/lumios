@@ -54,6 +54,8 @@ SQLALCHEMY_ENGINE_OPTIONS["max_overflow"] = int(
 # Google OAuth (optional — Google login disabled when not set)
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+# Separate OAuth client for the React frontend (GIS flow — no secret needed)
+GOOGLE_FRONTEND_CLIENT_ID = os.getenv("GOOGLE_FRONTEND_CLIENT_ID")
 # Must match the redirect URIs registered in Google Cloud Console exactly
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:8080")
 # URL of the frontend app — used to redirect back after OAuth callbacks

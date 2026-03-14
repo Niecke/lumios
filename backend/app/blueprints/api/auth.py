@@ -1,28 +1,21 @@
-from flask import Blueprint, request, jsonify, redirect, g
-from main import limiter, oauth
-from config import GOOGLE_CLIENT_ID, PUBLIC_BASE_URL, FRONTEND_URL
-from services.auth import login_password, login_google, AuthError
+from flask import Blueprint, request, jsonify, g
+from jwt import PyJWKClient
+import jwt
+from main import limiter
+from config import GOOGLE_FRONTEND_CLIENT_ID
+from services.auth import login_google, AuthError
 from services.token import create_token
 from security import require_api_auth, require_api_role
+from models import db, User
+from sqlalchemy import select
 
 auth_api = Blueprint("auth_api", __name__, url_prefix="/auth")
 
-
-def _token_response(user):
-    roles = [r.name for r in user.roles]
-    token = create_token(user.id, user.email, roles)
-    return jsonify({"token": token, "email": user.email, "roles": roles})
-
-
-@auth_api.route("/login", methods=["POST"])
-@limiter.limit("2 per second")
-def login():
-    data = request.get_json(silent=True) or {}
-    try:
-        user = login_password(data.get("email", "").strip(), data.get("password", ""))
-    except AuthError as e:
-        return jsonify({"error": e.message}), e.status
-    return _token_response(user)
+# JWKS client for verifying Google ID tokens — keys are cached automatically.
+# Works with any OIDC provider: swap the URI and issuer to support others.
+# Timeout prevents the first request from hanging if Google is unreachable.
+_GOOGLE_JWKS_URI = "https://www.googleapis.com/oauth2/v3/certs"
+_google_jwks = PyJWKClient(_GOOGLE_JWKS_URI, cache_keys=True, timeout=5)
 
 
 @auth_api.route("/me")
@@ -30,33 +23,58 @@ def login():
 @require_api_role("photographer")
 def me():
     payload = g.token_payload
-    return jsonify({"email": payload["email"], "roles": payload["roles"]})
+    user = db.session.execute(
+        select(User).filter_by(id=int(payload["sub"]))
+    ).scalar_one_or_none()
+    return jsonify({
+        "email": payload["email"],
+        "roles": payload["roles"],
+        "max_libraries": user.max_libraries if user else None,
+    })
 
 
-@auth_api.route("/google")
-def google_login():
-    if not GOOGLE_CLIENT_ID:
+@auth_api.route("/google/verify", methods=["POST"])
+@limiter.limit("5 per minute")
+def google_verify():
+    """Verify a Google ID token obtained directly by the frontend via GIS.
+
+    The frontend performs the full OAuth dance with Google and passes the
+    resulting credential (an ID token JWT) here. We verify it with Google's
+    public JWKS — no backend redirect to Google is required.
+    """
+    if not GOOGLE_FRONTEND_CLIENT_ID:
         return jsonify({"error": "Google login is not configured"}), 501
-    redirect_uri = PUBLIC_BASE_URL.rstrip("/") + "/api/v1/auth/google/callback"
-    return oauth.google.authorize_redirect(redirect_uri, prompt="select_account")
 
+    data = request.get_json(silent=True) or {}
+    credential = data.get("credential", "")
+    if not credential:
+        return jsonify({"error": "Missing credential"}), 400
 
-@auth_api.route("/google/callback")
-def google_callback():
     try:
-        oauth_token = oauth.google.authorize_access_token()
+        signing_key = _google_jwks.get_signing_key_from_jwt(credential)
+        idinfo = jwt.decode(
+            credential,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=GOOGLE_FRONTEND_CLIENT_ID,
+            issuer=["https://accounts.google.com", "accounts.google.com"],
+        )
+    except jwt.PyJWTError:
+        return jsonify({"error": "Invalid Google token"}), 401
     except Exception:
-        return redirect(f"{FRONTEND_URL}/login?error=google_failed")
-
-    userinfo = oauth_token.get("userinfo")
-    if not userinfo:
-        return redirect(f"{FRONTEND_URL}/login?error=google_failed")
+        # Covers network errors when fetching JWKS (e.g. timeout, DNS failure)
+        return jsonify({"error": "Could not verify Google token"}), 503
 
     try:
-        user = login_google(userinfo)
+        user = login_google({"email": idinfo.get("email"), "sub": idinfo.get("sub")})
     except AuthError as e:
-        return redirect(f"{FRONTEND_URL}/login?error={e.message}")
+        return jsonify({"error": e.message}), e.status
 
     roles = [r.name for r in user.roles]
-    jwt_token = create_token(user.id, user.email, roles)
-    return redirect(f"{FRONTEND_URL}/login#token={jwt_token}")
+    token = create_token(user.id, user.email, roles)
+    return jsonify({
+        "token": token,
+        "email": user.email,
+        "roles": roles,
+        "max_libraries": user.max_libraries,
+    })

@@ -147,13 +147,72 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
   font-size: 0.875rem;
 }
 
-/* ── Dashboard ── */
+/* ── Main content area ── */
 main {
   padding: 2rem 1.5rem;
 }
 
-main h1 {
+/* ── Profile card ── */
+.profile-card {
+  background: white;
+  border: 1px solid var(--orange-200);
+  border-radius: var(--radius);
+  padding: 2rem 2.5rem;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  box-shadow: 0 4px 16px rgba(249,115,22,.08);
+}
+
+.profile-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 2px solid var(--orange-200);
+}
+
+.profile-card h1 {
   font-size: 1.4rem;
   color: var(--orange-600);
-  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
+.profile-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.profile-table th,
+.profile-table td {
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.profile-table th {
+  color: var(--gray-500);
+  font-weight: 500;
+  white-space: nowrap;
+  width: 40%;
+}
+
+.profile-table tr:last-child th,
+.profile-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── Login pending state ── */
+.login-pending {
+  text-align: center;
+  color: var(--gray-500);
+  font-size: 0.9rem;
+}
+
+/* ── Google button wrapper ── */
+.google-btn-wrapper {
+  display: flex;
+  justify-content: center;
 }
