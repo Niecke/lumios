@@ -73,12 +73,12 @@ gcloud iam workload-identity-pools providers create-oidc "github" \
   --workload-identity-pool="github" \
   --issuer-uri="https://token.actions.githubusercontent.com" \
   --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
-  --attribute-condition="attribute.repository=='niecke/lumios'"
+  --attribute-condition="attribute.repository=='Niecke/lumios'"
 
 # Bind a service account to the pool
 gcloud iam service-accounts add-iam-policy-binding "terraform@<PROJECT_ID>.iam.gserviceaccount.com" \
   --role="roles/iam.workloadIdentityUser" \
-  --member="principalSet://iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/attribute.repository/niecke/lumios"
+  --member="principalSet://iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/attribute.repository/Niecke/lumios"
 
 gcloud projects add-iam-policy-binding <PROJECT_ID> \
   --member="serviceAccount:terraform@<PROJECT_ID>.iam.gserviceaccount.com" \
@@ -91,4 +91,6 @@ gcloud projects add-iam-policy-binding <PROJECT_ID> \
 gcloud projects add-iam-policy-binding <PROJECT_ID> \
   --member="serviceAccount:terraform@<PROJECT_ID>.iam.gserviceaccount.com" \
   --role="roles/serviceusage.serviceUsageAdmin"
+
+gcloud services enable iamcredentials.googleapis.com
 ```
