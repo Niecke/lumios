@@ -31,6 +31,15 @@ declare global {
           prompt(
             callback?: (notification: GsiPromptNotification) => void
           ): void;
+          renderButton(
+            parent: HTMLElement,
+            options: {
+              theme?: string;
+              size?: string;
+              width?: number;
+              text?: string;
+            }
+          ): void;
         };
       };
     };
@@ -61,6 +70,8 @@ function LoginPage() {
     return err ? err.replace(/_/g, " ") : null;
   });
   const [pending, setPending] = useState(false);
+  const [promptFailed, setPromptFailed] = useState(false);
+  const googleBtnRef = useRef<HTMLDivElement>(null);
 
   async function handleCredential(response: { credential: string }) {
     // GIS may fire the callback without a credential in error/initialization edge cases
@@ -111,12 +122,22 @@ function LoginPage() {
   }, [router]);
 
   function handleGoogleSignIn() {
+    setError(null);
     window.google?.accounts.id.prompt((notification) => {
-      if (notification.isNotDisplayed()) {
-        setError(
-          `Google Sign-In could not be shown (${notification.getNotDisplayedReason()}). ` +
-            "Make sure your browser allows pop-ups and third-party cookies."
-        );
+      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+        // prompt() suppressed by GIS cooldown — render Google's own button
+        // which opens a full OAuth popup and always works.
+        setPromptFailed(true);
+        // renderButton needs a frame to mount into the newly visible div
+        requestAnimationFrame(() => {
+          if (googleBtnRef.current && window.google) {
+            window.google.accounts.id.renderButton(googleBtnRef.current, {
+              theme: "outline",
+              size: "large",
+              text: "signin_with",
+            });
+          }
+        });
       }
     });
   }
@@ -128,6 +149,8 @@ function LoginPage() {
         {error && <div className="flash">{error}</div>}
         {pending ? (
           <p className="login-pending">Signing in…</p>
+        ) : promptFailed ? (
+          <div ref={googleBtnRef} />
         ) : (
           <button className="btn btn-google" onClick={handleGoogleSignIn}>
             Sign in with Google

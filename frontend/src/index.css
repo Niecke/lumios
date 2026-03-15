@@ -609,6 +609,17 @@ body {
   color: var(--clr-on-surface-var);
   font-size: 0.9rem;
 }
+
+/* ── Footer ───────────────────────────────────────── */
+.footer {
+  text-align: center;
+  padding: 1.5rem 1rem;
+  font-size: 0.8rem;
+  color: var(--clr-on-surface-var);
+}
+.footer .text-muted {
+  opacity: 0.6;
+}
 .google-btn-wrapper { display: flex; justify-content: center; }
 
 /* ── Library card — media area as link ────────────────── */
