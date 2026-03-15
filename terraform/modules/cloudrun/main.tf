@@ -108,6 +108,10 @@ resource "google_cloud_run_v2_service" "backend" {
       image = var.image
 
       env {
+        name  = "GUNICORN_WORKERS"
+        value = "2"
+      }
+      env {
         name  = "POSTGRES_HOST"
         value = var.vm_internal_ip
       }
