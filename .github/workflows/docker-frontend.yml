@@ -52,9 +52,18 @@ jobs:
             echo "tags=${REPO}:pr-${SHA}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Fetch Google Client ID
+        id: secrets
+        run: |
+          CLIENT_ID=$(gcloud secrets versions access latest --secret=lumios-google-frontend-client-id)
+          echo "::add-mask::${CLIENT_ID}"
+          echo "google_client_id=${CLIENT_ID}" >> "$GITHUB_OUTPUT"
+
       - name: Build image
         uses: docker/build-push-action@v6
         with:
           context: frontend
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            VITE_GOOGLE_CLIENT_ID=${{ steps.secrets.outputs.google_client_id }}

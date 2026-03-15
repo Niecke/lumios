@@ -90,6 +90,42 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
   member   = "allUsers"
 }
 
+resource "google_cloud_run_v2_service_iam_member" "frontend_public" {
+  name     = google_cloud_run_v2_service.frontend.name
+  location = google_cloud_run_v2_service.frontend.location
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+resource "google_cloud_run_v2_service" "frontend" {
+  name                = "lumios-frontend"
+  location            = var.region
+  ingress             = "INGRESS_TRAFFIC_ALL"
+  deletion_protection = false
+
+  template {
+    scaling {
+      max_instance_count = 2
+    }
+
+    containers {
+      image = var.frontend_image
+
+      env {
+        name  = "BACKEND_URL"
+        value = google_cloud_run_v2_service.backend.uri
+      }
+
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "256Mi"
+        }
+      }
+    }
+  }
+}
+
 resource "google_cloud_run_v2_service" "backend" {
   name                = "lumios-backend"
   location            = var.region

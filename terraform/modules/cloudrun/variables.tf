@@ -63,6 +63,11 @@ variable "google_frontend_client_id_secret_id" {
   type        = string
 }
 
+variable "frontend_image" {
+  description = "Full container image URL for the frontend including tag"
+  type        = string
+}
+
 variable "public_base_url" {
   description = "Public base URL of the Cloud Run service"
   type        = string
