@@ -7,9 +7,9 @@ from flask import (
     url_for,
     current_app,
 )
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from models import db, User, Role
+from models import db, User, Role, Library, Image
 from security import login_required, require_role
 
 admin = Blueprint("admin", __name__)
@@ -19,7 +19,20 @@ admin = Blueprint("admin", __name__)
 @login_required
 @require_role("admin")
 def index():
-    return render_template("index.html")
+    library_count = db.session.scalar(
+        select(func.count(Library.id)).where(Library.deleted_at.is_(None))
+    )
+    image_count, total_size = db.session.execute(
+        select(func.count(Image.id), func.coalesce(func.sum(Image.size), 0)).where(
+            Image.deleted_at.is_(None)
+        )
+    ).one()
+    return render_template(
+        "index.html",
+        library_count=library_count,
+        image_count=image_count,
+        total_size=total_size,
+    )
 
 
 @admin.route("/admin/dashboard", methods=["GET", "POST"])
@@ -31,13 +44,33 @@ def dashboard():
         .scalars()
         .all()
     )
-    return render_template("admin/dashboard.html", users=users)
+
+    # Per-user stats: libraries, photos, total size
+    rows = db.session.execute(
+        select(
+            Library.user_id,
+            func.count(func.distinct(Library.id)),
+            func.count(Image.id),
+            func.coalesce(func.sum(Image.size), 0),
+        )
+        .outerjoin(Image, (Image.library_id == Library.id) & Image.deleted_at.is_(None))
+        .where(Library.deleted_at.is_(None))
+        .group_by(Library.user_id)
+    ).all()
+    user_stats = {
+        uid: {"libraries": libs, "photos": imgs, "total_size": size}
+        for uid, libs, imgs, size in rows
+    }
+
+    return render_template("admin/dashboard.html", users=users, user_stats=user_stats)
 
 
 @admin.route("/admin/user_create", methods=["GET", "POST"])
 @login_required
 @require_role("admin")
 def user_create():
+    all_roles = db.session.execute(select(Role)).scalars().all()
+
     if request.method == "POST":
         email = request.form["email"]
         account_type = request.form.get("account_type", "local")
@@ -45,14 +78,14 @@ def user_create():
 
         if account_type not in ("local", "google"):
             flash("Invalid account type.", "error")
-            return render_template("admin/user_create.html", email=email)
+            return render_template("admin/user_create.html", email=email, all_roles=all_roles)
 
         # Check if user exists
         if db.session.execute(
             select(User).where(User.email == email)
         ).scalar_one_or_none():
             flash("Email already exists!", "error")
-            return render_template("admin/user_create.html", email=email)
+            return render_template("admin/user_create.html", email=email, all_roles=all_roles)
 
         user = User(email=email, active=active, account_type=account_type)
 
@@ -62,7 +95,10 @@ def user_create():
                 user.set_password(password)
             except ValueError as ex:
                 flash(str(ex), "error")
-                return render_template("admin/user_create.html", email=email)
+                return render_template("admin/user_create.html", email=email, all_roles=all_roles)
+
+        selected_role_ids = set(int(r) for r in request.form.getlist("roles"))
+        user.roles = [r for r in all_roles if r.id in selected_role_ids]
 
         db.session.add(user)
         db.session.commit()
@@ -73,7 +109,7 @@ def user_create():
         flash(f'User "{email}" created successfully!', "success")
         return redirect(url_for("admin.dashboard"))
 
-    return render_template("admin/user_create.html")
+    return render_template("admin/user_create.html", all_roles=all_roles)
 
 
 @admin.route("/admin/user_edit/<int:id>", methods=["GET", "POST"])
@@ -132,6 +168,82 @@ def user_edit(id):
         return redirect(url_for("admin.dashboard"))
 
     return render_template("admin/user_edit.html", user=user, all_roles=all_roles)
+
+
+@admin.route("/change_password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    from current_user import current_user
+
+    user = db.session.get(User, current_user.id)
+    if user.account_type != "local":
+        flash("Password change is only available for local accounts.", "error")
+        return redirect(url_for("admin.index"))
+
+    if request.method == "POST":
+        current_password = request.form.get("current_password", "")
+        new_password = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
+
+        if not user.verify_password(current_password):
+            flash("Current password is incorrect.", "error")
+            return render_template("change_password.html")
+
+        if new_password != confirm_password:
+            flash("New passwords do not match.", "error")
+            return render_template("change_password.html")
+
+        try:
+            user.set_password(new_password)
+        except ValueError as ex:
+            flash(str(ex), "error")
+            return render_template("change_password.html")
+
+        db.session.commit()
+        current_app.logger.info(
+            "Password changed: %s (self)", user.email, extra={"log_type": "audit"}
+        )
+        flash("Password changed successfully!", "success")
+        return redirect(url_for("admin.index"))
+
+    return render_template("change_password.html")
+
+
+@admin.route("/admin/set_password/<int:id>", methods=["GET", "POST"])
+@login_required
+@require_role("admin")
+def set_password(id):
+    user = db.session.get(User, id)
+    if not user:
+        flash(f'User ID "{id}" unknown!', "error")
+        return redirect(url_for("admin.dashboard"))
+
+    if user.account_type != "local":
+        flash("Password can only be set for local accounts.", "error")
+        return redirect(url_for("admin.dashboard"))
+
+    if request.method == "POST":
+        new_password = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
+
+        if new_password != confirm_password:
+            flash("Passwords do not match.", "error")
+            return render_template("admin/set_password.html", user=user)
+
+        try:
+            user.set_password(new_password)
+        except ValueError as ex:
+            flash(str(ex), "error")
+            return render_template("admin/set_password.html", user=user)
+
+        db.session.commit()
+        current_app.logger.info(
+            "Password set by admin for: %s", user.email, extra={"log_type": "audit"}
+        )
+        flash(f'Password for "{user.email}" updated successfully!', "success")
+        return redirect(url_for("admin.dashboard"))
+
+    return render_template("admin/set_password.html", user=user)
 
 
 @admin.route("/admin/user_delete/<int:id>", methods=["POST"])

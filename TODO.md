@@ -12,9 +12,9 @@
 - [x] add PUBLIC_BASE_URL and FRONTEND_URL to Cloud Run env
 - [x] add REDIS_URL to Cloud Run env
 - [x] fix UI bug on login screen (the or shouldn't be there)
-- [ ] add number of libraries and photos and storage used to the dashboard
-- [ ] role selection when creating a user
-- [ ] add a screen for local users to change their password
+- [x] add number of libraries and photos and storage used to the dashboard
+- [x] role selection when creating a user
+- [x] add a screen for local users to change their password
 - [x] build and publish frontend and backend to the registry via Github action
 - [ ] create versioning for front and backend?
 - [x] deploy compute engine with terraform (redis+postgres)

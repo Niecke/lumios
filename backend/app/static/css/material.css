@@ -18,6 +18,9 @@ body {
 .nav-menu form { margin-left: 2rem; display:inline;}
 .container { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
 h1, h2 { color: #202124; }
+.page-header { margin-bottom: 2rem; }
+.page-header h1 { margin-bottom: 0.5rem; }
+.page-header .roles { display: flex; gap: 0.5rem; }
 button, .btn {
     background: #1a73e8; color: white; border: 1px solid transparent; padding: 0.75rem 1.5rem;
     border-radius: 4px; font-weight: 500; cursor: pointer; transition: background 0.2s, color 0.2s, border-color 0.2s;
@@ -41,6 +44,12 @@ input:focus { outline: none; border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(2
 
 /* Cards */
 .card { background: white; border-radius: 8px; padding: 2rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+
+/* Stats grid */
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.5rem; }
+.stats-card { text-align: center; }
+.stats-value { font-size: 2rem; font-weight: 500; color: #1a73e8; }
+.stats-label { color: #5f6368; font-size: 0.875rem; margin-top: 0.25rem; }
 
 .table-container { overflow-x: auto; margin-top: 1rem; }
 .badge { 
