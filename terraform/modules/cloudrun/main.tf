@@ -51,24 +51,44 @@ resource "google_storage_bucket_iam_member" "cloudrun_photos" {
   member = "serviceAccount:${google_service_account.cloudrun.email}"
 }
 
-# HMAC keys for S3-compatible GCS access (boto3/minio compatibility).
-# Created manually — Terraform manages the secrets and IAM grants only.
-# To create/rotate:
-#   gcloud storage hmac create lumios-cloudrun@<PROJECT_ID>.iam.gserviceaccount.com
-#   echo -n "ACCESS_ID" | gcloud secrets versions add lumios-gcs-hmac-access-key --data-file=-
-#   echo -n "SECRET"    | gcloud secrets versions add lumios-gcs-hmac-secret --data-file=-
+# Allow the Terraform SA to create HMAC keys for the Cloud Run SA
+data "google_client_openid_userinfo" "terraform" {}
+
+resource "google_service_account_iam_member" "terraform_token_creator" {
+  service_account_id = google_service_account.cloudrun.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${data.google_client_openid_userinfo.terraform.email}"
+}
+
+# HMAC key for S3-compatible GCS access via boto3
+resource "google_storage_hmac_key" "cloudrun" {
+  service_account_email = google_service_account.cloudrun.email
+
+  depends_on = [google_service_account_iam_member.terraform_token_creator]
+}
+
 resource "google_secret_manager_secret" "gcs_hmac_access_key" {
   secret_id = "lumios-gcs-hmac-access-key"
   replication { 
     auto {} 
-    }
+  }
+}
+
+resource "google_secret_manager_secret_version" "gcs_hmac_access_key" {
+  secret      = google_secret_manager_secret.gcs_hmac_access_key.id
+  secret_data = google_storage_hmac_key.cloudrun.access_id
 }
 
 resource "google_secret_manager_secret" "gcs_hmac_secret" {
   secret_id = "lumios-gcs-hmac-secret"
-  replication { 
-    auto {} 
-    }
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "gcs_hmac_secret" {
+  secret      = google_secret_manager_secret.gcs_hmac_secret.id
+  secret_data = google_storage_hmac_key.cloudrun.secret
 }
 
 resource "google_secret_manager_secret_iam_member" "cloudrun_gcs_hmac_access_key" {
@@ -81,13 +101,6 @@ resource "google_secret_manager_secret_iam_member" "cloudrun_gcs_hmac_secret" {
   secret_id = google_secret_manager_secret.gcs_hmac_secret.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.cloudrun.email}"
-}
-
-resource "google_cloud_run_v2_service_iam_member" "public" {
-  name     = google_cloud_run_v2_service.backend.name
-  location = google_cloud_run_v2_service.backend.location
-  role     = "roles/run.invoker"
-  member   = "allUsers"
 }
 
 resource "google_cloud_run_v2_service" "backend" {
@@ -107,24 +120,12 @@ resource "google_cloud_run_v2_service" "backend" {
       }
     }
 
-    scaling {
-      max_instance_count = 2
-    }
-
     containers {
       image = var.image
 
       env {
-        name  = "PUBLIC_BASE_URL"
-        value = var.public_base_url
-      }
-      env {
         name  = "POSTGRES_HOST"
         value = var.vm_internal_ip
-      }
-      env {
-        name  = "REDIS_URL"
-        value = "redis://${var.vm_internal_ip}:6379"
       }
       env {
         name  = "POSTGRES_USER"
@@ -137,10 +138,6 @@ resource "google_cloud_run_v2_service" "backend" {
       env {
         name  = "GCS_BUCKET_PHOTOS"
         value = var.photos_bucket_name
-      }
-      env {
-        name  = "FRONTEND_URL"
-        value = var.frontend_url
       }
       env {
         name = "POSTGRES_PASSWORD"
