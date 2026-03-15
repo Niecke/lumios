@@ -77,8 +77,8 @@ REDIS_URL = os.getenv("REDIS_URL", None)
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
 # Public URL used when generating presigned URLs — must be reachable by the browser
 S3_PUBLIC_ENDPOINT_URL = os.getenv("S3_PUBLIC_ENDPOINT_URL", S3_ENDPOINT_URL)
-S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "")
-S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "")
+S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "").strip()
+S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "").strip()
 S3_BUCKET = os.getenv("S3_BUCKET", "lumios")
 
 # FAIL-FAST: Check required vars
