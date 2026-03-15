@@ -68,3 +68,12 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
             VITE_GOOGLE_CLIENT_ID=${{ steps.secrets.outputs.google_client_id }}
+            GIT_SHA=${{ github.sha }}
+
+      - name: Deploy to Cloud Run
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          SHA=$(git rev-parse --short HEAD)
+          gcloud run services update lumios-frontend \
+            --image=europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lumios/frontend:${SHA} \
+            --region=europe-west1

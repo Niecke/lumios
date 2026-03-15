@@ -8,6 +8,8 @@ What happens when the Storage deletes the files automatically. The metadata will
 
 Right now all photos go through the backend service this is not efficient. Should be redesigned later.
 
+If the project grows and we want more control over deployments, we can evolve to pin the image SHA in a Terraform variable (e.g. `terraform.tfvars`), have CI auto-commit the new SHA to that file and open a PR, then merge the PR to trigger deployment via Terraform.
+
 ## Frontend
 
 Development

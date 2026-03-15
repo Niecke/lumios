@@ -16,7 +16,6 @@
 - [x] role selection when creating a user
 - [x] add a screen for local users to change their password
 - [x] build and publish frontend and backend to the registry via Github action
-- [ ] create versioning for front and backend?
 - [x] deploy compute engine with terraform (redis+postgres)
 - [x] deploy storage bucket with terraform
 - [x] deploy backend via Cloud Run
