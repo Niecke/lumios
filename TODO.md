@@ -15,13 +15,14 @@
 - [ ] add number of libraries and photos and storage used to the dashboard
 - [ ] role selection when creating a user
 - [ ] add a screen for local users to change their password
-- [.] build and publish frontend and backend to the registry via Github action
+- [x] build and publish frontend and backend to the registry via Github action
 - [ ] create versioning for front and backend?
 - [x] deploy compute engine with terraform (redis+postgres)
 - [x] deploy storage bucket with terraform
 - [x] deploy backend via Cloud Run
-- [ ] deploy frontend via Cloud Run
+- [x] deploy frontend via Cloud Run
 - [ ] add debug logs with request bodys
 - [ ] add tests for storage service
 - [ ] add test for library limit
 - [ ] add test for photo limit
+- [ ] migrate from boto3 to google-cloud-storage (boto3 checksum headers break GCS S3 API)

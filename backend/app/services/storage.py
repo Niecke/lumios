@@ -24,7 +24,12 @@ def _make_client(endpoint_url: str):
         aws_access_key_id=S3_ACCESS_KEY,
         aws_secret_access_key=S3_SECRET_KEY,
         region_name=os.getenv("S3_REGION", "auto"),
-        config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+        config=Config(
+            signature_version="s3v4",
+            s3={"addressing_style": "path"},
+            request_checksum_calculation="when_required",
+            response_checksum_validation="when_required",
+        ),
     )
 
 
@@ -47,18 +52,6 @@ def ensure_bucket() -> None:
 
 
 def upload_fileobj(file_obj, key: str, content_type: str) -> None:
-    from flask import current_app
-
-    current_app.logger.info(
-        "S3 upload: endpoint=%s bucket=%s key=%s access_key=%s...%s secret_len=%d region=%s",
-        S3_ENDPOINT_URL,
-        S3_BUCKET,
-        key,
-        S3_ACCESS_KEY[:4] if S3_ACCESS_KEY else "(empty)",
-        S3_ACCESS_KEY[-4:] if S3_ACCESS_KEY else "",
-        len(S3_SECRET_KEY),
-        os.getenv("S3_REGION", "auto"),
-    )
     _client.upload_fileobj(
         file_obj,
         S3_BUCKET,
