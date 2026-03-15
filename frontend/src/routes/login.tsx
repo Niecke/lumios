@@ -10,7 +10,7 @@
 
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { authApi, tokenStore, isGsiInitialized, markGsiInitialized } from "../api/auth";
+import { authApi, tokenStore, isGsiInitialized, markGsiInitialized, resetGsiInitialized } from "../api/auth";
 
 interface GsiPromptNotification {
   isNotDisplayed(): boolean;
@@ -84,6 +84,11 @@ function LoginPage() {
       router.navigate({ to: "/", replace: true });
       return;
     }
+
+    // No valid token — ensure GIS is (re-)initialized so prompt() works.
+    // This handles the case where a session expired without going through
+    // the explicit logout flow (which normally resets the flag).
+    resetGsiInitialized();
 
     function initGsi() {
       if (!window.google || isGsiInitialized()) return;

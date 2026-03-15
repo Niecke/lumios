@@ -38,7 +38,7 @@ export function isGsiInitialized() {
 export function markGsiInitialized() {
   _gsiInitialized = true;
 }
-function resetGsiInitialized() {
+export function resetGsiInitialized() {
   _gsiInitialized = false;
 }
 
