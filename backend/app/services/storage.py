@@ -21,7 +21,7 @@ def _make_client(endpoint_url: str):
         endpoint_url=endpoint_url,
         aws_access_key_id=S3_ACCESS_KEY,
         aws_secret_access_key=S3_SECRET_KEY,
-        config=Config(signature_version="s3v4"),
+        config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
     )
 
 
