@@ -68,6 +68,10 @@ def main() -> None:
         "info",
         "--log-config",
         "/app/gunicorn_logging.conf",
+        "--timeout",
+        "60",
+        "--graceful-timeout",
+        "30",
     ]
     if os.environ.get("DEBUG") == "true":
         args += ["--reload", "--reload-engine", "poll"]

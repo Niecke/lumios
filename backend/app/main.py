@@ -84,6 +84,7 @@ def create_app(test_config=None):
         )
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_SECURE"] = not DEBUG
     server_session.init_app(app)
 
     # enable caching
