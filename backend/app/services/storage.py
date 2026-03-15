@@ -28,6 +28,19 @@ def _make_client(endpoint_url: str):
     )
 
 
+import logging as _logging
+
+_log = _logging.getLogger(__name__)
+_log.info(
+    "S3 config: endpoint=%s bucket=%s access_key=%s...%s secret_len=%d region=%s",
+    S3_ENDPOINT_URL,
+    S3_BUCKET,
+    S3_ACCESS_KEY[:4] if S3_ACCESS_KEY else "(empty)",
+    S3_ACCESS_KEY[-4:] if S3_ACCESS_KEY else "",
+    len(S3_SECRET_KEY),
+    os.getenv("S3_REGION", "auto"),
+)
+
 _client = _make_client(S3_ENDPOINT_URL)
 _public_client = _make_client(S3_PUBLIC_ENDPOINT_URL)
 
