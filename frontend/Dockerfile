@@ -2,6 +2,7 @@
 FROM docker.io/library/node:24-alpine AS builder
 
 ARG VITE_GOOGLE_CLIENT_ID
+ARG GIT_SHA
 
 WORKDIR /build
 
@@ -9,6 +10,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
+ENV VITE_GIT_SHA=${GIT_SHA}
 RUN npm run build
 
 

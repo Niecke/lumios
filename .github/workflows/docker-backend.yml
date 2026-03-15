@@ -64,3 +64,11 @@ jobs:
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.tags.outputs.tags }}
           build-args: GIT_SHA=${{ github.sha }}
+
+      - name: Deploy to Cloud Run
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          SHA=$(git rev-parse --short HEAD)
+          gcloud run services update lumios-backend \
+            --image=europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lumios/backend:${SHA} \
+            --region=europe-west1
