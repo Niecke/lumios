@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, current_app
 from security import require_api_auth, require_api_role
 from models import db, User, Library, Image
 from sqlalchemy import select
@@ -127,6 +127,12 @@ def upload_image(library_id: int):
         storage.ensure_bucket()
         storage.upload_fileobj(io.BytesIO(file_data), s3_key, content_type)
     except Exception:
+        current_app.logger.error(
+            "S3 upload failed for key=%s bucket=%s endpoint=%s",
+            s3_key,
+            storage.S3_BUCKET,
+            storage.S3_ENDPOINT_URL,
+        )
         return jsonify({"error": "Storage error. Please try again."}), 502
 
     image = Image(

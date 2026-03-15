@@ -203,7 +203,11 @@ resource "google_cloud_run_v2_service" "backend" {
         }
       }
       env {
-        name = "GCS_HMAC_ACCESS_KEY"
+        name  = "S3_ENDPOINT_URL"
+        value = "https://storage.googleapis.com"
+      }
+      env {
+        name = "S3_ACCESS_KEY"
         value_source {
           secret_key_ref {
             secret  = google_secret_manager_secret.gcs_hmac_access_key.secret_id
@@ -212,13 +216,17 @@ resource "google_cloud_run_v2_service" "backend" {
         }
       }
       env {
-        name = "GCS_HMAC_SECRET"
+        name = "S3_SECRET_KEY"
         value_source {
           secret_key_ref {
             secret  = google_secret_manager_secret.gcs_hmac_secret.secret_id
             version = "latest"
           }
         }
+      }
+      env {
+        name  = "S3_BUCKET"
+        value = var.photos_bucket_name
       }
 
       resources {
