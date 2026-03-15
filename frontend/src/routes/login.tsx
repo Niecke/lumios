@@ -10,7 +10,7 @@
 
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { authApi, tokenStore } from "../api/auth";
+import { authApi, tokenStore, isGsiInitialized, markGsiInitialized } from "../api/auth";
 
 interface GsiPromptNotification {
   isNotDisplayed(): boolean;
@@ -37,10 +37,7 @@ declare global {
   }
 }
 
-// Module-level flag: GIS must only be initialized once per page load.
-// React StrictMode double-invokes effects in development which would otherwise
-// call initialize() twice and trigger spurious empty-credential callbacks.
-let _gsiInitialized = false;
+// GIS initialization flag is managed in auth.ts so that logout can reset it.
 
 export const Route = createFileRoute("/login")({
   beforeLoad: () => {
@@ -89,8 +86,8 @@ function LoginPage() {
     }
 
     function initGsi() {
-      if (!window.google || _gsiInitialized) return;
-      _gsiInitialized = true;
+      if (!window.google || isGsiInitialized()) return;
+      markGsiInitialized();
       window.google.accounts.id.initialize({
         client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID as string,
         callback: (r) => handleCredentialRef.current?.(r),

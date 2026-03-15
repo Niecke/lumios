@@ -2,6 +2,8 @@
 
 ## Reminders
 
+The disk of the VM could be changed, but needs to be done manually otherwise terraform deletes the disk and recreates it without data.
+
 What happens when the Storage deletes the files automatically. The metadata will still be there. This might not be the perfect solution.
 
 Right now all photos go through the backend service this is not efficient. Should be redesigned later.
@@ -116,7 +118,16 @@ gcloud projects add-iam-policy-binding <PROJECT_ID> \
 
 gcloud projects add-iam-policy-binding <PROJECT_ID> \
   --member="serviceAccount:terraform@<PROJECT_ID>.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
+
+gcloud projects add-iam-policy-binding <PROJECT_ID> \
+  --member="serviceAccount:terraform@<PROJECT_ID>.iam.gserviceaccount.com" \
   --role="roles/resourcemanager.projectIamAdmin"
+
+# Cloud Run
+gcloud projects add-iam-policy-binding <PROJECT_ID> \
+  --member="serviceAccount:terraform@<PROJECT_ID>.iam.gserviceaccount.com" \
+  --role="roles/run.admin"
 
 gcloud services enable iamcredentials.googleapis.com
 

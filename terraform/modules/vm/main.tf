@@ -30,7 +30,8 @@ resource "google_compute_instance" "vm" {
 
   network_interface {
     subnetwork = var.subnet_self_link
-    # No access_config block = no public IP
+    # public ip neede for installing software since Cloud NAT would cost >$32/month
+    access_config {}
   }
 
   service_account {
@@ -55,8 +56,8 @@ resource "google_compute_firewall" "allow_db" {
     ports    = ["5432", "6379"]
   }
 
-  source_tags = ["lumios-cloudrun"]
-  target_tags = ["lumios-vm"]
+  source_ranges = [var.subnet_cidr]
+  target_tags   = ["lumios-vm"]
 }
 
 resource "google_secret_manager_secret_iam_member" "vm_postgres_password" {

@@ -25,12 +25,19 @@ def _client(endpoint_url: str = S3_ENDPOINT_URL):
     )
 
 
+_bucket_verified = False
+
+
 def ensure_bucket() -> None:
+    global _bucket_verified
+    if _bucket_verified:
+        return
     client = _client()
     try:
         client.head_bucket(Bucket=S3_BUCKET)
     except ClientError:
         client.create_bucket(Bucket=S3_BUCKET)
+    _bucket_verified = True
 
 
 def upload_fileobj(file_obj, key: str, content_type: str) -> None:

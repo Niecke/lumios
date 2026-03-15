@@ -29,6 +29,19 @@ export interface GoogleProfile {
 const TOKEN_KEY = "lumios_token";
 const PROFILE_KEY = "lumios_google_profile";
 
+// GIS must only be initialized once per session. This flag is reset on logout
+// so that a fresh initialize() call happens on the next login page visit.
+let _gsiInitialized = false;
+export function isGsiInitialized() {
+  return _gsiInitialized;
+}
+export function markGsiInitialized() {
+  _gsiInitialized = true;
+}
+function resetGsiInitialized() {
+  _gsiInitialized = false;
+}
+
 export const tokenStore = {
   get: () => sessionStorage.getItem(TOKEN_KEY),
   set: (t: string) => sessionStorage.setItem(TOKEN_KEY, t),
@@ -109,6 +122,7 @@ export const authApi = {
   logout: () => {
     tokenStore.clear();
     googleProfileStore.clear();
+    resetGsiInitialized();
     return Promise.resolve({ ok: true });
   },
 };
