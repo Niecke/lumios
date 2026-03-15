@@ -13,6 +13,12 @@ images_api = Blueprint("images_api", __name__, url_prefix="/libraries")
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 
+# Magic byte signatures for allowed image formats
+MAGIC_BYTES = {
+    "image/jpeg": b"\xff\xd8\xff",
+    "image/png": b"\x89PNG\r\n\x1a\n",
+}
+
 
 def _get_library(library_id: int, user_id: int) -> Library | None:
     return db.session.execute(
@@ -102,12 +108,17 @@ def upload_image(library_id: int):
     if len(file_data) > MAX_FILE_SIZE:
         return jsonify({"error": "File too large (max 20 MB)"}), 413
 
-    width, height = None, None
+    # Verify magic bytes match the claimed content type
+    expected_magic = MAGIC_BYTES[content_type]
+    if not file_data.startswith(expected_magic):
+        return jsonify({"error": "File content does not match its declared type"}), 415
+
+    # Pillow must be able to open the file — reject corrupt or disguised uploads
     try:
         with PilImage.open(io.BytesIO(file_data)) as pil_img:
             width, height = pil_img.size
     except Exception:
-        pass
+        return jsonify({"error": "File is not a valid image"}), 415
 
     ext = "jpg" if content_type == "image/jpeg" else "png"
     s3_key = f"{uuid_module.uuid4()}.{ext}"

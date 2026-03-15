@@ -62,3 +62,18 @@ variable "google_frontend_client_id_secret_id" {
   description = "Secret Manager secret ID for the Google OAuth frontend client ID"
   type        = string
 }
+
+variable "frontend_image" {
+  description = "Full container image URL for the frontend including tag"
+  type        = string
+}
+
+variable "public_base_url" {
+  description = "Public base URL of the Cloud Run service"
+  type        = string
+}
+
+variable "frontend_url" {
+  description = "Public URL of the frontend app (used for redirects after OAuth callbacks)"
+  type        = string
+}

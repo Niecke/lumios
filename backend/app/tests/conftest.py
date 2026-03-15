@@ -76,7 +76,7 @@ def clean_db():
     The yield separates setup (none here) from teardown.
     """
     yield
-    _db.session.rollback()
+    _db.session.remove()
     for table in reversed(_db.metadata.sorted_tables):
         _db.session.execute(table.delete())
     _db.session.commit()

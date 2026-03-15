@@ -37,7 +37,7 @@ def _flask_db_current() -> bool:
 
 
 def main() -> None:
-    _log("Starting DocStore API...")
+    _log("Starting Lumios Backend...")
 
     _log("Testing database connection...")
     while not _flask_db_current():
@@ -68,6 +68,10 @@ def main() -> None:
         "info",
         "--log-config",
         "/app/gunicorn_logging.conf",
+        "--timeout",
+        "60",
+        "--graceful-timeout",
+        "30",
     ]
     if os.environ.get("DEBUG") == "true":
         args += ["--reload", "--reload-engine", "poll"]

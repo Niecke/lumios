@@ -15,6 +15,7 @@ from config import (
     MIN_PASSWORD_LENGTH,
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
+    MAX_CONTENT_LENGTH,
 )
 from models import User
 from current_user import current_user
@@ -59,6 +60,8 @@ def create_app(test_config=None):
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = SQLALCHEMY_ENGINE_OPTIONS
 
+    app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
+
     # Allow tests to override any config value before extensions are initialised
     if test_config is not None:
         app.config.update(test_config)
@@ -81,6 +84,7 @@ def create_app(test_config=None):
         )
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_SECURE"] = not DEBUG
     server_session.init_app(app)
 
     # enable caching

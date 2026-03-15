@@ -15,7 +15,7 @@ from config import (
 )
 
 
-def _client(endpoint_url: str = S3_ENDPOINT_URL):
+def _make_client(endpoint_url: str):
     return boto3.client(
         "s3",
         endpoint_url=endpoint_url,
@@ -25,16 +25,26 @@ def _client(endpoint_url: str = S3_ENDPOINT_URL):
     )
 
 
+_client = _make_client(S3_ENDPOINT_URL)
+_public_client = _make_client(S3_PUBLIC_ENDPOINT_URL)
+
+
+_bucket_verified = False
+
+
 def ensure_bucket() -> None:
-    client = _client()
+    global _bucket_verified
+    if _bucket_verified:
+        return
     try:
-        client.head_bucket(Bucket=S3_BUCKET)
+        _client.head_bucket(Bucket=S3_BUCKET)
     except ClientError:
-        client.create_bucket(Bucket=S3_BUCKET)
+        _client.create_bucket(Bucket=S3_BUCKET)
+    _bucket_verified = True
 
 
 def upload_fileobj(file_obj, key: str, content_type: str) -> None:
-    _client().upload_fileobj(
+    _client.upload_fileobj(
         file_obj,
         S3_BUCKET,
         key,
@@ -43,7 +53,7 @@ def upload_fileobj(file_obj, key: str, content_type: str) -> None:
 
 
 def get_presigned_url(key: str, expires_in: int = 3600) -> str:
-    return _client(S3_PUBLIC_ENDPOINT_URL).generate_presigned_url(
+    return _public_client.generate_presigned_url(
         "get_object",
         Params={"Bucket": S3_BUCKET, "Key": key},
         ExpiresIn=expires_in,
@@ -51,4 +61,4 @@ def get_presigned_url(key: str, expires_in: int = 3600) -> str:
 
 
 def delete_object(key: str) -> None:
-    _client().delete_object(Bucket=S3_BUCKET, Key=key)
+    _client.delete_object(Bucket=S3_BUCKET, Key=key)
