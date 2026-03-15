@@ -127,7 +127,7 @@ def upload_image(library_id: int):
         storage.ensure_bucket()
         storage.upload_fileobj(io.BytesIO(file_data), s3_key, content_type)
     except Exception:
-        current_app.logger.error(
+        current_app.logger.exception(
             "S3 upload failed for key=%s bucket=%s endpoint=%s",
             s3_key,
             storage.S3_BUCKET,

@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - "backend/**"
+  workflow_call:
 
 permissions:
   contents: read
