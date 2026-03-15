@@ -717,9 +717,31 @@ body {
   justify-content: center;
   cursor: pointer;
 }
-.lightbox__img {
-  max-width: 90vw;
+.lightbox__pair {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  max-width: 95vw;
   max-height: 90vh;
+}
+.lightbox__side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lightbox__label {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+.lightbox__img {
+  max-width: 45vw;
+  max-height: 85vh;
   object-fit: contain;
   cursor: default;
   border-radius: var(--radius-md);

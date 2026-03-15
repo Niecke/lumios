@@ -4,7 +4,7 @@ from models import db, User, Library, Image
 from sqlalchemy import select
 from datetime import datetime, timezone
 import uuid as uuid_module
-from PIL import Image as PilImage
+from PIL import Image as PilImage, ImageDraw, ImageFont
 import io
 from services import storage
 
@@ -13,12 +13,86 @@ images_api = Blueprint("images_api", __name__, url_prefix="/libraries")
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 THUMB_SIZE = 300  # longest side in pixels
+PREVIEW_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
+WATERMARK_TEXT = "lumios.at"
+WATERMARK_OPACITY = 80  # 0-255
 
 # Magic byte signatures for allowed image formats
 MAGIC_BYTES = {
     "image/jpeg": b"\xff\xd8\xff",
     "image/png": b"\x89PNG\r\n\x1a\n",
 }
+
+
+PREVIEW_MAX_PX = 2048  # max longest side for preview before watermarking
+
+
+def _build_watermark_tile() -> PilImage.Image:
+    """Build a small RGBA tile with the watermark pattern, created once at import."""
+    font_size = 40
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+    except OSError:
+        font = ImageFont.load_default(size=font_size)
+
+    # Measure text to determine tile size
+    tmp = PilImage.new("RGBA", (1, 1))
+    draw = ImageDraw.Draw(tmp)
+    bbox = draw.textbbox((0, 0), WATERMARK_TEXT, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    tmp.close()
+
+    # Tile covers one "cell" of the repeating pattern (two staggered rows)
+    tile_w = text_w + font_size * 3
+    tile_h = (text_h + font_size * 4) * 2
+    tile = PilImage.new("RGBA", (tile_w, tile_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(tile)
+
+    # Row 1: aligned left
+    y1 = font_size * 2
+    draw.text((0, y1), WATERMARK_TEXT, font=font, fill=(255, 255, 255, WATERMARK_OPACITY))
+    # Row 2: offset half a cell for staggered look
+    y2 = y1 + text_h + font_size * 4
+    draw.text((tile_w // 2, y2), WATERMARK_TEXT, font=font, fill=(255, 255, 255, WATERMARK_OPACITY))
+
+    # Rotate the tile for diagonal appearance
+    tile = tile.rotate(30, resample=PilImage.Resampling.BILINEAR, expand=True)
+    return tile
+
+
+_WATERMARK_TILE = _build_watermark_tile()
+
+
+def _create_watermarked_preview(pil_img: PilImage.Image) -> io.BytesIO:
+    """Create a watermarked preview that fits under PREVIEW_MAX_BYTES."""
+    # Downscale first to save memory
+    w, h = pil_img.size
+    ratio = min(PREVIEW_MAX_PX / w, PREVIEW_MAX_PX / h, 1.0)
+    new_w, new_h = int(w * ratio), int(h * ratio)
+    preview = pil_img.resize((new_w, new_h), PilImage.Resampling.LANCZOS).convert("RGBA")
+    w, h = preview.size
+
+    # Tile the pre-built watermark across the image
+    tw, th = _WATERMARK_TILE.size
+    for y in range(-th, h, th):
+        for x in range(-tw, w, tw):
+            preview.alpha_composite(_WATERMARK_TILE, dest=(x, y))
+
+    preview = preview.convert("RGB")
+
+    # Encode as JPEG, reduce quality if still over 2 MB
+    for quality in (85, 70, 55):
+        buf = io.BytesIO()
+        preview.save(buf, format="JPEG", quality=quality)
+        if buf.tell() <= PREVIEW_MAX_BYTES:
+            buf.seek(0)
+            preview.close()
+            return buf
+
+    buf.seek(0)
+    preview.close()
+    return buf
 
 
 def _get_library(library_id: int, user_id: int) -> Library | None:
@@ -54,6 +128,7 @@ def list_images(library_id: int):
     image_dicts = [
         img.to_dict(
             original_url=storage.get_presigned_url(img.storage_path("originals")),
+            preview_url=storage.get_presigned_url(img.storage_path("previews")),
             thumb_url=storage.get_presigned_url(img.storage_path("thumbs")),
         )
         for img in images
@@ -130,8 +205,11 @@ def upload_image(library_id: int):
     thumb_buf = io.BytesIO()
     thumb_img.save(thumb_buf, format="JPEG", quality=85)
     thumb_buf.seek(0)
-    pil_img.close()
     thumb_img.close()
+
+    # Generate watermarked preview (max 2 MB)
+    preview_buf = _create_watermarked_preview(pil_img)
+    pil_img.close()
 
     ext = "jpg" if content_type == "image/jpeg" else "png"
     photo_uuid = str(uuid_module.uuid4())
@@ -150,10 +228,12 @@ def upload_image(library_id: int):
 
     base_path = f"photos/{user_id}/{library_id}"
     original_path = f"{base_path}/originals/{s3_key}"
+    preview_path = f"{base_path}/previews/{s3_key}"
     thumb_path = f"{base_path}/thumbs/{s3_key}"
     try:
         storage.ensure_bucket()
         storage.upload_fileobj(io.BytesIO(file_data), original_path, content_type)
+        storage.upload_fileobj(preview_buf, preview_path, "image/jpeg")
         storage.upload_fileobj(thumb_buf, thumb_path, "image/jpeg")
     except Exception:
         current_app.logger.exception(
@@ -168,8 +248,13 @@ def upload_image(library_id: int):
     db.session.commit()
 
     original_url = storage.get_presigned_url(original_path)
+    preview_url = storage.get_presigned_url(preview_path)
     thumb_url = storage.get_presigned_url(thumb_path)
-    return jsonify(image.to_dict(original_url=original_url, thumb_url=thumb_url)), 201
+    return jsonify(image.to_dict(
+        original_url=original_url,
+        preview_url=preview_url,
+        thumb_url=thumb_url,
+    )), 201
 
 
 @images_api.route("/<int:library_id>/images/<int:image_id>", methods=["DELETE"])

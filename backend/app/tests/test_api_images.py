@@ -194,16 +194,19 @@ class TestUploadValidImages:
         assert data["width"] == 2
         assert data["height"] == 2
         assert data["original_url"] is not None
+        assert data["preview_url"] is not None
         assert data["thumb_url"] is not None
-        assert data["preview_url"] is None
         mock_storage.ensure_bucket.assert_called_once()
-        # Two uploads: original + thumbnail
-        assert mock_storage.upload_fileobj.call_count == 2
+        # Three uploads: original + preview + thumbnail
+        assert mock_storage.upload_fileobj.call_count == 3
         calls = mock_storage.upload_fileobj.call_args_list
         original_key = calls[0][0][1]
-        thumb_key = calls[1][0][1]
+        preview_key = calls[1][0][1]
+        thumb_key = calls[2][0][1]
         assert original_key.startswith(f"photos/{photographer.id}/{library.id}/originals/")
         assert original_key.endswith(".jpg")
+        assert preview_key.startswith(f"photos/{photographer.id}/{library.id}/previews/")
+        assert preview_key.endswith(".jpg")
         assert thumb_key.startswith(f"photos/{photographer.id}/{library.id}/thumbs/")
         assert thumb_key.endswith(".jpg")
 
@@ -219,13 +222,17 @@ class TestUploadValidImages:
         data = res.get_json()
         assert data["content_type"] == "image/png"
         assert data["original_url"] is not None
+        assert data["preview_url"] is not None
         assert data["thumb_url"] is not None
         mock_storage.ensure_bucket.assert_called_once()
-        assert mock_storage.upload_fileobj.call_count == 2
+        assert mock_storage.upload_fileobj.call_count == 3
         calls = mock_storage.upload_fileobj.call_args_list
         original_key = calls[0][0][1]
-        thumb_key = calls[1][0][1]
+        preview_key = calls[1][0][1]
+        thumb_key = calls[2][0][1]
         assert original_key.startswith(f"photos/{photographer.id}/{library.id}/originals/")
         assert original_key.endswith(".png")
+        assert preview_key.startswith(f"photos/{photographer.id}/{library.id}/previews/")
+        assert preview_key.endswith(".png")
         assert thumb_key.startswith(f"photos/{photographer.id}/{library.id}/thumbs/")
         assert thumb_key.endswith(".png")

@@ -127,12 +127,24 @@ function Lightbox({ image, onClose }: { image: Image; onClose: () => void }) {
       <button className="lightbox__close" onClick={onClose} title="Close">
         <span className="material-icons">close</span>
       </button>
-      <img
-        src={image.original_url ?? image.thumb_url ?? undefined}
-        alt={image.filename}
-        className="lightbox__img"
-        onClick={(e) => e.stopPropagation()}
-      />
+      <div className="lightbox__pair" onClick={(e) => e.stopPropagation()}>
+        <div className="lightbox__side">
+          <p className="lightbox__label">Original</p>
+          <img
+            src={image.original_url ?? undefined}
+            alt={`${image.filename} — original`}
+            className="lightbox__img"
+          />
+        </div>
+        <div className="lightbox__side">
+          <p className="lightbox__label">Preview</p>
+          <img
+            src={image.preview_url ?? undefined}
+            alt={`${image.filename} — preview`}
+            className="lightbox__img"
+          />
+        </div>
+      </div>
     </div>
   );
 }
