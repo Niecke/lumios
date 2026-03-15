@@ -54,19 +54,6 @@ resource "google_storage_bucket_iam_member" "cloudrun_photos" {
 # Allow the Terraform SA to create HMAC keys for the Cloud Run SA
 data "google_client_openid_userinfo" "terraform" {}
 
-resource "google_service_account_iam_member" "terraform_token_creator" {
-  service_account_id = google_service_account.cloudrun.name
-  role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:${data.google_client_openid_userinfo.terraform.email}"
-}
-
-# HMAC key for S3-compatible GCS access via boto3
-resource "google_storage_hmac_key" "cloudrun" {
-  service_account_email = google_service_account.cloudrun.email
-
-  depends_on = [google_service_account_iam_member.terraform_token_creator]
-}
-
 resource "google_secret_manager_secret" "gcs_hmac_access_key" {
   secret_id = "lumios-gcs-hmac-access-key"
   replication { 
@@ -74,21 +61,11 @@ resource "google_secret_manager_secret" "gcs_hmac_access_key" {
   }
 }
 
-resource "google_secret_manager_secret_version" "gcs_hmac_access_key" {
-  secret      = google_secret_manager_secret.gcs_hmac_access_key.id
-  secret_data = google_storage_hmac_key.cloudrun.access_id
-}
-
 resource "google_secret_manager_secret" "gcs_hmac_secret" {
   secret_id = "lumios-gcs-hmac-secret"
   replication {
     auto {}
   }
-}
-
-resource "google_secret_manager_secret_version" "gcs_hmac_secret" {
-  secret      = google_secret_manager_secret.gcs_hmac_secret.id
-  secret_data = google_storage_hmac_key.cloudrun.secret
 }
 
 resource "google_secret_manager_secret_iam_member" "cloudrun_gcs_hmac_access_key" {
@@ -162,6 +139,10 @@ resource "google_cloud_run_v2_service" "backend" {
       env {
         name  = "FRONTEND_URL"
         value = var.frontend_url
+      }
+      env {
+        name  = "REDIS_URL"
+        value = "redis://${var.vm_internal_ip}:6379"
       }
       env {
         name = "SECRET_KEY"
