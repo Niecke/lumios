@@ -156,6 +156,14 @@ resource "google_cloud_run_v2_service" "backend" {
         }
       }
       env {
+        name  = "PUBLIC_BASE_URL"
+        value = var.public_base_url
+      }
+      env {
+        name  = "FRONTEND_URL"
+        value = var.frontend_url
+      }
+      env {
         name = "SECRET_KEY"
         value_source {
           secret_key_ref {
