@@ -67,3 +67,8 @@ variable "public_base_url" {
   description = "Public base URL of the Cloud Run service"
   type        = string
 }
+
+variable "frontend_url" {
+  description = "Public URL of the frontend app (used for redirects after OAuth callbacks)"
+  type        = string
+}

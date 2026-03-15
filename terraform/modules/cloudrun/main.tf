@@ -139,6 +139,10 @@ resource "google_cloud_run_v2_service" "backend" {
         value = var.photos_bucket_name
       }
       env {
+        name  = "FRONTEND_URL"
+        value = var.frontend_url
+      }
+      env {
         name = "POSTGRES_PASSWORD"
         value_source {
           secret_key_ref {
