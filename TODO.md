@@ -11,7 +11,7 @@
 - [x] add artifact registry in GCP
 - [x] add PUBLIC_BASE_URL and FRONTEND_URL to Cloud Run env
 - [x] add REDIS_URL to Cloud Run env
-- [ ] fix UI bug on login screen (the or shouldn't be there)
+- [x] fix UI bug on login screen (the or shouldn't be there)
 - [ ] add number of libraries and photos and storage used to the dashboard
 - [ ] role selection when creating a user
 - [ ] add a screen for local users to change their password
@@ -25,4 +25,9 @@
 - [ ] add tests for storage service
 - [ ] add test for library limit
 - [ ] add test for photo limit
+- [ ] log all exceptions with the logger.exception
+- [ ] change the structure for all pictures
+- [ ] generate a picture for each libs
+- [ ] generate thumbnails
+- [ ] generate watermarked pictures
 - [ ] migrate from boto3 to google-cloud-storage (boto3 checksum headers break GCS S3 API)

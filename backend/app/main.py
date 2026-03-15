@@ -16,6 +16,7 @@ from config import (
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
     MAX_CONTENT_LENGTH,
+    GIT_HASH,
 )
 from models import User
 from current_user import current_user
@@ -152,7 +153,7 @@ def create_app(test_config=None):
 
     @app.context_processor
     def inject_config():
-        return dict(MIN_PASSWORD_LENGTH=MIN_PASSWORD_LENGTH)
+        return dict(MIN_PASSWORD_LENGTH=MIN_PASSWORD_LENGTH, GIT_HASH=GIT_HASH)
 
     # Register blueprints
     from blueprints.auth import auth

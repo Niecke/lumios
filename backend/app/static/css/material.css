@@ -69,4 +69,12 @@ input:focus { outline: none; border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(2
 .login-page { font-family: 'Roboto', Arial, sans-serif; max-width: 400px; margin: 100px auto; padding: 20px; background: #f8f9fa; }
 .login-box h2 { margin-bottom: 1rem; }
 .flash { color: #ea4335; margin: 10px 0; font-weight: 500; }
-.login-box button { width: 100%; }
+.login-box button, .login-box .btn { width: 100%; display: block; text-align: center; text-decoration: none; font-size: 1rem; }
+.divider {
+    display: flex; align-items: center; margin: 1rem 0; color: #5f6368; font-size: 0.875rem;
+}
+.divider::before, .divider::after {
+    content: ''; flex: 1; border-bottom: 1px solid #dadce0;
+}
+.divider::before { margin-right: 0.75rem; }
+.divider::after { margin-left: 0.75rem; }

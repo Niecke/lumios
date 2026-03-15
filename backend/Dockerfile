@@ -31,6 +31,8 @@ COPY --chown=65532:65532 entrypoint.py /entrypoint.py
 
 WORKDIR /app
 
+ARG GIT_SHA=dev
+ENV GIT_HASH=${GIT_SHA}
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=main:create_app()
 # Point distroless Python at the packages installed in the builder stage.
