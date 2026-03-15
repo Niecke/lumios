@@ -58,9 +58,10 @@ interface ImageTileProps {
   image: Image;
   libraryId: number;
   onDeleted: () => void;
+  onView: () => void;
 }
 
-function ImageTile({ image, libraryId, onDeleted }: ImageTileProps) {
+function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
   const [confirming, setConfirming] = useState(false);
 
   const remove = useMutation({
@@ -71,10 +72,12 @@ function ImageTile({ image, libraryId, onDeleted }: ImageTileProps) {
   return (
     <div className="photo-tile">
       <img
-        src={image.url ?? undefined}
+        src={image.thumb_url ?? image.original_url ?? undefined}
         alt={image.filename}
         className="photo-tile__img"
         loading="lazy"
+        onClick={onView}
+        style={{ cursor: "pointer" }}
       />
       <div className="photo-tile__overlay">
         {confirming ? (
@@ -112,6 +115,24 @@ function ImageTile({ image, libraryId, onDeleted }: ImageTileProps) {
           : image.filename}{" "}
         · {formatBytes(image.size)}
       </div>
+    </div>
+  );
+}
+
+// ── Lightbox ─────────────────────────────────────────────────────────────────
+
+function Lightbox({ image, onClose }: { image: Image; onClose: () => void }) {
+  return (
+    <div className="lightbox" onClick={onClose}>
+      <button className="lightbox__close" onClick={onClose} title="Close">
+        <span className="material-icons">close</span>
+      </button>
+      <img
+        src={image.original_url ?? image.thumb_url ?? undefined}
+        alt={image.filename}
+        className="lightbox__img"
+        onClick={(e) => e.stopPropagation()}
+      />
     </div>
   );
 }
@@ -208,6 +229,7 @@ function LibraryDetailPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [queue, setQueue] = useState<UploadItem[]>([]);
+  const [viewImage, setViewImage] = useState<Image | null>(null);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["images", libId],
@@ -321,9 +343,14 @@ function LibraryDetailPage() {
                 image={img}
                 libraryId={libId}
                 onDeleted={invalidate}
+                onView={() => setViewImage(img)}
               />
             ))}
           </div>
+        )}
+
+        {viewImage && (
+          <Lightbox image={viewImage} onClose={() => setViewImage(null)} />
         )}
       </main>
     </>

@@ -182,7 +182,7 @@ class TestUploadValidImages:
 
     @patch("blueprints.api.images.storage")
     def test_accepts_valid_jpeg(self, mock_storage, client, photographer, library):
-        mock_storage.get_presigned_url.return_value = "http://example.com/img.jpg"
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
         token = make_token(photographer)
         res = upload(
             client, library.id, token,
@@ -193,12 +193,23 @@ class TestUploadValidImages:
         assert data["content_type"] == "image/jpeg"
         assert data["width"] == 2
         assert data["height"] == 2
+        assert data["original_url"] is not None
+        assert data["thumb_url"] is not None
+        assert data["preview_url"] is None
         mock_storage.ensure_bucket.assert_called_once()
-        mock_storage.upload_fileobj.assert_called_once()
+        # Two uploads: original + thumbnail
+        assert mock_storage.upload_fileobj.call_count == 2
+        calls = mock_storage.upload_fileobj.call_args_list
+        original_key = calls[0][0][1]
+        thumb_key = calls[1][0][1]
+        assert original_key.startswith(f"photos/{photographer.id}/{library.id}/originals/")
+        assert original_key.endswith(".jpg")
+        assert thumb_key.startswith(f"photos/{photographer.id}/{library.id}/thumbs/")
+        assert thumb_key.endswith(".jpg")
 
     @patch("blueprints.api.images.storage")
     def test_accepts_valid_png(self, mock_storage, client, photographer, library):
-        mock_storage.get_presigned_url.return_value = "http://example.com/img.png"
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
         token = make_token(photographer)
         res = upload(
             client, library.id, token,
@@ -207,5 +218,14 @@ class TestUploadValidImages:
         assert res.status_code == 201
         data = res.get_json()
         assert data["content_type"] == "image/png"
+        assert data["original_url"] is not None
+        assert data["thumb_url"] is not None
         mock_storage.ensure_bucket.assert_called_once()
-        mock_storage.upload_fileobj.assert_called_once()
+        assert mock_storage.upload_fileobj.call_count == 2
+        calls = mock_storage.upload_fileobj.call_args_list
+        original_key = calls[0][0][1]
+        thumb_key = calls[1][0][1]
+        assert original_key.startswith(f"photos/{photographer.id}/{library.id}/originals/")
+        assert original_key.endswith(".png")
+        assert thumb_key.startswith(f"photos/{photographer.id}/{library.id}/thumbs/")
+        assert thumb_key.endswith(".png")

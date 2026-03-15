@@ -214,9 +214,9 @@ def login():
 
 ```python
 # GCS key structure
-f"photos/{photographer_id}/originals/{photo_id}.jpg"
-f"photos/{photographer_id}/previews/{photo_id}.jpg"   # watermarked
-f"photos/{photographer_id}/thumbs/{photo_id}.jpg"     # 300px
+f"photos/{photographer_id}/{library_id}/originals/{photo_id}.jpg"
+f"photos/{photographer_id}/{library_id}/previews/{photo_id}.jpg"   # watermarked
+f"photos/{photographer_id}/{library_id}/thumbs/{photo_id}.jpg"     # 300px
 
 # Access rules
 # - Originals: NEVER served to customers, no signed URLs issued

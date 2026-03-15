@@ -11,7 +11,9 @@ export interface Image {
   width: number | null;
   height: number | null;
   created_at: string;
-  url: string;
+  original_url: string | null;
+  preview_url: string | null;
+  thumb_url: string | null;
 }
 
 export interface ImageList {

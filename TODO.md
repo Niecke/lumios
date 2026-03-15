@@ -31,3 +31,4 @@
 - [ ] generate thumbnails
 - [ ] generate watermarked pictures
 - [ ] migrate from boto3 to google-cloud-storage (boto3 checksum headers break GCS S3 API)
+- [ ] cleanup .env files (consolidate frontend/.env and root .env)

@@ -659,6 +659,10 @@ body {
   justify-content: flex-end;
   padding: 0.5rem;
   transition: background var(--transition);
+  pointer-events: none;
+}
+.photo-tile__overlay > * {
+  pointer-events: auto;
 }
 .photo-tile:hover .photo-tile__overlay {
   background: rgba(0,0,0,.25);
@@ -700,6 +704,35 @@ body {
 }
 .photo-tile:hover .photo-tile__meta {
   opacity: 1;
+}
+
+/* ── Lightbox ──────────────────────────────────────────── */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.lightbox__img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  cursor: default;
+  border-radius: var(--radius-md);
+}
+.lightbox__close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 2rem;
 }
 
 /* ── Drop zone ─────────────────────────────────────────── */

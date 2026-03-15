@@ -12,6 +12,7 @@ images_api = Blueprint("images_api", __name__, url_prefix="/libraries")
 
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
+THUMB_SIZE = 300  # longest side in pixels
 
 # Magic byte signatures for allowed image formats
 MAGIC_BYTES = {
@@ -51,7 +52,10 @@ def list_images(library_id: int):
     )
 
     image_dicts = [
-        img.to_dict(presigned_url=storage.get_presigned_url(img.s3_key))
+        img.to_dict(
+            original_url=storage.get_presigned_url(img.storage_path("originals")),
+            thumb_url=storage.get_presigned_url(img.storage_path("thumbs")),
+        )
         for img in images
     ]
 
@@ -115,27 +119,26 @@ def upload_image(library_id: int):
 
     # Pillow must be able to open the file — reject corrupt or disguised uploads
     try:
-        with PilImage.open(io.BytesIO(file_data)) as pil_img:
-            width, height = pil_img.size
+        pil_img = PilImage.open(io.BytesIO(file_data))
+        width, height = pil_img.size
     except Exception:
         return jsonify({"error": "File is not a valid image"}), 415
 
-    ext = "jpg" if content_type == "image/jpeg" else "png"
-    s3_key = f"{uuid_module.uuid4()}.{ext}"
+    # Generate 300px thumbnail
+    thumb_img = pil_img.copy()
+    thumb_img.thumbnail((THUMB_SIZE, THUMB_SIZE))
+    thumb_buf = io.BytesIO()
+    thumb_img.save(thumb_buf, format="JPEG", quality=85)
+    thumb_buf.seek(0)
+    pil_img.close()
+    thumb_img.close()
 
-    try:
-        storage.ensure_bucket()
-        storage.upload_fileobj(io.BytesIO(file_data), s3_key, content_type)
-    except Exception:
-        current_app.logger.exception(
-            "S3 upload failed for key=%s bucket=%s endpoint=%s",
-            s3_key,
-            storage.S3_BUCKET,
-            storage.S3_ENDPOINT_URL,
-        )
-        return jsonify({"error": "Storage error. Please try again."}), 502
+    ext = "jpg" if content_type == "image/jpeg" else "png"
+    photo_uuid = str(uuid_module.uuid4())
+    s3_key = f"{photo_uuid}.{ext}"
 
     image = Image(
+        uuid=photo_uuid,
         library_id=library_id,
         s3_key=s3_key,
         original_filename=file.filename,
@@ -144,11 +147,29 @@ def upload_image(library_id: int):
         width=width,
         height=height,
     )
+
+    base_path = f"photos/{user_id}/{library_id}"
+    original_path = f"{base_path}/originals/{s3_key}"
+    thumb_path = f"{base_path}/thumbs/{s3_key}"
+    try:
+        storage.ensure_bucket()
+        storage.upload_fileobj(io.BytesIO(file_data), original_path, content_type)
+        storage.upload_fileobj(thumb_buf, thumb_path, "image/jpeg")
+    except Exception:
+        current_app.logger.exception(
+            "GCS upload failed for key=%s bucket=%s endpoint=%s",
+            original_path,
+            storage.S3_BUCKET,
+            storage.S3_ENDPOINT_URL,
+        )
+        return jsonify({"error": "Storage error. Please try again."}), 502
+
     db.session.add(image)
     db.session.commit()
 
-    url = storage.get_presigned_url(s3_key)
-    return jsonify(image.to_dict(presigned_url=url)), 201
+    original_url = storage.get_presigned_url(original_path)
+    thumb_url = storage.get_presigned_url(thumb_path)
+    return jsonify(image.to_dict(original_url=original_url, thumb_url=thumb_url)), 201
 
 
 @images_api.route("/<int:library_id>/images/<int:image_id>", methods=["DELETE"])

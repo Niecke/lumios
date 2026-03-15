@@ -122,7 +122,20 @@ class Image(db.Model):
         "Library", backref=db.backref("images", lazy="dynamic")
     )
 
-    def to_dict(self, presigned_url: str | None = None):
+    def storage_path(self, variant: str = "originals") -> str:
+        """Build full GCS key for a variant: originals, previews, or thumbs.
+
+        s3_key stores: {uuid}.{ext}
+        Returns:       photos/{photographer_id}/{library_id}/{variant}/{uuid}.{ext}
+        """
+        return f"photos/{self.library.user_id}/{self.library_id}/{variant}/{self.s3_key}"
+
+    def to_dict(
+        self,
+        original_url: str | None = None,
+        preview_url: str | None = None,
+        thumb_url: str | None = None,
+    ):
         return {
             "id": self.id,
             "uuid": self.uuid,
@@ -132,6 +145,8 @@ class Image(db.Model):
             "width": self.width,
             "height": self.height,
             "created_at": self.created_at.isoformat(),
-            "url": presigned_url,
+            "original_url": original_url,
+            "preview_url": preview_url,
+            "thumb_url": thumb_url,
         }
 
