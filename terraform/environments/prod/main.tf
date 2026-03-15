@@ -57,7 +57,7 @@ module "cloudrun" {
   google_client_secret_secret_id      = module.secrets.google_client_secret_secret_id
   google_frontend_client_id_secret_id = module.secrets.google_frontend_client_id_secret_id
   public_base_url                     = "https://lumios-backend-714378756224.europe-west1.run.app"
-  frontend_url                        = "https://TODO.lumios.at"
+  frontend_url                        = "https://lumios-frontend-714378756224.europe-west1.run.app"
 
   depends_on = [module.apis, module.network, module.vm, module.secrets, module.storage]
 }
