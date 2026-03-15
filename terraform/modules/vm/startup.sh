@@ -48,7 +48,7 @@ services:
     volumes:
       - /data/postgres:/var/lib/postgresql
     ports:
-      - "127.0.0.1:5432:5432"
+      - "5432:5432"
 
   redis:
     image: redis:8
@@ -57,7 +57,7 @@ services:
     volumes:
       - /data/redis:/data
     ports:
-      - "127.0.0.1:6379:6379"
+      - "6379:6379"
 
 secrets:
   postgres_password:
