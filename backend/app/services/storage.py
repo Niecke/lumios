@@ -3,6 +3,8 @@ S3-compatible object storage service.
 Uses boto3 — works with MinIO locally and any S3-compatible backend in production.
 """
 
+import os
+
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
@@ -21,6 +23,7 @@ def _make_client(endpoint_url: str):
         endpoint_url=endpoint_url,
         aws_access_key_id=S3_ACCESS_KEY,
         aws_secret_access_key=S3_SECRET_KEY,
+        region_name=os.getenv("S3_REGION", "auto"),
         config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
     )
 
