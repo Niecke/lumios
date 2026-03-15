@@ -1,5 +1,6 @@
 from flask import (
     Blueprint,
+    current_app,
     request,
     redirect,
     url_for,
@@ -24,6 +25,7 @@ def login():
             set_session(user)
             return redirect(url_for("admin.index"))
         except AuthError:
+            current_app.logger.warning("Failed login attempt for email=%s", email)
             flash("Invalid email or password")
 
     return render_template("login.html", google_enabled=bool(GOOGLE_CLIENT_ID))
@@ -43,6 +45,7 @@ def google_callback():
     try:
         token = oauth.google.authorize_access_token()
     except Exception:
+        current_app.logger.exception("Google OAuth token exchange failed")
         flash("Google login failed. Please try again.", "error")
         return redirect(url_for("auth.login"))
 
@@ -55,6 +58,7 @@ def google_callback():
         user = login_google(userinfo)
         set_session(user)
     except AuthError as e:
+        current_app.logger.warning("Google login rejected: %s", e.message)
         flash(e.message, "error")
         return redirect(url_for("auth.login"))
 

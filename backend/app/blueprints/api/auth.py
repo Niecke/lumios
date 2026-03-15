@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, current_app, request, jsonify, g
 from jwt import PyJWKClient
 import jwt
 from main import limiter
@@ -62,14 +62,16 @@ def google_verify():
             issuer=["https://accounts.google.com", "accounts.google.com"],
         )
     except jwt.PyJWTError:
+        current_app.logger.warning("Invalid Google ID token submitted")
         return jsonify({"error": "Invalid Google token"}), 401
     except Exception:
-        # Covers network errors when fetching JWKS (e.g. timeout, DNS failure)
+        current_app.logger.exception("JWKS verification failed (network/timeout)")
         return jsonify({"error": "Could not verify Google token"}), 503
 
     try:
         user = login_google({"email": idinfo.get("email"), "sub": idinfo.get("sub")})
     except AuthError as e:
+        current_app.logger.warning("Google login rejected: %s", e.message)
         return jsonify({"error": e.message}), e.status
 
     roles = [r.name for r in user.roles]
