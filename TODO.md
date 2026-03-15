@@ -7,13 +7,18 @@
 - [x] generate security and performance audit
 - [x] add a way to upload fotos (basic function)
 - [x] create a Container for the frontend
-- [ ] add terraform setup
-- [ ] add artifact registry in GCP
-- [ ] build and publish frontend and backend to the registry via Github action
+- [x] add terraform setup
+- [x] add artifact registry in GCP
+- [.] add PUBLIC_BASE_URL and FRONTEND_URL to Cloud Run env
+- [x] add REDIS_URL to Cloud Run env
+- [ ] fix UI bug on login screen (the or shouldn't be there)
+- [ ] add number of libraries and photos and storage used to the dashboard
+- [ ] role selection when creating a user
+- [ ] add a screen for local users to change their password
+- [.] build and publish frontend and backend to the registry via Github action
 - [ ] create versioning for front and backend?
-- [ ] deploy compute engine with terraform (redis+postgres)
-- [ ] enable Google+ API via terraform
-- [ ] deploy storage bucket with terraform
-- [ ] deploy backend via Cloud Run
+- [x] deploy compute engine with terraform (redis+postgres)
+- [x] deploy storage bucket with terraform
+- [x] deploy backend via Cloud Run
 - [ ] deploy frontend via Cloud Run
 - [ ] add debug logs with request bodys

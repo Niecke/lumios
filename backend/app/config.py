@@ -88,3 +88,8 @@ if missing:
         f"  SECRET_KEY=your-super-secret-key-at-least-32-chars\n"
         f"  JWT_SECRET=your-super-jwt-secret-change-me"
     )
+
+if SECRET_KEY and len(SECRET_KEY) < 32:
+    raise ValueError("SECRET_KEY must be at least 32 characters")
+if JWT_SECRET and len(JWT_SECRET) < 32:
+    raise ValueError("JWT_SECRET must be at least 32 characters")
