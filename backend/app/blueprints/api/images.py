@@ -4,7 +4,7 @@ from models import db, User, Library, Image
 from sqlalchemy import select
 from datetime import datetime, timezone
 import uuid as uuid_module
-from PIL import Image as PilImage, ImageDraw, ImageFont
+from PIL import Image as PilImage, ImageDraw, ImageFont, ImageOps
 import io
 from services import storage
 
@@ -12,7 +12,7 @@ images_api = Blueprint("images_api", __name__, url_prefix="/libraries")
 
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
-THUMB_SIZE = 300  # longest side in pixels
+THUMB_SIZE = 600  # longest side in pixels
 PREVIEW_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
 WATERMARK_TEXT = "lumios.at"
 WATERMARK_OPACITY = 80  # 0-255
@@ -206,6 +206,7 @@ def upload_image(library_id: int):
     # Pillow must be able to open the file — reject corrupt or disguised uploads
     try:
         pil_img = PilImage.open(io.BytesIO(file_data))
+        pil_img = ImageOps.exif_transpose(pil_img)
         width, height = pil_img.size
     except Exception:
         current_app.logger.exception(
