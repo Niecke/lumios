@@ -4,8 +4,8 @@
 // Unauthenticated visitors see a read-only public gallery.
 
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { authApi } from "../api/auth";
 import { librariesApi } from "../api/libraries";
 import { imagesApi, type Image } from "../api/images";
@@ -63,14 +63,27 @@ interface ImageTileProps {
 
 function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
   const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  const remove = useMutation({
-    mutationFn: () => imagesApi.delete(libraryId, image.id),
-    onSuccess: onDeleted,
-  });
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      await imagesApi.delete(libraryId, image.id);
+      onDeleted();
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const isLiked = image.customer_state === "liked";
 
   return (
     <div className="photo-tile">
+      {isLiked && (
+        <div className="photo-tile__liked-badge" title="Liked by customer">
+          <span className="material-icons">favorite</span>
+        </div>
+      )}
       <img
         src={image.thumb_url ?? image.original_url ?? undefined}
         alt={image.filename}
@@ -85,8 +98,8 @@ function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
             <span>Delete?</span>
             <button
               className="icon-btn icon-btn--danger"
-              onClick={() => remove.mutate()}
-              disabled={remove.isPending}
+              onClick={handleDelete}
+              disabled={deleting}
               title="Confirm delete"
             >
               <span className="material-icons">check</span>
@@ -269,30 +282,24 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
         <p style={{ marginBottom: "0.75rem", color: "var(--clr-on-surface-var)" }}>
           Anyone with this link can view the photos in this library.
         </p>
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          <input
-            type="text"
-            readOnly
-            value={shareUrl}
-            style={{
-              flex: 1,
-              padding: "0.5rem 0.75rem",
-              border: "1px solid var(--clr-outline)",
-              borderRadius: "0.5rem",
-              fontSize: "0.875rem",
-              background: "var(--clr-background)",
-              color: "var(--clr-on-surface)",
-            }}
-            onFocus={(e) => e.target.select()}
-          />
+        <input
+          type="text"
+          readOnly
+          value={shareUrl}
+          className="share-dialog__url"
+          onFocus={(e) => e.target.select()}
+        />
+        <div className="dialog__actions">
+          <a className="btn btn-outlined" href={shareUrl} target="_blank" rel="noopener noreferrer">
+            <span className="material-icons" style={{ fontSize: 18 }}>open_in_new</span>
+            Open
+          </a>
           <button className="btn btn-contained" onClick={copyToClipboard}>
             <span className="material-icons" style={{ fontSize: 18 }}>
               {copied ? "check" : "content_copy"}
             </span>
             {copied ? "Copied!" : "Copy"}
           </button>
-        </div>
-        <div className="dialog__actions" style={{ marginTop: "0.75rem" }}>
           <button className="btn btn-text" onClick={onClose}>
             Close
           </button>
@@ -326,6 +333,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
   const [queue, setQueue] = useState<UploadItem[]>([]);
   const [viewImage, setViewImage] = useState<Image | null>(null);
   const [showShare, setShowShare] = useState(false);
+  const [showLikedOnly, setShowLikedOnly] = useState(false);
 
   const { data: library } = useQuery({
     queryKey: ["library", libraryUuid],
@@ -376,12 +384,19 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
     }
   }
 
-  const images = data?.images ?? [];
-  const hasImages = images.length > 0;
+  const allImages = data?.images ?? [];
+  const hasImages = allImages.length > 0;
+  const likedCount = useMemo(
+    () => allImages.filter((img) => img.customer_state === "liked").length,
+    [allImages]
+  );
+  const images = showLikedOnly
+    ? allImages.filter((img) => img.customer_state === "liked")
+    : allImages;
 
   return (
     <>
-      <AppBar email={user.email} name={user.name} picture={user.picture} />
+      <AppBar name={user.name} picture={user.picture} />
 
       <main className="page-content">
         <div className="page-header">
@@ -393,6 +408,15 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
           </div>
 
           <div style={{ display: "flex", gap: "0.5rem" }}>
+            {(likedCount > 0 || showLikedOnly) && (
+              <button
+                className={`btn ${showLikedOnly ? "btn-tonal" : "btn-outlined"}`}
+                onClick={() => setShowLikedOnly((v) => !v)}
+              >
+                <span className="material-icons" style={{ fontSize: 18, color: showLikedOnly ? "var(--clr-error)" : undefined }}>favorite</span>
+                {likedCount}
+              </button>
+            )}
             <button className="btn btn-outlined" onClick={() => setShowShare(true)}>
               <span className="material-icons">share</span>
               Share
@@ -447,7 +471,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
           <DropZone onFiles={handleFiles} compact />
         )}
 
-        {hasImages && libId !== undefined && (
+        {hasImages && libId !== undefined && images.length > 0 && (
           <div className="photo-grid">
             {images.map((img) => (
               <ImageTile
@@ -458,6 +482,13 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
                 onView={() => setViewImage(img)}
               />
             ))}
+          </div>
+        )}
+
+        {hasImages && showLikedOnly && images.length === 0 && (
+          <div className="empty-state">
+            <span className="material-icons">favorite_border</span>
+            <p>No liked photos yet.</p>
           </div>
         )}
 
@@ -474,19 +505,46 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
 // ── Public view (read-only gallery) ──────────────────────────────────────────
 
 function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
+  const queryClient = useQueryClient();
   const [viewImage, setViewImage] = useState<PublicImage | null>(null);
+  const [showLikedOnly, setShowLikedOnly] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["public-library", libraryUuid],
     queryFn: () => publicApi.getLibrary(libraryUuid),
   });
 
+  const likedCount = useMemo(
+    () => data?.images.filter((img) => img.customer_state === "liked").length ?? 0,
+    [data]
+  );
+
+  async function toggleLike(img: PublicImage) {
+    const newState = img.customer_state === "liked" ? "none" : "liked";
+    await publicApi.setCustomerState(libraryUuid, img.uuid, newState);
+    queryClient.invalidateQueries({ queryKey: ["public-library", libraryUuid] });
+  }
+
   return (
     <>
       <header className="app-bar">
+        <span className="app-bar__brand">Lumios</span>
         <div className="app-bar__title">
           {data?.library.name ?? "Library"}
         </div>
+        {(likedCount > 0 || showLikedOnly) && (
+          <button
+            className={`btn ${showLikedOnly ? "btn-tonal" : "btn-outlined"}`}
+            onClick={() => setShowLikedOnly((v) => !v)}
+          >
+            <span className="material-icons" style={{ fontSize: 18, color: showLikedOnly ? "var(--clr-error)" : undefined }}>favorite</span>
+            {likedCount}
+          </button>
+        )}
+        <a className="btn btn-text" href="/login" target="_blank" rel="noopener noreferrer">
+          <span className="material-icons">login</span>
+          Login
+        </a>
       </header>
 
       <main className="page-content">
@@ -499,7 +557,10 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
         )}
 
         {isError && (
-          <div className="alert alert--error">Library not found or unavailable.</div>
+          <div className="empty-state">
+            <span style={{ fontSize: 72, opacity: 0.50 }}>😔</span>
+            <p style={{ fontSize: "1.5rem", fontWeight: 600 }}>Sorry, we haven't found your photos.</p>
+          </div>
         )}
 
         {!isLoading && !isError && data && data.images.length === 0 && (
@@ -509,22 +570,41 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
           </div>
         )}
 
-        {!isLoading && !isError && data && data.images.length > 0 && (
-          <div className="photo-grid">
-            {data.images.map((img) => (
-              <div key={img.uuid} className="photo-tile">
-                <img
-                  src={img.thumb_url}
-                  alt={img.filename}
-                  className="photo-tile__img"
-                  loading="lazy"
-                  onClick={() => setViewImage(img)}
-                  style={{ cursor: "pointer" }}
-                />
-              </div>
-            ))}
-          </div>
-        )}
+        {!isLoading && !isError && data && data.images.length > 0 && (() => {
+          const visibleImages = showLikedOnly
+            ? data.images.filter((img) => img.customer_state === "liked")
+            : data.images;
+          return visibleImages.length > 0 ? (
+            <div className="photo-grid">
+              {visibleImages.map((img) => (
+                <div key={img.uuid} className="photo-tile">
+                  <img
+                    src={img.thumb_url}
+                    alt={img.filename}
+                    className="photo-tile__img"
+                    loading="lazy"
+                    onClick={() => setViewImage(img)}
+                    style={{ cursor: "pointer" }}
+                  />
+                  <button
+                    className={`photo-tile__like ${img.customer_state === "liked" ? "photo-tile__like--active" : ""}`}
+                    onClick={() => toggleLike(img)}
+                    title={img.customer_state === "liked" ? "Remove like" : "Like this photo"}
+                  >
+                    <span className="material-icons">
+                      {img.customer_state === "liked" ? "favorite" : "favorite_border"}
+                    </span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <span className="material-icons">favorite_border</span>
+              <p>No liked photos yet.</p>
+            </div>
+          );
+        })()}
 
         {viewImage && (
           <PublicLightbox image={viewImage} onClose={() => setViewImage(null)} />

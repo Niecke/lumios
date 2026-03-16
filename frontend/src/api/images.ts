@@ -10,6 +10,7 @@ export interface Image {
   size: number;
   width: number | null;
   height: number | null;
+  customer_state: string;
   created_at: string;
   original_url: string | null;
   preview_url: string | null;

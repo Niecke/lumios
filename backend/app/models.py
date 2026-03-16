@@ -4,10 +4,16 @@ from argon2.exceptions import VerifyMismatchError
 from config import MIN_PASSWORD_LENGTH
 from datetime import datetime, timezone
 from flask_migrate import Migrate
+import enum
 import uuid as uuid_module
 
 db = SQLAlchemy()
 migrate = Migrate()
+
+
+class CustomerState(enum.Enum):
+    none = "none"
+    liked = "liked"
 
 roles_users = db.Table(
     "roles_users",
@@ -113,6 +119,12 @@ class Image(db.Model):
     size = db.Column(db.Integer(), nullable=False)
     width = db.Column(db.Integer(), nullable=True)
     height = db.Column(db.Integer(), nullable=True)
+    customer_state = db.Column(
+        db.Enum(CustomerState, name="customerstate"),
+        nullable=False,
+        default=CustomerState.none,
+        server_default=CustomerState.none.value,
+    )
     created_at = db.Column(
         db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
@@ -144,6 +156,7 @@ class Image(db.Model):
             "size": self.size,
             "width": self.width,
             "height": self.height,
+            "customer_state": self.customer_state.value,
             "created_at": self.created_at.isoformat(),
             "original_url": original_url,
             "preview_url": preview_url,
