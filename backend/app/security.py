@@ -1,4 +1,4 @@
-from flask import redirect, url_for, flash, request, jsonify, g
+from flask import redirect, url_for, flash, request, jsonify, g, current_app
 from functools import wraps
 from current_user import current_user
 import jwt
@@ -42,8 +42,10 @@ def require_api_auth(f):
         try:
             g.token_payload = decode_token(token)
         except jwt.ExpiredSignatureError:
+            current_app.logger.warning("Expired JWT from %s", request.remote_addr)
             return jsonify({"error": "Token expired"}), 401
         except jwt.PyJWTError:
+            current_app.logger.warning("Invalid JWT from %s", request.remote_addr)
             return jsonify({"error": "Invalid token"}), 401
         return f(*args, **kwargs)
 

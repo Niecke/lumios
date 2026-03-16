@@ -3,6 +3,7 @@ S3-compatible object storage service.
 Uses boto3 — works with MinIO locally and any S3-compatible backend in production.
 """
 
+import logging
 import os
 
 import boto3
@@ -44,9 +45,11 @@ def ensure_bucket() -> None:
     global _bucket_verified
     if _bucket_verified:
         return
+    logger = logging.getLogger(__name__)
     try:
         _client.head_bucket(Bucket=S3_BUCKET)
     except ClientError:
+        logger.warning("Bucket %s not found, creating it", S3_BUCKET)
         _client.create_bucket(Bucket=S3_BUCKET)
     _bucket_verified = True
 

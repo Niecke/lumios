@@ -24,10 +24,11 @@
 - [ ] add tests for storage service
 - [ ] add test for library limit
 - [ ] add test for photo limit
-- [ ] log all exceptions with the logger.exception
+- [x] log all exceptions with the logger.exception
 - [x] change the structure for all pictures
 - [ ] generate a picture for each libs
 - [x] generate thumbnails
 - [x] generate watermarked pictures
 - [ ] migrate from boto3 to google-cloud-storage (boto3 checksum headers break GCS S3 API)
 - [ ] cleanup .env files (consolidate frontend/.env and root .env)
+- [ ] add customer public view

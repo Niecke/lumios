@@ -77,6 +77,23 @@ def create_library():
     return jsonify(library.to_dict()), 201
 
 
+@libraries_api.route("/uuid/<library_uuid>", methods=["GET"])
+@require_api_auth
+@require_api_role("photographer")
+def get_library_by_uuid(library_uuid: str):
+    user_id = int(g.token_payload["sub"])
+    library = db.session.execute(
+        select(Library).where(
+            Library.uuid == library_uuid,
+            Library.user_id == user_id,
+            Library.deleted_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if library is None:
+        return jsonify({"error": "Library not found"}), 404
+    return jsonify(library.to_dict())
+
+
 @libraries_api.route("/<int:library_id>", methods=["PATCH"])
 @require_api_auth
 @require_api_role("photographer")

@@ -15,6 +15,8 @@ export interface UserInfo {
   email: string;
   roles: string[];
   max_libraries: number | null;
+  name?: string;
+  picture?: string;
 }
 
 // Google profile fields decoded from the ID token (display only)
