@@ -1,22 +1,13 @@
 // login.tsx — the /login page
 //
-// Authentication is handled entirely in the browser via Google Identity
-// Services (GIS). We render our own button and call prompt() on click —
-// this avoids loading Google's iframe-based button which requires the origin
-// to be verified before the button even appears.
-//
-// GIS calls handleCredential with a signed Google ID token which we forward
-// to the backend (/api/v1/auth/google/verify).
+// Authentication uses Google Identity Services (GIS) in redirect mode.
+// Clicking the Google button redirects to Google, which POSTs the credential
+// to the backend callback endpoint. The backend verifies it, creates a JWT,
+// and redirects back here with ?token=... which the SPA picks up.
 
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { authApi, tokenStore } from "../api/auth";
-
-interface GsiPromptNotification {
-  isNotDisplayed(): boolean;
-  isSkippedMoment(): boolean;
-  getNotDisplayedReason(): string;
-}
+import { authApi, tokenStore, isGsiInitialized, markGsiInitialized, resetGsiInitialized } from "../api/auth";
 
 // Minimal type declaration for the GIS library loaded via index.html
 declare global {
@@ -27,9 +18,17 @@ declare global {
           initialize(config: {
             client_id: string;
             callback: (response: { credential: string }) => void;
+            ux_mode?: string;
+            login_uri?: string;
           }): void;
-          prompt(
-            callback?: (notification: GsiPromptNotification) => void
+          renderButton(
+            parent: HTMLElement,
+            options: {
+              theme?: string;
+              size?: string;
+              width?: number;
+              text?: string;
+            }
           ): void;
         };
       };
@@ -37,64 +36,70 @@ declare global {
   }
 }
 
-// Module-level flag: GIS must only be initialized once per page load.
-// React StrictMode double-invokes effects in development which would otherwise
-// call initialize() twice and trigger spurious empty-credential callbacks.
-let _gsiInitialized = false;
-
 export const Route = createFileRoute("/login")({
-  beforeLoad: () => {
-    // Already authenticated → the index route's beforeLoad will verify and
-    // redirect to / on its own; nothing to do here.
-  },
+  beforeLoad: () => {},
   component: LoginPage,
 });
 
 function LoginPage() {
   const router = useRouter();
-  // Keep the callback in a ref so initialize() always calls the latest version
-  // even though it is only registered once.
-  const handleCredentialRef = useRef<
-    ((r: { credential: string }) => void) | undefined
-  >(undefined);
-  const [error, setError] = useState<string | null>(() => {
-    const params = new URLSearchParams(window.location.search);
-    const err = params.get("error");
-    if (err) window.history.replaceState(null, "", window.location.pathname);
-    return err ? err.replace(/_/g, " ") : null;
-  });
+  const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const googleBtnRef = useRef<HTMLDivElement>(null);
 
-  async function handleCredential(response: { credential: string }) {
-    // GIS may fire the callback without a credential in error/initialization edge cases
-    if (!response.credential) return;
-    setError(null);
-    setPending(true);
-    try {
-      await authApi.googleVerify(response.credential);
-      router.navigate({ to: "/", replace: true });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Login failed");
-      setPending(false);
-    }
-  }
-
-  // Keep the ref current on every render
-  handleCredentialRef.current = handleCredential;
-
+  // On mount: check for token or error from the redirect callback
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+    const err = params.get("error");
+
+    if (token) {
+      tokenStore.set(token);
+      window.history.replaceState(null, "", "/login");
+      setPending(true);
+      authApi.me().then(
+        () => router.navigate({ to: "/", replace: true }),
+        () => {
+          tokenStore.clear();
+          setError("Session invalid. Please sign in again.");
+          setPending(false);
+        }
+      );
+      return;
+    }
+
+    if (err) {
+      window.history.replaceState(null, "", "/login");
+      setError(err.replace(/_/g, " "));
+    }
+
     if (tokenStore.get()) {
       router.navigate({ to: "/", replace: true });
       return;
     }
 
+    resetGsiInitialized();
+
+    const loginUri = `${window.location.origin}/api/v1/auth/google/callback`;
+
     function initGsi() {
-      if (!window.google || _gsiInitialized) return;
-      _gsiInitialized = true;
+      if (!window.google || isGsiInitialized()) return;
+      markGsiInitialized();
+
       window.google.accounts.id.initialize({
         client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID as string,
-        callback: (r) => handleCredentialRef.current?.(r),
+        callback: () => {},
+        ux_mode: "redirect",
+        login_uri: loginUri,
       });
+
+      if (googleBtnRef.current) {
+        window.google.accounts.id.renderButton(googleBtnRef.current, {
+          theme: "outline",
+          size: "large",
+          text: "signin_with",
+        });
+      }
     }
 
     if (window.google) {
@@ -108,17 +113,6 @@ function LoginPage() {
     }
   }, [router]);
 
-  function handleGoogleSignIn() {
-    window.google?.accounts.id.prompt((notification) => {
-      if (notification.isNotDisplayed()) {
-        setError(
-          `Google Sign-In could not be shown (${notification.getNotDisplayedReason()}). ` +
-            "Make sure your browser allows pop-ups and third-party cookies."
-        );
-      }
-    });
-  }
-
   return (
     <main className="login-page">
       <div className="login-box">
@@ -127,9 +121,7 @@ function LoginPage() {
         {pending ? (
           <p className="login-pending">Signing in…</p>
         ) : (
-          <button className="btn btn-google" onClick={handleGoogleSignIn}>
-            Sign in with Google
-          </button>
+          <div className="google-btn-wrapper" ref={googleBtnRef} />
         )}
       </div>
     </main>

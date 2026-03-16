@@ -6,6 +6,7 @@ import os
 import secrets, string
 
 DEBUG = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes")
+GIT_HASH = os.getenv("GIT_HASH", "dev")
 INIT_ADMIN_PASSWORD = str(os.getenv("INIT_ADMIN_PASSWORD", ""))
 INIT_ADMIN_LENGTH = int(os.getenv("INIT_ADMIN_LENGTH", 16))
 INIT_ADMIN_SPECIAL_CHARS = str(os.getenv("INIT_ADMIN_SPECIAL_CHARS", r"!@#\$%&*"))
@@ -19,9 +20,13 @@ if not INIT_ADMIN_PASSWORD:
 MIN_PASSWORD_LENGTH = int(os.getenv("MIN_PASSWORD_LENGTH", 8))
 
 # Load and validate Argon2 parameters
-PASSWORD_HASHER_TIME_COST = int(os.getenv("PASSWORD_HASHER_TIME_COST", "2"))
+PASSWORD_HASHER_TIME_COST = int(os.getenv("PASSWORD_HASHER_TIME_COST", 2))
 PASSWORD_HASHER_MEMORY_COST = int(os.getenv("PASSWORD_HASHER_MEMORY_COST", "65536"))
-PASSWORD_HASHER_PARALLELISM = int(os.getenv("PASSWORD_HASHER_PARALLELISM", "4"))
+PASSWORD_HASHER_PARALLELISM = int(os.getenv("PASSWORD_HASHER_PARALLELISM", 4))
+
+MAX_CONTENT_LENGTH = int(
+    os.getenv("MAX_CONTENT_LENGTH", 20 * 1024 * 1024)
+)  # 20MB default
 
 # Database
 POSTGRES_USER = str(os.getenv("POSTGRES_USER", "lumios"))
@@ -73,8 +78,8 @@ REDIS_URL = os.getenv("REDIS_URL", None)
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
 # Public URL used when generating presigned URLs — must be reachable by the browser
 S3_PUBLIC_ENDPOINT_URL = os.getenv("S3_PUBLIC_ENDPOINT_URL", S3_ENDPOINT_URL)
-S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "")
-S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "")
+S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "").strip()
+S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "").strip()
 S3_BUCKET = os.getenv("S3_BUCKET", "lumios")
 
 # FAIL-FAST: Check required vars
@@ -88,3 +93,8 @@ if missing:
         f"  SECRET_KEY=your-super-secret-key-at-least-32-chars\n"
         f"  JWT_SECRET=your-super-jwt-secret-change-me"
     )
+
+if SECRET_KEY and len(SECRET_KEY) < 32:
+    raise ValueError("SECRET_KEY must be at least 32 characters")
+if JWT_SECRET and len(JWT_SECRET) < 32:
+    raise ValueError("JWT_SECRET must be at least 32 characters")

@@ -49,6 +49,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-content {
+  flex: 1;
+}
+
+
 /* ── AppBar ────────────────────────────────────────── */
 .app-bar {
   position: sticky;
@@ -609,6 +620,18 @@ body {
   color: var(--clr-on-surface-var);
   font-size: 0.9rem;
 }
+
+/* ── Footer ───────────────────────────────────────── */
+.footer {
+  flex-shrink: 0;
+  text-align: center;
+  padding: 1.5rem 1rem;
+  font-size: 0.8rem;
+  color: var(--clr-on-surface-var);
+}
+.footer .text-muted {
+  opacity: 0.6;
+}
 .google-btn-wrapper { display: flex; justify-content: center; }
 
 /* ── Library card — media area as link ────────────────── */
@@ -659,6 +682,10 @@ body {
   justify-content: flex-end;
   padding: 0.5rem;
   transition: background var(--transition);
+  pointer-events: none;
+}
+.photo-tile__overlay > * {
+  pointer-events: auto;
 }
 .photo-tile:hover .photo-tile__overlay {
   background: rgba(0,0,0,.25);
@@ -700,6 +727,57 @@ body {
 }
 .photo-tile:hover .photo-tile__meta {
   opacity: 1;
+}
+
+/* ── Lightbox ──────────────────────────────────────────── */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.lightbox__pair {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  max-width: 95vw;
+  max-height: 90vh;
+}
+.lightbox__side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lightbox__label {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+.lightbox__img {
+  max-width: 45vw;
+  max-height: 85vh;
+  object-fit: contain;
+  cursor: default;
+  border-radius: var(--radius-md);
+}
+.lightbox__close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 2rem;
 }
 
 /* ── Drop zone ─────────────────────────────────────────── */

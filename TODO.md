@@ -7,13 +7,28 @@
 - [x] generate security and performance audit
 - [x] add a way to upload fotos (basic function)
 - [x] create a Container for the frontend
-- [ ] add terraform setup
-- [ ] add artifact registry in GCP
-- [ ] build and publish frontend and backend to the registry via Github action
-- [ ] create versioning for front and backend?
-- [ ] deploy compute engine with terraform (redis+postgres)
-- [ ] enable Google+ API via terraform
-- [ ] deploy storage bucket with terraform
-- [ ] deploy backend via Cloud Run
-- [ ] deploy frontend via Cloud Run
+- [x] add terraform setup
+- [x] add artifact registry in GCP
+- [x] add PUBLIC_BASE_URL and FRONTEND_URL to Cloud Run env
+- [x] add REDIS_URL to Cloud Run env
+- [x] fix UI bug on login screen (the or shouldn't be there)
+- [x] add number of libraries and photos and storage used to the dashboard
+- [x] role selection when creating a user
+- [x] add a screen for local users to change their password
+- [x] build and publish frontend and backend to the registry via Github action
+- [x] deploy compute engine with terraform (redis+postgres)
+- [x] deploy storage bucket with terraform
+- [x] deploy backend via Cloud Run
+- [x] deploy frontend via Cloud Run
 - [ ] add debug logs with request bodys
+- [ ] add tests for storage service
+- [ ] add test for library limit
+- [ ] add test for photo limit
+- [x] log all exceptions with the logger.exception
+- [x] change the structure for all pictures
+- [ ] generate a picture for each libs
+- [x] generate thumbnails
+- [x] generate watermarked pictures
+- [ ] migrate from boto3 to google-cloud-storage (boto3 checksum headers break GCS S3 API)
+- [ ] cleanup .env files (consolidate frontend/.env and root .env)
+- [ ] add customer public view

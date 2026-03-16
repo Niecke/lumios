@@ -2,15 +2,16 @@
 
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
-import { authApi, googleProfileStore } from "../api/auth";
+import { authApi } from "../api/auth";
 
 interface AppBarProps {
   email: string;
+  name?: string;
+  picture?: string;
 }
 
-export function AppBar({ email }: AppBarProps) {
+export function AppBar({ email, name, picture }: AppBarProps) {
   const navigate = useNavigate();
-  const profile = googleProfileStore.get();
 
   const logout = useMutation({
     mutationFn: authApi.logout,
@@ -23,15 +24,15 @@ export function AppBar({ email }: AppBarProps) {
         Lumios
       </Link>
 
-      {profile?.picture && (
+      {picture && (
         <img
           className="app-bar__avatar"
-          src={profile.picture}
+          src={picture}
           alt=""
           referrerPolicy="no-referrer"
         />
       )}
-      <span className="app-bar__name">{profile?.name ?? email}</span>
+      <span className="app-bar__name">{name ?? email}</span>
 
       <Link to="/account" className="btn btn-text">
         <span className="material-icons">account_circle</span>

@@ -15,6 +15,8 @@ from config import (
     MIN_PASSWORD_LENGTH,
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
+    MAX_CONTENT_LENGTH,
+    GIT_HASH,
 )
 from models import User
 from current_user import current_user
@@ -59,6 +61,8 @@ def create_app(test_config=None):
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = SQLALCHEMY_ENGINE_OPTIONS
 
+    app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
+
     # Allow tests to override any config value before extensions are initialised
     if test_config is not None:
         app.config.update(test_config)
@@ -81,6 +85,7 @@ def create_app(test_config=None):
         )
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_SECURE"] = not DEBUG
     server_session.init_app(app)
 
     # enable caching
@@ -148,7 +153,7 @@ def create_app(test_config=None):
 
     @app.context_processor
     def inject_config():
-        return dict(MIN_PASSWORD_LENGTH=MIN_PASSWORD_LENGTH)
+        return dict(MIN_PASSWORD_LENGTH=MIN_PASSWORD_LENGTH, GIT_HASH=GIT_HASH)
 
     # Register blueprints
     from blueprints.auth import auth
@@ -167,6 +172,7 @@ def create_app(test_config=None):
     from blueprints.api.auth import auth_api
     from blueprints.api.libraries import libraries_api
     from blueprints.api.images import images_api
+    from blueprints.api.public import public_api
 
     # csrf.exempt only covers the named blueprint's own views. Child blueprints
     # registered on a parent have their own blueprint name ("auth_api", not "api"),
@@ -175,6 +181,7 @@ def create_app(test_config=None):
     csrf.exempt(auth_api)
     csrf.exempt(libraries_api)
     csrf.exempt(images_api)
+    csrf.exempt(public_api)
     app.register_blueprint(api)
 
     return app

@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: docker.io/library/postgres:16-alpine
+    image: docker.io/library/postgres:18-alpine
     container_name: lumios-postgres
     env_file: .env
     environment:
@@ -10,7 +10,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - lumios_postgres_data:/var/lib/postgresql/data:Z
+      - lumios_postgres_data:/var/lib/postgresql:Z
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -57,22 +57,28 @@ services:
     volumes:
       - ./backend/app:/app:Z
       - ./backend/requirements.txt:/requirements.txt:Z
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+    #healthcheck:
+    #  test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+    #  interval: 15s
+    #  timeout: 5s
+    #  retries: 5
+    #  start_period: 30s
     restart: unless-stopped
 
   frontend:
-    build: frontend/.
+    build:
+      context: frontend/.
+      args:
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+    env_file: .env
     container_name: lumios-frontend
+    environment:
+      BACKEND_URL: "http://lumios-backend:8080"
     ports:
-      - "8081:80"
-    depends_on:
-      backend:
-        condition: service_healthy
+      - "8081:8080"
+    #depends_on:
+    #  backend:
+    #    condition: service_healthy
     restart: unless-stopped
 
 volumes:

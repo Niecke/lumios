@@ -1,13 +1,26 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
-    <h1>Welcome to Your App!</h1>
-    <p class="user">
-        Current User: {{ current_user.email }}
-    </p>
-    <p class="roles">
-        Current Roles: [{% for role in current_user.roles %}{{ role.name }}{% if not loop.last %}, {% endif %}{% endfor %}]
-    </p>
+<div class="page-header">
+    <h1>Welcome, {{ current_user.email }}</h1>
+    <div class="roles">
+        {% for role in current_user.roles %}<span class="badge badge-success">{{ role.name }}</span>{% endfor %}
+    </div>
+</div>
+
+<h2>System Overview</h2>
+<div class="stats-grid">
+    <div class="card stats-card">
+        <div class="stats-value">{{ library_count }}</div>
+        <div class="stats-label">Libraries</div>
+    </div>
+    <div class="card stats-card">
+        <div class="stats-value">{{ image_count }}</div>
+        <div class="stats-label">Photos</div>
+    </div>
+    <div class="card stats-card">
+        <div class="stats-value">{{ total_size | filesizeformat }}</div>
+        <div class="stats-label">Total Size</div>
+    </div>
 </div>
 {% endblock %}

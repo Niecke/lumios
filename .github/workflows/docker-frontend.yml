@@ -1,0 +1,79 @@
+name: Docker — Frontend
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - "frontend/**"
+  pull_request:
+    paths:
+      - "frontend/**"
+  workflow_call:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Authenticate to GCP
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Login to Artifact Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v4
+        with:
+          registry: europe-west1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Resolve image tags
+        id: tags
+        run: |
+          SHA=$(git rev-parse --short HEAD)
+          REPO="europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lumios/frontend"
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "tags=${REPO}:${SHA},${REPO}:latest" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+            echo "tags=${REPO}:dev-${SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=${REPO}:pr-${SHA}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch Google Client ID
+        id: secrets
+        run: |
+          CLIENT_ID=$(gcloud secrets versions access latest --secret=lumios-google-frontend-client-id)
+          echo "::add-mask::${CLIENT_ID}"
+          echo "google_client_id=${CLIENT_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: frontend
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            VITE_GOOGLE_CLIENT_ID=${{ steps.secrets.outputs.google_client_id }}
+            GIT_SHA=${{ github.sha }}
+
+      - name: Deploy to Cloud Run
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          SHA=$(git rev-parse --short HEAD)
+          gcloud run services update lumios-frontend \
+            --image=europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lumios/frontend:${SHA} \
+            --region=europe-west1

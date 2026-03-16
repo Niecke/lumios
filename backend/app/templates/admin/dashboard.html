@@ -14,6 +14,9 @@
                     <th>E-Mail</th>
                     <th>Roles</th>
                     <th>Active</th>
+                    <th>Libraries</th>
+                    <th>Photos</th>
+                    <th>Total Size</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -39,8 +42,15 @@
                             {{ 'Active' if user.active else 'Inactive' }}
                         </span>
                     </td>
+                    {% set stats = user_stats.get(user.id, {}) %}
+                    <td>{{ stats.get('libraries', 0) }}</td>
+                    <td>{{ stats.get('photos', 0) }}</td>
+                    <td>{{ stats.get('total_size', 0) | filesizeformat }}</td>
                     <td class="actions">
                             <a href="{{ url_for('admin.user_edit', id=user.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+                            {% if user.account_type == 'local' %}
+                            <a href="{{ url_for('admin.set_password', id=user.id) }}" class="btn btn-secondary btn-sm">Set Password</a>
+                            {% endif %}
                             <form method="POST" action="{{ url_for('admin.user_delete', id=user.id) }}">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-danger btn-sm">Delete</button>
@@ -49,7 +59,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="6">No users found.</td>
+                    <td colspan="8">No users found.</td>
                 </tr>
                 {% endfor %}
             </tbody>
