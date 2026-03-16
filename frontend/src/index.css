@@ -49,6 +49,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-content {
+  flex: 1;
+}
+
+
 /* ── AppBar ────────────────────────────────────────── */
 .app-bar {
   position: sticky;
@@ -612,6 +623,7 @@ body {
 
 /* ── Footer ───────────────────────────────────────── */
 .footer {
+  flex-shrink: 0;
   text-align: center;
   padding: 1.5rem 1rem;
   font-size: 0.8rem;

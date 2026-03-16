@@ -172,6 +172,7 @@ def create_app(test_config=None):
     from blueprints.api.auth import auth_api
     from blueprints.api.libraries import libraries_api
     from blueprints.api.images import images_api
+    from blueprints.api.public import public_api
 
     # csrf.exempt only covers the named blueprint's own views. Child blueprints
     # registered on a parent have their own blueprint name ("auth_api", not "api"),
@@ -180,6 +181,7 @@ def create_app(test_config=None):
     csrf.exempt(auth_api)
     csrf.exempt(libraries_api)
     csrf.exempt(images_api)
+    csrf.exempt(public_api)
     app.register_blueprint(api)
 
     return app
