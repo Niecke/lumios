@@ -241,7 +241,7 @@ function LibrariesPage() {
 
   return (
     <>
-      <AppBar email={user.email} name={user.name} picture={user.picture} />
+      <AppBar name={user.name} picture={user.picture} />
 
       <main className="page-content">
         <div className="page-header">

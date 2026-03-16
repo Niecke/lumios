@@ -5,12 +5,11 @@ import { useMutation } from "@tanstack/react-query";
 import { authApi } from "../api/auth";
 
 interface AppBarProps {
-  email: string;
   name?: string;
   picture?: string;
 }
 
-export function AppBar({ email, name, picture }: AppBarProps) {
+export function AppBar({ name, picture }: AppBarProps) {
   const navigate = useNavigate();
 
   const logout = useMutation({
@@ -24,19 +23,18 @@ export function AppBar({ email, name, picture }: AppBarProps) {
         Lumios
       </Link>
 
-      {picture && (
-        <img
-          className="app-bar__avatar"
-          src={picture}
-          alt=""
-          referrerPolicy="no-referrer"
-        />
-      )}
-      <span className="app-bar__name">{name ?? email}</span>
-
-      <Link to="/account" className="btn btn-text">
-        <span className="material-icons">account_circle</span>
-        Account
+      <Link to="/account" className="btn btn-text app-bar__account-btn">
+        {picture ? (
+          <img
+            className="app-bar__avatar"
+            src={picture}
+            alt=""
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <span className="material-icons">account_circle</span>
+        )}
+        {name ?? "Account"}
       </Link>
 
       <button

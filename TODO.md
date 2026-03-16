@@ -20,15 +20,15 @@
 - [x] deploy storage bucket with terraform
 - [x] deploy backend via Cloud Run
 - [x] deploy frontend via Cloud Run
+- [x] log all exceptions with the logger.exception
+- [x] change the structure for all pictures
+- [x] generate thumbnails
+- [x] generate watermarked pictures
+- [ ] generate a picture for each libs
 - [ ] add debug logs with request bodys
 - [ ] add tests for storage service
 - [ ] add test for library limit
 - [ ] add test for photo limit
-- [x] log all exceptions with the logger.exception
-- [x] change the structure for all pictures
-- [ ] generate a picture for each libs
-- [x] generate thumbnails
-- [x] generate watermarked pictures
 - [ ] migrate from boto3 to google-cloud-storage (boto3 checksum headers break GCS S3 API)
 - [ ] cleanup .env files (consolidate frontend/.env and root .env)
-- [ ] add customer public view
+- [x] add customer public view
