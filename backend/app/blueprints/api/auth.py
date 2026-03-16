@@ -1,6 +1,7 @@
-from flask import Blueprint, current_app, request, jsonify, g
+from flask import Blueprint, current_app, request, jsonify, g, redirect
 from jwt import PyJWKClient
 import jwt
+from urllib.parse import urlencode
 from main import limiter
 from config import GOOGLE_FRONTEND_CLIENT_ID
 from services.auth import login_google, AuthError
@@ -26,13 +27,16 @@ def me():
     user = db.session.execute(
         select(User).filter_by(id=int(payload["sub"]))
     ).scalar_one_or_none()
-    return jsonify(
-        {
-            "email": payload["email"],
-            "roles": payload["roles"],
-            "max_libraries": user.max_libraries if user else None,
-        }
-    )
+    result = {
+        "email": payload["email"],
+        "roles": payload["roles"],
+        "max_libraries": user.max_libraries if user else None,
+    }
+    if payload.get("name"):
+        result["name"] = payload["name"]
+    if payload.get("picture"):
+        result["picture"] = payload["picture"]
+    return jsonify(result)
 
 
 @auth_api.route("/google/verify", methods=["POST"])
@@ -75,7 +79,13 @@ def google_verify():
         return jsonify({"error": e.message}), e.status
 
     roles = [r.name for r in user.roles]
-    token = create_token(user.id, user.email, roles)
+    token = create_token(
+        user.id,
+        user.email,
+        roles,
+        name=idinfo.get("name"),
+        picture=idinfo.get("picture"),
+    )
     return jsonify(
         {
             "token": token,
@@ -84,3 +94,54 @@ def google_verify():
             "max_libraries": user.max_libraries,
         }
     )
+
+
+@auth_api.route("/google/callback", methods=["POST"])
+@limiter.limit("5 per minute")
+def google_callback():
+    """Handle the GIS redirect flow.
+
+    Google POSTs the credential as a form field. We verify it, create a JWT,
+    and redirect back to the frontend login page with the token as a query
+    parameter so the SPA can pick it up.
+    """
+    if not GOOGLE_FRONTEND_CLIENT_ID:
+        return jsonify({"error": "Google login is not configured"}), 501
+
+    credential = request.form.get("credential", "")
+    if not credential:
+        return redirect("/login?" + urlencode({"error": "Missing credential"}))
+
+    try:
+        signing_key = _google_jwks.get_signing_key_from_jwt(credential)
+        idinfo = jwt.decode(
+            credential,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=GOOGLE_FRONTEND_CLIENT_ID,
+            issuer=["https://accounts.google.com", "accounts.google.com"],
+        )
+    except jwt.PyJWTError:
+        current_app.logger.warning("Invalid Google ID token in callback")
+        return redirect("/login?" + urlencode({"error": "Invalid Google token"}))
+    except Exception:
+        current_app.logger.exception("JWKS verification failed in callback")
+        return redirect(
+            "/login?" + urlencode({"error": "Could not verify Google token"})
+        )
+
+    try:
+        user = login_google({"email": idinfo.get("email"), "sub": idinfo.get("sub")})
+    except AuthError as e:
+        current_app.logger.warning("Google login rejected: %s", e.message)
+        return redirect("/login?" + urlencode({"error": e.message}))
+
+    roles = [r.name for r in user.roles]
+    token = create_token(
+        user.id,
+        user.email,
+        roles,
+        name=idinfo.get("name"),
+        picture=idinfo.get("picture"),
+    )
+    return redirect("/login?" + urlencode({"token": token}))

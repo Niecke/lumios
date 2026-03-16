@@ -144,7 +144,7 @@ function LibraryCard({ lib, onRenamed, onDeleted }: LibraryCardProps) {
 
   return (
     <div className="library-card">
-      <Link to="/library/$libraryId" params={{ libraryId: String(lib.id) }} className="library-card__media">
+      <Link to="/library/$libraryUuid" params={{ libraryUuid: lib.uuid }} className="library-card__media">
         <span className="material-icons">photo_library</span>
       </Link>
 
@@ -176,7 +176,7 @@ function LibraryCard({ lib, onRenamed, onDeleted }: LibraryCardProps) {
           </button>
         </form>
       ) : (
-        <Link to="/library/$libraryId" params={{ libraryId: String(lib.id) }} className="library-card__body">
+        <Link to="/library/$libraryUuid" params={{ libraryUuid: lib.uuid }} className="library-card__body">
           <div className="library-card__name" title={lib.name}>
             {lib.name}
           </div>
@@ -241,7 +241,7 @@ function LibrariesPage() {
 
   return (
     <>
-      <AppBar email={user.email} />
+      <AppBar email={user.email} name={user.name} picture={user.picture} />
 
       <main className="page-content">
         <div className="page-header">

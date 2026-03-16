@@ -1,22 +1,13 @@
 // login.tsx — the /login page
 //
-// Authentication is handled entirely in the browser via Google Identity
-// Services (GIS). We render our own button and call prompt() on click —
-// this avoids loading Google's iframe-based button which requires the origin
-// to be verified before the button even appears.
-//
-// GIS calls handleCredential with a signed Google ID token which we forward
-// to the backend (/api/v1/auth/google/verify).
+// Authentication uses Google Identity Services (GIS) in redirect mode.
+// Clicking the Google button redirects to Google, which POSTs the credential
+// to the backend callback endpoint. The backend verifies it, creates a JWT,
+// and redirects back here with ?token=... which the SPA picks up.
 
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { authApi, tokenStore, isGsiInitialized, markGsiInitialized, resetGsiInitialized } from "../api/auth";
-
-interface GsiPromptNotification {
-  isNotDisplayed(): boolean;
-  isSkippedMoment(): boolean;
-  getNotDisplayedReason(): string;
-}
 
 // Minimal type declaration for the GIS library loaded via index.html
 declare global {
@@ -27,10 +18,9 @@ declare global {
           initialize(config: {
             client_id: string;
             callback: (response: { credential: string }) => void;
+            ux_mode?: string;
+            login_uri?: string;
           }): void;
-          prompt(
-            callback?: (notification: GsiPromptNotification) => void
-          ): void;
           renderButton(
             parent: HTMLElement,
             options: {
@@ -46,68 +36,70 @@ declare global {
   }
 }
 
-// GIS initialization flag is managed in auth.ts so that logout can reset it.
-
 export const Route = createFileRoute("/login")({
-  beforeLoad: () => {
-    // Already authenticated → the index route's beforeLoad will verify and
-    // redirect to / on its own; nothing to do here.
-  },
+  beforeLoad: () => {},
   component: LoginPage,
 });
 
 function LoginPage() {
   const router = useRouter();
-  // Keep the callback in a ref so initialize() always calls the latest version
-  // even though it is only registered once.
-  const handleCredentialRef = useRef<
-    ((r: { credential: string }) => void) | undefined
-  >(undefined);
-  const [error, setError] = useState<string | null>(() => {
-    const params = new URLSearchParams(window.location.search);
-    const err = params.get("error");
-    if (err) window.history.replaceState(null, "", window.location.pathname);
-    return err ? err.replace(/_/g, " ") : null;
-  });
+  const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [promptFailed, setPromptFailed] = useState(false);
   const googleBtnRef = useRef<HTMLDivElement>(null);
 
-  async function handleCredential(response: { credential: string }) {
-    // GIS may fire the callback without a credential in error/initialization edge cases
-    if (!response.credential) return;
-    setError(null);
-    setPending(true);
-    try {
-      await authApi.googleVerify(response.credential);
-      router.navigate({ to: "/", replace: true });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Login failed");
-      setPending(false);
-    }
-  }
-
-  // Keep the ref current on every render
-  handleCredentialRef.current = handleCredential;
-
+  // On mount: check for token or error from the redirect callback
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+    const err = params.get("error");
+
+    if (token) {
+      tokenStore.set(token);
+      window.history.replaceState(null, "", "/login");
+      setPending(true);
+      authApi.me().then(
+        () => router.navigate({ to: "/", replace: true }),
+        () => {
+          tokenStore.clear();
+          setError("Session invalid. Please sign in again.");
+          setPending(false);
+        }
+      );
+      return;
+    }
+
+    if (err) {
+      window.history.replaceState(null, "", "/login");
+      setError(err.replace(/_/g, " "));
+    }
+
     if (tokenStore.get()) {
       router.navigate({ to: "/", replace: true });
       return;
     }
 
-    // No valid token — ensure GIS is (re-)initialized so prompt() works.
-    // This handles the case where a session expired without going through
-    // the explicit logout flow (which normally resets the flag).
     resetGsiInitialized();
+
+    const loginUri = `${window.location.origin}/api/v1/auth/google/callback`;
 
     function initGsi() {
       if (!window.google || isGsiInitialized()) return;
       markGsiInitialized();
+
       window.google.accounts.id.initialize({
         client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID as string,
-        callback: (r) => handleCredentialRef.current?.(r),
+        callback: () => {},
+        ux_mode: "redirect",
+        login_uri: loginUri,
       });
+
+      if (googleBtnRef.current) {
+        window.google.accounts.id.renderButton(googleBtnRef.current, {
+          theme: "outline",
+          size: "large",
+          text: "signin_with",
+        });
+      }
     }
 
     if (window.google) {
@@ -121,27 +113,6 @@ function LoginPage() {
     }
   }, [router]);
 
-  function handleGoogleSignIn() {
-    setError(null);
-    window.google?.accounts.id.prompt((notification) => {
-      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        // prompt() suppressed by GIS cooldown — render Google's own button
-        // which opens a full OAuth popup and always works.
-        setPromptFailed(true);
-        // renderButton needs a frame to mount into the newly visible div
-        requestAnimationFrame(() => {
-          if (googleBtnRef.current && window.google) {
-            window.google.accounts.id.renderButton(googleBtnRef.current, {
-              theme: "outline",
-              size: "large",
-              text: "signin_with",
-            });
-          }
-        });
-      }
-    });
-  }
-
   return (
     <main className="login-page">
       <div className="login-box">
@@ -149,12 +120,8 @@ function LoginPage() {
         {error && <div className="flash">{error}</div>}
         {pending ? (
           <p className="login-pending">Signing in…</p>
-        ) : promptFailed ? (
-          <div ref={googleBtnRef} />
         ) : (
-          <button className="btn btn-google" onClick={handleGoogleSignIn}>
-            Sign in with Google
-          </button>
+          <div className="google-btn-wrapper" ref={googleBtnRef} />
         )}
       </div>
     </main>

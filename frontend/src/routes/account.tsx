@@ -5,7 +5,7 @@
 
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { authApi, googleProfileStore, type UserInfo } from "../api/auth";
+import { authApi, type UserInfo } from "../api/auth";
 import { librariesApi } from "../api/libraries";
 import { AppBar } from "../components/AppBar";
 
@@ -38,7 +38,7 @@ function LibraryProgress({ count, max }: LibraryProgressProps) {
       <div className="progress-header">
         <span className="progress-header__label">Libraries</span>
         <span className="progress-header__count">
-          {count} / {max ?? "∞"}
+          {count} / {max ?? "\u221e"}
         </span>
       </div>
       <div className="progress-track">
@@ -62,7 +62,6 @@ function LibraryProgress({ count, max }: LibraryProgressProps) {
 
 function AccountPage() {
   const { user } = Route.useRouteContext() as { user: UserInfo };
-  const profile = googleProfileStore.get();
 
   const { data: libraryData } = useQuery({
     queryKey: ["libraries"],
@@ -72,11 +71,11 @@ function AccountPage() {
   const count = libraryData?.count ?? 0;
   const max = libraryData?.max_libraries ?? user.max_libraries;
 
-  const displayName = profile?.name ?? user.email;
+  const displayName = user.name ?? user.email;
 
   return (
     <>
-      <AppBar email={user.email} />
+      <AppBar email={user.email} name={user.name} picture={user.picture} />
 
       <main className="page-content">
         <div className="page-header">
@@ -86,10 +85,10 @@ function AccountPage() {
         <div className="account-layout">
           <div className="account-card">
             <div className="account-card__header">
-              {profile?.picture ? (
+              {user.picture ? (
                 <img
                   className="account-avatar"
-                  src={profile.picture}
+                  src={user.picture}
                   alt={displayName}
                   referrerPolicy="no-referrer"
                 />
@@ -103,18 +102,6 @@ function AccountPage() {
             </div>
 
             <div className="account-card__body">
-              {profile?.given_name && (
-                <div className="info-row">
-                  <span className="info-row__label">First name</span>
-                  <span>{profile.given_name}</span>
-                </div>
-              )}
-              {profile?.family_name && (
-                <div className="info-row">
-                  <span className="info-row__label">Last name</span>
-                  <span>{profile.family_name}</span>
-                </div>
-              )}
               <div className="info-row">
                 <span className="info-row__label">Roles</span>
                 <span style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
@@ -124,7 +111,7 @@ function AccountPage() {
                           {r}
                         </span>
                       ))
-                    : "—"}
+                    : "\u2014"}
                 </span>
               </div>
             </div>

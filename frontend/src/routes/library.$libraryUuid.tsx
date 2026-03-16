@@ -1,26 +1,27 @@
-// library.$libraryId.tsx — library detail page
+// library.$libraryUuid.tsx — library detail page
 //
-// Shows all photos in a library as a grid.
-// Empty state: full-page drag-and-drop upload zone.
-// Non-empty state: photo grid + drag-and-drop overlay + "Add photos" button.
+// Authenticated photographers see the full management view (upload, delete, share).
+// Unauthenticated visitors see a read-only public gallery.
 
-import { createFileRoute, redirect, Link } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 import { authApi } from "../api/auth";
+import { librariesApi } from "../api/libraries";
 import { imagesApi, type Image } from "../api/images";
+import { publicApi, type PublicImage } from "../api/public";
 import { AppBar } from "../components/AppBar";
 
-export const Route = createFileRoute("/library/$libraryId")({
+export const Route = createFileRoute("/library/$libraryUuid")({
   beforeLoad: async () => {
     try {
       const user = await authApi.me();
-      return { user };
+      return { user, isAuthenticated: true as const };
     } catch {
-      throw redirect({ to: "/login" });
+      return { user: null, isAuthenticated: false as const };
     }
   },
-  component: LibraryDetailPage,
+  component: LibraryPage,
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -31,7 +32,6 @@ const ACCEPTED_EXTS = new Set(["jpg", "jpeg", "png"]);
 function filterFiles(files: FileList | File[]): File[] {
   return Array.from(files).filter((f) => {
     if (ACCEPTED_TYPES.has(f.type)) return true;
-    // Fallback: some OSes/file managers don't set type on drag-and-drop
     const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
     return ACCEPTED_EXTS.has(ext);
   });
@@ -52,7 +52,7 @@ interface UploadItem {
   error?: string;
 }
 
-// ── Image tile ────────────────────────────────────────────────────────────────
+// ── Image tile (authenticated) ────────────────────────────────────────────────
 
 interface ImageTileProps {
   image: Image;
@@ -119,7 +119,7 @@ function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
   );
 }
 
-// ── Lightbox ─────────────────────────────────────────────────────────────────
+// ── Lightbox (authenticated — original + preview) ────────────────────────────
 
 function Lightbox({ image, onClose }: { image: Image; onClose: () => void }) {
   return (
@@ -144,6 +144,25 @@ function Lightbox({ image, onClose }: { image: Image; onClose: () => void }) {
             className="lightbox__img"
           />
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Lightbox (public — preview only) ─────────────────────────────────────────
+
+function PublicLightbox({ image, onClose }: { image: PublicImage; onClose: () => void }) {
+  return (
+    <div className="lightbox" onClick={onClose}>
+      <button className="lightbox__close" onClick={onClose} title="Close">
+        <span className="material-icons">close</span>
+      </button>
+      <div className="lightbox__content" onClick={(e) => e.stopPropagation()}>
+        <img
+          src={image.preview_url}
+          alt={image.filename}
+          className="lightbox__img"
+        />
       </div>
     </div>
   );
@@ -231,28 +250,104 @@ function UploadQueue({ items }: { items: UploadItem[] }) {
   );
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ── Share dialog ──────────────────────────────────────────────────────────────
 
-function LibraryDetailPage() {
-  const { libraryId } = Route.useParams();
-  const { user } = Route.useRouteContext() as { user: { email: string } };
-  const libId = Number(libraryId);
+function ShareDialog({ onClose }: { onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const shareUrl = window.location.href;
+
+  async function copyToClipboard() {
+    await navigator.clipboard.writeText(shareUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <div className="dialog-overlay" onClick={onClose}>
+      <div className="dialog" onClick={(e) => e.stopPropagation()}>
+        <h2>Share Library</h2>
+        <p style={{ marginBottom: "0.75rem", color: "var(--clr-on-surface-var)" }}>
+          Anyone with this link can view the photos in this library.
+        </p>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <input
+            type="text"
+            readOnly
+            value={shareUrl}
+            style={{
+              flex: 1,
+              padding: "0.5rem 0.75rem",
+              border: "1px solid var(--clr-outline)",
+              borderRadius: "0.5rem",
+              fontSize: "0.875rem",
+              background: "var(--clr-background)",
+              color: "var(--clr-on-surface)",
+            }}
+            onFocus={(e) => e.target.select()}
+          />
+          <button className="btn btn-contained" onClick={copyToClipboard}>
+            <span className="material-icons" style={{ fontSize: 18 }}>
+              {copied ? "check" : "content_copy"}
+            </span>
+            {copied ? "Copied!" : "Copy"}
+          </button>
+        </div>
+        <div className="dialog__actions" style={{ marginTop: "0.75rem" }}>
+          <button className="btn btn-text" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Router component — delegates to authenticated or public view ─────────────
+
+function LibraryPage() {
+  const { libraryUuid } = Route.useParams();
+  const { user, isAuthenticated } = Route.useRouteContext() as {
+    user: { email: string; name?: string; picture?: string } | null;
+    isAuthenticated: boolean;
+  };
+
+  if (isAuthenticated && user) {
+    return <AuthenticatedLibraryView libraryUuid={libraryUuid} user={user} />;
+  }
+  return <PublicLibraryView libraryUuid={libraryUuid} />;
+}
+
+// ── Authenticated view (full management) ─────────────────────────────────────
+
+function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; user: { email: string; name?: string; picture?: string } }) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [queue, setQueue] = useState<UploadItem[]>([]);
   const [viewImage, setViewImage] = useState<Image | null>(null);
+  const [showShare, setShowShare] = useState(false);
+
+  const { data: library } = useQuery({
+    queryKey: ["library", libraryUuid],
+    queryFn: () => librariesApi.getByUuid(libraryUuid),
+  });
+
+  const libId = library?.id;
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["images", libId],
-    queryFn: () => imagesApi.list(libId),
+    queryFn: () => imagesApi.list(libId!),
+    enabled: libId !== undefined,
   });
 
   function invalidate() {
-    queryClient.invalidateQueries({ queryKey: ["images", libId] });
+    if (libId !== undefined) {
+      queryClient.invalidateQueries({ queryKey: ["images", libId] });
+    }
   }
 
   async function handleFiles(files: File[]) {
+    if (libId === undefined) return;
     const newItems: UploadItem[] = files.map((f) => ({
       id: crypto.randomUUID(),
       file: f,
@@ -286,7 +381,7 @@ function LibraryDetailPage() {
 
   return (
     <>
-      <AppBar email={user.email} />
+      <AppBar email={user.email} name={user.name} picture={user.picture} />
 
       <main className="page-content">
         <div className="page-header">
@@ -297,21 +392,26 @@ function LibraryDetailPage() {
             <h1>Photos</h1>
           </div>
 
-          {hasImages && (
-            <button className="btn btn-contained" onClick={() => fileInputRef.current?.click()}>
-              <span className="material-icons">add_photo_alternate</span>
-              Add photos
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button className="btn btn-outlined" onClick={() => setShowShare(true)}>
+              <span className="material-icons">share</span>
+              Share
             </button>
-          )}
+            {hasImages && (
+              <button className="btn btn-contained" onClick={() => fileInputRef.current?.click()}>
+                <span className="material-icons">add_photo_alternate</span>
+                Add photos
+              </button>
+            )}
+          </div>
         </div>
 
         {data && (
           <p className="library-count-hint">
-            {data.count} of {data.max_images_per_library ?? "∞"} photos
+            {data.count} of {data.max_images_per_library ?? "\u221e"} photos
           </p>
         )}
 
-        {/* Hidden file input for the "Add photos" button */}
         <input
           ref={fileInputRef}
           type="file"
@@ -347,7 +447,7 @@ function LibraryDetailPage() {
           <DropZone onFiles={handleFiles} compact />
         )}
 
-        {hasImages && (
+        {hasImages && libId !== undefined && (
           <div className="photo-grid">
             {images.map((img) => (
               <ImageTile
@@ -363,6 +463,71 @@ function LibraryDetailPage() {
 
         {viewImage && (
           <Lightbox image={viewImage} onClose={() => setViewImage(null)} />
+        )}
+      </main>
+
+      {showShare && <ShareDialog onClose={() => setShowShare(false)} />}
+    </>
+  );
+}
+
+// ── Public view (read-only gallery) ──────────────────────────────────────────
+
+function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
+  const [viewImage, setViewImage] = useState<PublicImage | null>(null);
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["public-library", libraryUuid],
+    queryFn: () => publicApi.getLibrary(libraryUuid),
+  });
+
+  return (
+    <>
+      <header className="app-bar">
+        <div className="app-bar__title">
+          {data?.library.name ?? "Library"}
+        </div>
+      </header>
+
+      <main className="page-content">
+        {isLoading && (
+          <div className="photo-grid">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="skeleton photo-tile photo-tile--skeleton" />
+            ))}
+          </div>
+        )}
+
+        {isError && (
+          <div className="alert alert--error">Library not found or unavailable.</div>
+        )}
+
+        {!isLoading && !isError && data && data.images.length === 0 && (
+          <div className="empty-state">
+            <span className="material-icons">photo_library</span>
+            <p>No photos in this library yet.</p>
+          </div>
+        )}
+
+        {!isLoading && !isError && data && data.images.length > 0 && (
+          <div className="photo-grid">
+            {data.images.map((img) => (
+              <div key={img.uuid} className="photo-tile">
+                <img
+                  src={img.thumb_url}
+                  alt={img.filename}
+                  className="photo-tile__img"
+                  loading="lazy"
+                  onClick={() => setViewImage(img)}
+                  style={{ cursor: "pointer" }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {viewImage && (
+          <PublicLightbox image={viewImage} onClose={() => setViewImage(null)} />
         )}
       </main>
     </>

@@ -40,6 +40,9 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 export const librariesApi = {
   list: () => apiFetch<LibraryList>("/api/v1/libraries"),
 
+  getByUuid: (uuid: string) =>
+    apiFetch<Library>(`/api/v1/libraries/uuid/${uuid}`),
+
   create: (name: string) =>
     apiFetch<Library>("/api/v1/libraries", {
       method: "POST",
