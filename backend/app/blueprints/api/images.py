@@ -31,7 +31,9 @@ def _build_watermark_tile() -> PilImage.Image:
     """Build a small RGBA tile with the watermark pattern, created once at import."""
     font_size = 40
     try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+        font = ImageFont.truetype(
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size
+        )
     except OSError:
         font = ImageFont.load_default(size=font_size)
 
@@ -51,10 +53,17 @@ def _build_watermark_tile() -> PilImage.Image:
 
     # Row 1: aligned left
     y1 = font_size * 2
-    draw.text((0, y1), WATERMARK_TEXT, font=font, fill=(255, 255, 255, WATERMARK_OPACITY))
+    draw.text(
+        (0, y1), WATERMARK_TEXT, font=font, fill=(255, 255, 255, WATERMARK_OPACITY)
+    )
     # Row 2: offset half a cell for staggered look
     y2 = y1 + text_h + font_size * 4
-    draw.text((tile_w // 2, y2), WATERMARK_TEXT, font=font, fill=(255, 255, 255, WATERMARK_OPACITY))
+    draw.text(
+        (tile_w // 2, y2),
+        WATERMARK_TEXT,
+        font=font,
+        fill=(255, 255, 255, WATERMARK_OPACITY),
+    )
 
     # Rotate the tile for diagonal appearance
     tile = tile.rotate(30, resample=PilImage.Resampling.BILINEAR, expand=True)
@@ -70,7 +79,9 @@ def _create_watermarked_preview(pil_img: PilImage.Image) -> io.BytesIO:
     w, h = pil_img.size
     ratio = min(PREVIEW_MAX_PX / w, PREVIEW_MAX_PX / h, 1.0)
     new_w, new_h = int(w * ratio), int(h * ratio)
-    preview = pil_img.resize((new_w, new_h), PilImage.Resampling.LANCZOS).convert("RGBA")
+    preview = pil_img.resize((new_w, new_h), PilImage.Resampling.LANCZOS).convert(
+        "RGBA"
+    )
     w, h = preview.size
 
     # Tile the pre-built watermark across the image
@@ -197,6 +208,9 @@ def upload_image(library_id: int):
         pil_img = PilImage.open(io.BytesIO(file_data))
         width, height = pil_img.size
     except Exception:
+        current_app.logger.exception(
+            "Uploaded file is not a valid image: %s", file.filename
+        )
         return jsonify({"error": "File is not a valid image"}), 415
 
     # Generate 300px thumbnail
@@ -250,11 +264,16 @@ def upload_image(library_id: int):
     original_url = storage.get_presigned_url(original_path)
     preview_url = storage.get_presigned_url(preview_path)
     thumb_url = storage.get_presigned_url(thumb_path)
-    return jsonify(image.to_dict(
-        original_url=original_url,
-        preview_url=preview_url,
-        thumb_url=thumb_url,
-    )), 201
+    return (
+        jsonify(
+            image.to_dict(
+                original_url=original_url,
+                preview_url=preview_url,
+                thumb_url=thumb_url,
+            )
+        ),
+        201,
+    )
 
 
 @images_api.route("/<int:library_id>/images/<int:image_id>", methods=["DELETE"])
