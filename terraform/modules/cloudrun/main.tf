@@ -45,6 +45,12 @@ resource "google_secret_manager_secret_iam_member" "cloudrun_google_frontend_cli
   member    = "serviceAccount:${google_service_account.cloudrun.email}"
 }
 
+resource "google_project_iam_member" "cloudrun_trace_agent" {
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${google_service_account.cloudrun.email}"
+}
+
 resource "google_storage_bucket_iam_member" "cloudrun_photos" {
   bucket = var.photos_bucket_name
   role   = "roles/storage.objectAdmin"
@@ -201,6 +207,14 @@ resource "google_cloud_run_v2_service" "backend" {
             version = "latest"
           }
         }
+      }
+      env {
+        name  = "CLOUD_TRACE_ENABLED"
+        value = "true"
+      }
+      env {
+        name  = "GOOGLE_CLOUD_PROJECT"
+        value = var.project_id
       }
       env {
         name  = "S3_ENDPOINT_URL"

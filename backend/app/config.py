@@ -82,6 +82,18 @@ S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "").strip()
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "").strip()
 S3_BUCKET = os.getenv("S3_BUCKET", "lumios")
 
+# Cloud Trace via OpenTelemetry (optional — disabled by default)
+CLOUD_TRACE_ENABLED = os.getenv("CLOUD_TRACE_ENABLED", "false").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+CLOUD_TRACE_SERVICE = os.getenv("CLOUD_TRACE_SERVICE", "lumios-backend")
+CLOUD_TRACE_SERVICE_VERSION = os.getenv("CLOUD_TRACE_SERVICE_VERSION", GIT_HASH)
+# When set, traces are exported via OTLP to this endpoint (e.g. Jaeger) instead of Cloud Trace
+OTEL_EXPORTER_ENDPOINT = os.getenv("OTEL_EXPORTER_ENDPOINT", "")
+
 # FAIL-FAST: Check required vars
 REQUIRED_VARS = ["POSTGRES_PASSWORD", "SECRET_KEY", "JWT_SECRET"]
 missing = [var for var in REQUIRED_VARS if not os.getenv(var)]

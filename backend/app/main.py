@@ -17,6 +17,11 @@ from config import (
     GOOGLE_CLIENT_SECRET,
     MAX_CONTENT_LENGTH,
     GIT_HASH,
+    CLOUD_TRACE_ENABLED,
+    GOOGLE_CLOUD_PROJECT,
+    CLOUD_TRACE_SERVICE,
+    CLOUD_TRACE_SERVICE_VERSION,
+    OTEL_EXPORTER_ENDPOINT,
 )
 from models import User
 from current_user import current_user
@@ -45,8 +50,52 @@ else:
 oauth = OAuth()
 
 
+def _init_cloud_trace(app: Flask) -> None:
+    """Set up OpenTelemetry tracing with Cloud Trace or OTLP (Jaeger) exporter."""
+    if not CLOUD_TRACE_ENABLED:
+        return
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.instrumentation.flask import FlaskInstrumentor
+
+    resource = Resource.create(
+        {
+            "service.name": CLOUD_TRACE_SERVICE,
+            "service.version": CLOUD_TRACE_SERVICE_VERSION,
+        }
+    )
+    provider = TracerProvider(resource=resource)
+
+    if OTEL_EXPORTER_ENDPOINT:
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+            OTLPSpanExporter,
+        )
+
+        exporter = OTLPSpanExporter(endpoint=OTEL_EXPORTER_ENDPOINT, insecure=True)
+    else:
+        from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
+
+        exporter = CloudTraceSpanExporter(project_id=GOOGLE_CLOUD_PROJECT or None)
+
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+    trace.set_tracer_provider(provider)
+    FlaskInstrumentor().instrument_app(app)
+
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+
+    SQLAlchemyInstrumentor().instrument()
+
+
 def create_app(test_config=None):
     app = Flask(__name__)
+
+    _init_cloud_trace(app)
+    app.logger.info(
+        f"Cloud Trace: {'enabled' if CLOUD_TRACE_ENABLED else 'disabled'}",
+        extra={"log_type": "startup"},
+    )
 
     if DEBUG:
         app.config["DEBUG"] = True  # Auto-reloads templates!

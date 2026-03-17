@@ -15,11 +15,13 @@ password_hasher = PasswordHasher(
 
 
 # Hash password
+# TODO: unused?
 def hash_password(password):
     return password_hasher.hash(password)
 
 
 # Verify password
+# TODO: unused?
 def verify_password(password, password_hash):
     try:
         password_hasher.verify(password_hash, password)
