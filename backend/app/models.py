@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from flask_migrate import Migrate
 import enum
 import uuid as uuid_module
+from tracing import traced
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -14,6 +15,7 @@ migrate = Migrate()
 class CustomerState(enum.Enum):
     none = "none"
     liked = "liked"
+
 
 roles_users = db.Table(
     "roles_users",
@@ -59,6 +61,7 @@ class User(db.Model):
         self.account_type = "local"
         self.auth_string = hash_password(password)
 
+    @traced()
     def verify_password(self, password):
         if self.account_type != "local" or not self.auth_string:
             return False
@@ -130,9 +133,7 @@ class Image(db.Model):
     )
     deleted_at = db.Column(db.DateTime, nullable=True)
 
-    library = db.relationship(
-        "Library", backref=db.backref("images", lazy="dynamic")
-    )
+    library = db.relationship("Library", backref=db.backref("images", lazy="dynamic"))
 
     def storage_path(self, variant: str = "originals") -> str:
         """Build full GCS key for a variant: originals, previews, or thumbs.
@@ -140,7 +141,9 @@ class Image(db.Model):
         s3_key stores: {uuid}.{ext}
         Returns:       photos/{photographer_id}/{library_id}/{variant}/{uuid}.{ext}
         """
-        return f"photos/{self.library.user_id}/{self.library_id}/{variant}/{self.s3_key}"
+        return (
+            f"photos/{self.library.user_id}/{self.library_id}/{variant}/{self.s3_key}"
+        )
 
     def to_dict(
         self,
@@ -162,4 +165,3 @@ class Image(db.Model):
             "preview_url": preview_url,
             "thumb_url": thumb_url,
         }
-

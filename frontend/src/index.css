@@ -765,7 +765,7 @@ body {
 .photo-tile__like--active {
   color: var(--clr-error);
 }
-@media (hover: none) {
+@media (hover: none), (pointer: coarse) {
   .photo-tile__like { opacity: 1; }
 }
 .photo-tile__like:hover:not(:disabled) {
