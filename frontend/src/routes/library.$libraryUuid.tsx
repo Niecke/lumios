@@ -405,6 +405,12 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
               <span className="material-icons" style={{ fontSize: 20 }}>arrow_back</span>
             </Link>
             <h1>Photos</h1>
+            {library?.finished_at && (
+              <span className="reviewed-chip">
+                <span className="material-icons">check_circle</span>
+                Reviewed
+              </span>
+            )}
           </div>
 
           <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -508,6 +514,8 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
   const queryClient = useQueryClient();
   const [viewImage, setViewImage] = useState<PublicImage | null>(null);
   const [showLikedOnly, setShowLikedOnly] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
+  const [finishing, setFinishing] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["public-library", libraryUuid],
@@ -519,10 +527,25 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
     [data]
   );
 
+  const isFinished = data?.library.finished_at != null;
+
   async function toggleLike(img: PublicImage) {
     const newState = img.customer_state === "liked" ? "none" : "liked";
     await publicApi.setCustomerState(libraryUuid, img.uuid, newState);
     queryClient.invalidateQueries({ queryKey: ["public-library", libraryUuid] });
+  }
+
+  async function handleFinish() {
+    setFinishError(null);
+    setFinishing(true);
+    try {
+      await publicApi.finishLibrary(libraryUuid);
+      queryClient.invalidateQueries({ queryKey: ["public-library", libraryUuid] });
+    } catch (err) {
+      setFinishError(err instanceof Error ? err.message : "Failed to mark as complete");
+    } finally {
+      setFinishing(false);
+    }
   }
 
   return (
@@ -532,6 +555,12 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
         <div className="app-bar__title">
           {data?.library.name ?? "Library"}
         </div>
+        {isFinished && (
+          <span className="reviewed-chip">
+            <span className="material-icons">check_circle</span>
+            Reviewed
+          </span>
+        )}
         {(likedCount > 0 || showLikedOnly) && (
           <button
             className={`btn ${showLikedOnly ? "btn-tonal" : "btn-outlined"}`}
@@ -541,11 +570,27 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
             {likedCount}
           </button>
         )}
+        {!isFinished && likedCount > 0 && (
+          <button
+            className="btn btn-contained"
+            onClick={handleFinish}
+            disabled={finishing}
+            title="Mark your selection as complete"
+          >
+            <span className="material-icons">done_all</span>
+            {finishing ? "Submitting…" : "Done selecting"}
+          </button>
+        )}
         <a className="btn btn-text" href="/login" target="_blank" rel="noopener noreferrer">
           <span className="material-icons">login</span>
           Login
         </a>
       </header>
+      {finishError && (
+        <div className="alert alert--error" style={{ margin: "0.5rem 1.5rem" }}>
+          {finishError}
+        </div>
+      )}
 
       <main className="page-content">
         {isLoading && (

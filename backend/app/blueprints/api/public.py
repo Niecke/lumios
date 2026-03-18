@@ -1,7 +1,8 @@
 from flask import Blueprint, jsonify, request
-from models import db, Library, Image, CustomerState
+from models import db, Library, Image, CustomerState, Notification, NotificationType
 from sqlalchemy import select
 from services import storage
+from datetime import datetime, timezone
 
 public_api = Blueprint("public_api", __name__, url_prefix="/public")
 
@@ -45,6 +46,7 @@ def get_public_library(library_uuid: str):
             "library": {
                 "uuid": library.uuid,
                 "name": library.name,
+                "finished_at": library.finished_at.isoformat() if library.finished_at else None,
             },
             "images": image_dicts,
             "count": len(image_dicts),
@@ -86,3 +88,46 @@ def update_customer_state(library_uuid: str, image_uuid: str):
     image.customer_state = state
     db.session.commit()
     return jsonify({"uuid": image.uuid, "customer_state": state.value})
+
+
+@public_api.route("/libraries/<library_uuid>/finish", methods=["POST"])
+def finish_library(library_uuid: str):
+    library = db.session.execute(
+        select(Library).where(
+            Library.uuid == library_uuid,
+            Library.deleted_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if library is None:
+        return jsonify({"error": "Library not found"}), 404
+
+    if library.finished_at is not None:
+        return jsonify({"error": "Library is already marked as finished"}), 409
+
+    liked_count = db.session.execute(
+        select(db.func.count())
+        .select_from(Image)
+        .where(
+            Image.library_id == library.id,
+            Image.deleted_at.is_(None),
+            Image.customer_state == CustomerState.liked,
+        )
+    ).scalar()
+
+    if liked_count == 0:
+        return jsonify({"error": "You must like at least one photo before finishing"}), 422
+
+    library.finished_at = datetime.now(timezone.utc)
+
+    notification = Notification(
+        type=NotificationType.library_marked,
+        user_id=library.user_id,
+        related_object=library.uuid,
+    )
+    db.session.add(notification)
+    db.session.commit()
+
+    return jsonify({
+        "uuid": library.uuid,
+        "finished_at": library.finished_at.isoformat(),
+    })

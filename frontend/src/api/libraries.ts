@@ -8,6 +8,7 @@ export interface Library {
   name: string;
   created_at: string;
   archived_at: string | null;
+  finished_at: string | null;
 }
 
 export interface LibraryList {
