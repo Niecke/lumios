@@ -48,6 +48,14 @@ services:
       retries: 5
     restart: unless-stopped
 
+  jaeger:
+    image: docker.io/jaegertracing/jaeger:2.16.0
+    container_name: lumios-jaeger
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC
+    restart: unless-stopped
+
   backend:
     build: backend/.
     container_name: lumios-backend
