@@ -17,6 +17,10 @@ class CustomerState(enum.Enum):
     liked = "liked"
 
 
+class NotificationType(enum.Enum):
+    library_marked = "library_marked"
+
+
 roles_users = db.Table(
     "roles_users",
     db.Column("user_id", db.Integer(), db.ForeignKey("user.id")),
@@ -91,6 +95,7 @@ class Library(db.Model):
     )
     archived_at = db.Column(db.DateTime, nullable=True)
     deleted_at = db.Column(db.DateTime, nullable=True)
+    finished_at = db.Column(db.DateTime, nullable=True)
 
     photographer = db.relationship(
         "User", backref=db.backref("libraries", lazy="dynamic")
@@ -103,6 +108,7 @@ class Library(db.Model):
             "name": self.name,
             "created_at": self.created_at.isoformat(),
             "archived_at": self.archived_at.isoformat() if self.archived_at else None,
+            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
         }
 
 
@@ -164,4 +170,31 @@ class Image(db.Model):
             "original_url": original_url,
             "preview_url": preview_url,
             "thumb_url": thumb_url,
+        }
+
+
+class Notification(db.Model):
+    id = db.Column(db.Integer(), primary_key=True)
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    seen_at = db.Column(db.DateTime, nullable=True)
+    type = db.Column(
+        db.Enum(NotificationType, name="notificationtype"),
+        nullable=False,
+    )
+    user_id = db.Column(db.Integer(), db.ForeignKey("user.id"), nullable=False)
+    related_object = db.Column(db.String(255), nullable=True)
+
+    user = db.relationship(
+        "User", backref=db.backref("notifications", lazy="dynamic")
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "type": self.type.value,
+            "created_at": self.created_at.isoformat(),
+            "seen_at": self.seen_at.isoformat() if self.seen_at else None,
+            "related_object": self.related_object,
         }
