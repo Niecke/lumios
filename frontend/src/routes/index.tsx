@@ -180,7 +180,15 @@ function LibraryCard({ lib, onRenamed, onDeleted }: LibraryCardProps) {
           <div className="library-card__name" title={lib.name}>
             {lib.name}
           </div>
-          <div className="library-card__meta">Created {formatDate(lib.created_at)}</div>
+          <div className="library-card__meta">
+            Created {formatDate(lib.created_at)}
+            {lib.finished_at && (
+              <span className="reviewed-chip">
+                <span className="material-icons">check_circle</span>
+                Reviewed
+              </span>
+            )}
+          </div>
         </Link>
       )}
 

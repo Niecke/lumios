@@ -14,6 +14,7 @@ export interface PublicLibrary {
   library: {
     uuid: string;
     name: string;
+    finished_at: string | null;
   };
   images: PublicImage[];
   count: number;
@@ -53,5 +54,25 @@ export const publicApi = {
       );
     }
     return data as { uuid: string; customer_state: string };
+  },
+
+  finishLibrary: async (
+    libraryUuid: string
+  ): Promise<{ uuid: string; finished_at: string }> => {
+    const res = await fetch(
+      `/api/v1/public/libraries/${libraryUuid}/finish`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+    const contentType = res.headers.get("content-type") ?? "";
+    const data = contentType.includes("application/json") ? await res.json() : null;
+    if (!res.ok) {
+      throw new Error(
+        (data as { error?: string } | null)?.error ?? `Request failed (${res.status})`
+      );
+    }
+    return data as { uuid: string; finished_at: string };
   },
 };

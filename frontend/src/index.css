@@ -75,10 +75,17 @@ body {
 }
 
 .app-bar__title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 1.1rem;
   font-weight: 500;
   color: var(--clr-on-surface-var);
-  margin-right: auto;
+  pointer-events: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-bar__brand {
@@ -106,6 +113,139 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── Notification bell & dropdown ─────────────────── */
+.notification-wrapper {
+  position: relative;
+}
+
+.notification-bell {
+  position: relative;
+}
+
+.notification-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--clr-error);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.notification-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 340px;
+  max-height: 420px;
+  background: var(--clr-surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--dp4);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  animation: slide-up 150ms ease;
+  overflow: hidden;
+}
+
+.notification-dropdown__header {
+  padding: 0.75rem 1rem;
+  font-weight: 500;
+  font-size: 0.95rem;
+  border-bottom: 1px solid var(--clr-outline);
+}
+
+.notification-dropdown__empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--clr-on-surface-var);
+  font-size: 0.875rem;
+}
+
+.notification-dropdown__list {
+  overflow-y: auto;
+  max-height: 360px;
+}
+
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.7rem 1rem;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--transition);
+  border-bottom: 1px solid var(--clr-outline);
+}
+.notification-item:last-child { border-bottom: none; }
+.notification-item:hover { background: var(--clr-primary-50); }
+
+.notification-item--unseen {
+  background: var(--clr-primary-100);
+}
+.notification-item--unseen:hover {
+  background: var(--clr-primary-light);
+}
+
+.notification-item__icon {
+  font-size: 20px;
+  color: var(--clr-primary);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.notification-item__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.notification-item__text {
+  font-size: 0.84rem;
+  color: var(--clr-on-surface);
+  line-height: 1.35;
+}
+
+.notification-item__time {
+  font-size: 0.72rem;
+  color: var(--clr-on-surface-var);
+}
+
+/* ── Reviewed chip ─────────────────────────────────── */
+.reviewed-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.1rem 0.55rem 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  line-height: 1.4;
+  vertical-align: middle;
+  margin-left: 0.4rem;
+}
+.reviewed-chip .material-icons {
+  font-size: 14px;
+  color: #16a34a;
 }
 
 /* ── Buttons ───────────────────────────────────────── */
