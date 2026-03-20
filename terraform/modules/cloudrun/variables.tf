@@ -74,12 +74,17 @@ variable "landingpage_image" {
 }
 
 variable "public_base_url" {
-  description = "Public base URL of the Cloud Run service"
+  description = "Public base URL of the backend (used for CORS, callbacks, etc.)"
   type        = string
 }
 
 variable "frontend_url" {
   description = "Public URL of the frontend app (used for redirects after OAuth callbacks)"
+  type        = string
+}
+
+variable "landingpage_domain" {
+  description = "Custom domain for the landing page (e.g. lumios.niecke-it.de)"
   type        = string
 }
 
