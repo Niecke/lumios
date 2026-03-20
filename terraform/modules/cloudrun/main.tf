@@ -99,6 +99,12 @@ resource "google_cloud_run_v2_service" "backend" {
   ingress             = "INGRESS_TRAFFIC_ALL"
   deletion_protection = false
 
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+    ]
+  }
+
   template {
     service_account = google_service_account.cloudrun.email
 
@@ -266,6 +272,12 @@ resource "google_cloud_run_v2_service" "frontend" {
   ingress             = "INGRESS_TRAFFIC_ALL"
   deletion_protection = false
 
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+    ]
+  }
+
   template {
     scaling {
       max_instance_count = 2
@@ -283,6 +295,43 @@ resource "google_cloud_run_v2_service" "frontend" {
         limits = {
           cpu    = "1"
           memory = "512Mi"
+        }
+      }
+    }
+  }
+}
+
+resource "google_cloud_run_v2_service_iam_member" "landingpage_public" {
+  name     = google_cloud_run_v2_service.landingpage.name
+  location = google_cloud_run_v2_service.landingpage.location
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+resource "google_cloud_run_v2_service" "landingpage" {
+  name                = "lumios-landingpage"
+  location            = var.region
+  ingress             = "INGRESS_TRAFFIC_ALL"
+  deletion_protection = false
+
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+    ]
+  }
+
+  template {
+    scaling {
+      max_instance_count = 2
+    }
+
+    containers {
+      image = var.landingpage_image
+
+      resources {
+        limits = {
+          cpu    = "1"
+          memory = "256Mi"
         }
       }
     }

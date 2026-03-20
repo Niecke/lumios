@@ -16,16 +16,7 @@ permissions:
   pull-requests: write  # required to post plan as PR comment
 
 jobs:
-  build-backend:
-    uses: ./.github/workflows/docker-backend.yml
-    secrets: inherit
-
-  build-frontend:
-    uses: ./.github/workflows/docker-frontend.yml
-    secrets: inherit
-
   terraform:
-    needs: [build-backend, build-frontend]
     name: ${{ github.event_name == 'pull_request' && 'Plan' || 'Apply' }}
     runs-on: ubuntu-latest
     environment: prod
