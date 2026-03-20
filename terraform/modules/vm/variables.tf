@@ -22,7 +22,7 @@ variable "machine_type" {
 variable "disk_size_gb" {
   description = "Size of the persistent data disk in GB"
   type        = number
-  default     = 50
+  default     = 10
 }
 
 variable "postgres_password_secret_id" {

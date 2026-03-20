@@ -5,7 +5,7 @@ resource "google_service_account" "vm" {
 
 resource "google_compute_disk" "data" {
   name = "lumios-data"
-  type = "pd-ssd"
+  type = "pd-standard"
   zone = var.zone
   size = var.disk_size_gb
 }
