@@ -14,29 +14,27 @@ notifications_api = Blueprint(
 @require_api_role("photographer")
 def list_notifications():
     user_id = int(g.token_payload["sub"])
-    notifications = (
-        db.session.execute(
-            select(Notification)
-            .where(Notification.user_id == user_id)
-            .order_by(Notification.created_at.desc())
-            .limit(50)
+    rows = db.session.execute(
+        select(Notification, Library.name)
+        .outerjoin(
+            Library,
+            (Library.uuid == Notification.related_object)
+            & (Library.user_id == user_id),
         )
-        .scalars()
-        .all()
-    )
+        .where(Notification.user_id == user_id)
+        .order_by(Notification.created_at.desc())
+        .limit(50)
+    ).all()
 
     result = []
-    for n in notifications:
+    unseen_count = 0
+    for n, library_name in rows:
         entry = n.to_dict()
-        if n.related_object:
-            library = db.session.execute(
-                select(Library).where(Library.uuid == n.related_object)
-            ).scalar_one_or_none()
-            if library:
-                entry["library_name"] = library.name
+        if library_name:
+            entry["library_name"] = library_name
+        if n.seen_at is None:
+            unseen_count += 1
         result.append(entry)
-
-    unseen_count = sum(1 for n in notifications if n.seen_at is None)
 
     return jsonify({
         "notifications": result,
