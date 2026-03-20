@@ -28,20 +28,29 @@ from current_user import current_user
 from flask_talisman import Talisman
 from flask_wtf.csrf import CSRFProtect
 from flask_session import Session
+from flask import request as _request
 from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
+
+
+def _get_real_ip() -> str:
+    """Extract client IP from X-Forwarded-For (trusted behind Cloud Run / Nginx)."""
+    forwarded = _request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return _request.remote_addr
+
 
 csrf = CSRFProtect()
 server_session = Session()
 if REDIS_URL:
     limiter = Limiter(
-        key_func=get_remote_address,
+        key_func=_get_real_ip,
         default_limits=["10 per second"],
         storage_uri=REDIS_URL,
     )
 else:
     limiter = Limiter(
-        key_func=get_remote_address,
+        key_func=_get_real_ip,
         default_limits=["10 per second"],
         storage_uri="memory://",
     )
