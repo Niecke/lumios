@@ -19,6 +19,9 @@ def require_role(role_name):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return redirect(url_for("auth.login"))
+
             if not current_user.has_role(role_name):
                 flash("Access denied.", "error")
                 return redirect(url_for("auth.login"))
