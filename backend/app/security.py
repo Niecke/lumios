@@ -31,10 +31,17 @@ def require_role(role_name):
 
 
 def require_api_auth(f):
-    """JWT Bearer token auth for the JSON API. Sets g.token_payload on success."""
+    """JWT Bearer token auth for the JSON API. Sets g.token_payload on success.
+
+    After decoding the token, the user is loaded from the database to verify
+    they are still active and to refresh their roles (so that role changes
+    and deactivations take effect immediately, not after token expiry).
+    """
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        from models import db, User
+
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
             return jsonify({"error": "Unauthorized"}), 401
@@ -47,6 +54,14 @@ def require_api_auth(f):
         except jwt.PyJWTError:
             current_app.logger.warning("Invalid JWT from %s", request.remote_addr)
             return jsonify({"error": "Invalid token"}), 401
+
+        user = db.session.get(User, int(g.token_payload["sub"]))
+        if not user or not user.is_authenticated:
+            return jsonify({"error": "Account deactivated"}), 401
+
+        # Refresh roles from the database so require_api_role checks live state
+        g.token_payload["roles"] = [r.name for r in user.roles]
+
         return f(*args, **kwargs)
 
     return decorated_function
