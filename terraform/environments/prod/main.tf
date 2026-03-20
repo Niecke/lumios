@@ -47,6 +47,7 @@ module "cloudrun" {
   subnet_id                           = module.network.subnet_id
   image                               = "europe-west1-docker.pkg.dev/${var.project_id}/lumios/backend:latest"
   frontend_image                      = "europe-west1-docker.pkg.dev/${var.project_id}/lumios/frontend:latest"
+  landingpage_image                   = "europe-west1-docker.pkg.dev/${var.project_id}/lumios/landingpage:latest"
   vm_internal_ip                      = module.vm.internal_ip
   photos_bucket_name                  = module.storage.photos_bucket_name
   postgres_password_secret_id         = module.secrets.postgres_password_secret_id

@@ -68,6 +68,11 @@ variable "frontend_image" {
   type        = string
 }
 
+variable "landingpage_image" {
+  description = "Full container image URL for the landing page including tag"
+  type        = string
+}
+
 variable "public_base_url" {
   description = "Public base URL of the Cloud Run service"
   type        = string
