@@ -291,6 +291,11 @@ resource "google_cloud_run_v2_service" "frontend" {
         value = var.public_base_url
       }
 
+      env {
+        name  = "BACKEND_HOST"
+        value = replace(var.public_base_url, "https://", "")
+      }
+
       resources {
         limits = {
           cpu    = "1"
