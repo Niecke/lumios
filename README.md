@@ -157,6 +157,11 @@ gcloud projects add-iam-policy-binding <PROJECT_ID> \
   --member="serviceAccount:terraform@<PROJECT_ID>.iam.gserviceaccount.com" \
   --role="roles/run.admin"
 
+# Monitoring
+gcloud projects add-iam-policy-binding <PROJECT_ID> \
+  --member="serviceAccount:terraform@<PROJECT_ID>.iam.gserviceaccount.com" \
+  --role="roles/monitoring.editor"
+
 gcloud services enable iamcredentials.googleapis.com
 
 gcloud services enable cloudresourcemanager.googleapis.com
