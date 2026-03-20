@@ -58,7 +58,7 @@ header .container {
     letter-spacing: -0.02em;
 }
 
-nav a {
+.nav-links a {
     color: var(--clr-on-surface-var);
     text-decoration: none;
     margin-left: 32px;
@@ -66,25 +66,33 @@ nav a {
     transition: color var(--transition);
 }
 
-nav a:hover {
+.nav-links a:hover {
     color: var(--clr-on-surface);
 }
 
-nav a.nav-login {
-    display: inline-block;
-    background: var(--clr-primary);
-    color: #fff;
-    padding: 8px 24px;
+.nav-login {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: transparent;
+    color: var(--clr-primary);
+    padding: 0 0.75rem;
+    height: 40px;
     border-radius: var(--radius-xl);
+    font-size: 0.875rem;
     font-weight: 500;
-    box-shadow: var(--dp1);
-    transition: background var(--transition), box-shadow var(--transition);
+    letter-spacing: 0.015em;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background var(--transition);
 }
 
-nav a.nav-login:hover {
-    background: var(--clr-primary-dark);
-    color: #fff;
-    box-shadow: var(--dp2);
+.nav-login:hover {
+    background: rgba(249, 115, 22, .08);
+}
+
+.nav-login .material-icons {
+    font-size: 18px;
 }
 
 /* Beta banner */
@@ -368,7 +376,7 @@ footer a:hover {
         font-size: 1rem;
     }
 
-    nav a {
-        margin-left: 16px;
+    .nav-links {
+        display: none;
     }
 }

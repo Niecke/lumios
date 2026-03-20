@@ -64,3 +64,14 @@ module "cloudrun" {
 
   depends_on = [module.apis, module.network, module.vm, module.secrets, module.storage]
 }
+
+module "monitoring" {
+  source             = "../../modules/monitoring"
+  project_id         = var.project_id
+  notification_email = "daniel@niecke-it.de"
+  backend_domain     = "backend.lumios.niecke-it.de"
+  frontend_domain    = "app.lumios.niecke-it.de"
+  landingpage_domain = "lumios.niecke-it.de"
+
+  depends_on = [module.apis, module.cloudrun]
+}
