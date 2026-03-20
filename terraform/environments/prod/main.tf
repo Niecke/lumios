@@ -66,12 +66,13 @@ module "cloudrun" {
 }
 
 module "monitoring" {
-  source             = "../../modules/monitoring"
-  project_id         = var.project_id
-  notification_email = "daniel@niecke-it.de"
-  backend_domain     = "backend.lumios.niecke-it.de"
-  frontend_domain    = "app.lumios.niecke-it.de"
-  landingpage_domain = "lumios.niecke-it.de"
+  source               = "../../modules/monitoring"
+  project_id           = var.project_id
+  notification_email   = "daniel@niecke-it.de"
+  backend_domain       = "backend.lumios.niecke-it.de"
+  frontend_domain      = "app.lumios.niecke-it.de"
+  landingpage_domain   = "lumios.niecke-it.de"
+  enable_uptime_checks = false
 
   depends_on = [module.apis, module.cloudrun]
 }
