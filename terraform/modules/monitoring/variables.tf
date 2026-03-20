@@ -22,3 +22,9 @@ variable "landingpage_domain" {
   description = "Domain of the landing page (e.g. lumios.niecke-it.de)"
   type        = string
 }
+
+variable "enable_uptime_checks" {
+  description = "Enable uptime checks and associated alert policies"
+  type        = bool
+  default     = true
+}

@@ -8,6 +8,7 @@ resource "google_monitoring_notification_channel" "email" {
 }
 
 resource "google_monitoring_uptime_check_config" "backend" {
+  count        = var.enable_uptime_checks ? 1 : 0
   display_name = "Lumios Backend Health Check"
   timeout      = "10s"
   period       = "300s"
@@ -31,6 +32,7 @@ resource "google_monitoring_uptime_check_config" "backend" {
 }
 
 resource "google_monitoring_uptime_check_config" "frontend" {
+  count        = var.enable_uptime_checks ? 1 : 0
   display_name = "Lumios Frontend Uptime Check"
   timeout      = "10s"
   period       = "300s"
@@ -54,6 +56,7 @@ resource "google_monitoring_uptime_check_config" "frontend" {
 }
 
 resource "google_monitoring_uptime_check_config" "landingpage" {
+  count        = var.enable_uptime_checks ? 1 : 0
   display_name = "Lumios Landing Page Uptime Check"
   timeout      = "10s"
   period       = "300s"
@@ -77,6 +80,7 @@ resource "google_monitoring_uptime_check_config" "landingpage" {
 }
 
 resource "google_monitoring_alert_policy" "backend_uptime" {
+  count        = var.enable_uptime_checks ? 1 : 0
   display_name = "Lumios Backend Uptime Alert"
   combiner     = "OR"
 
@@ -84,7 +88,7 @@ resource "google_monitoring_alert_policy" "backend_uptime" {
     display_name = "Backend uptime check failing"
 
     condition_threshold {
-      filter          = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id = \"${google_monitoring_uptime_check_config.backend.uptime_check_id}\""
+      filter          = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id = \"${google_monitoring_uptime_check_config.backend[0].uptime_check_id}\""
       duration        = "300s"
       comparison      = "COMPARISON_GT"
       threshold_value = 1
@@ -110,6 +114,7 @@ resource "google_monitoring_alert_policy" "backend_uptime" {
 }
 
 resource "google_monitoring_alert_policy" "frontend_uptime" {
+  count        = var.enable_uptime_checks ? 1 : 0
   display_name = "Lumios Frontend Uptime Alert"
   combiner     = "OR"
 
@@ -117,7 +122,7 @@ resource "google_monitoring_alert_policy" "frontend_uptime" {
     display_name = "Frontend uptime check failing"
 
     condition_threshold {
-      filter          = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id = \"${google_monitoring_uptime_check_config.frontend.uptime_check_id}\""
+      filter          = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id = \"${google_monitoring_uptime_check_config.frontend[0].uptime_check_id}\""
       duration        = "300s"
       comparison      = "COMPARISON_GT"
       threshold_value = 1
@@ -143,6 +148,7 @@ resource "google_monitoring_alert_policy" "frontend_uptime" {
 }
 
 resource "google_monitoring_alert_policy" "landingpage_uptime" {
+  count        = var.enable_uptime_checks ? 1 : 0
   display_name = "Lumios Landing Page Uptime Alert"
   combiner     = "OR"
 
@@ -150,7 +156,7 @@ resource "google_monitoring_alert_policy" "landingpage_uptime" {
     display_name = "Landing page uptime check failing"
 
     condition_threshold {
-      filter          = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id = \"${google_monitoring_uptime_check_config.landingpage.uptime_check_id}\""
+      filter          = "resource.type = \"uptime_url\" AND metric.type = \"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.labels.check_id = \"${google_monitoring_uptime_check_config.landingpage[0].uptime_check_id}\""
       duration        = "300s"
       comparison      = "COMPARISON_GT"
       threshold_value = 1

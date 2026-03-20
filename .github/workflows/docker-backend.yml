@@ -22,7 +22,6 @@ jobs:
   build:
     needs: test
     runs-on: ubuntu-latest
-    environment: prod
 
     steps:
       - uses: actions/checkout@v6
@@ -64,8 +63,22 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
           build-args: GIT_SHA=${{ github.sha }}
 
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: backend
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
       - name: Deploy to Cloud Run
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           SHA=$(git rev-parse --short HEAD)
           gcloud run services update lumios-backend \
