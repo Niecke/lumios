@@ -6,7 +6,26 @@ The disk of the VM could be changed, but needs to be done manually otherwise ter
 
 What happens when the Storage deletes the files automatically. The metadata will still be there. This might not be the perfect solution.
 
-Right now all photos go through the backend service this is not efficient. Should be redesigned later.
+## Scaling Ideas
+
+### Managed Database & Cache
+
+Migrate Postgres from the Compute Engine VM to **Cloud SQL** for automated backups, patching, and HA. Migrate Redis to **Memorystore for Redis** for the same reasons. Both reduce operational overhead and make scaling independent of the VM.
+
+### Image Processing
+
+Right now all photos go through the backend service — this is not efficient. Preview and thumbnail generation should be offloaded.
+
+- **Celery workers**: Natural fit if we already run Redis. Workers pick up jobs from a queue, process images, and upload results to GCS. Easy to scale horizontally by adding workers. Adds operational complexity (worker containers, monitoring).
+- **Cloud Run functions**: Triggered by GCS upload events. No infrastructure to manage, scales to zero. Better for bursty workloads but cold starts can add latency and per-invocation costs may be higher at sustained load.
+
+For low-to-moderate volume Cloud Run functions are simpler. If processing becomes constant or needs GPU, Celery workers make more sense.
+
+### CDN via Cloudflare
+
+Serve photos through **Cloudflare CDN** instead of routing them through the backend. Reduces latency, offloads bandwidth from the origin, and pairs well with offloading image processing. Cloudflare can also handle caching, DDoS protection, and SSL termination.
+
+### Deployment Pipeline
 
 If the project grows and we want more control over deployments, we can evolve to pin the image SHA in a Terraform variable (e.g. `terraform.tfvars`), have CI auto-commit the new SHA to that file and open a PR, then merge the PR to trigger deployment via Terraform.
 
