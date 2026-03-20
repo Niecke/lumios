@@ -288,7 +288,7 @@ resource "google_cloud_run_v2_service" "frontend" {
 
       env {
         name  = "BACKEND_URL"
-        value = google_cloud_run_v2_service.backend.uri
+        value = var.public_base_url
       }
 
       resources {
@@ -335,5 +335,44 @@ resource "google_cloud_run_v2_service" "landingpage" {
         }
       }
     }
+  }
+}
+
+resource "google_cloud_run_domain_mapping" "backend" {
+  name     = trimprefix(var.public_base_url, "https://")
+  location = var.region
+
+  metadata {
+    namespace = var.project_id
+  }
+
+  spec {
+    route_name = google_cloud_run_v2_service.backend.name
+  }
+}
+
+resource "google_cloud_run_domain_mapping" "frontend" {
+  name     = trimprefix(var.frontend_url, "https://")
+  location = var.region
+
+  metadata {
+    namespace = var.project_id
+  }
+
+  spec {
+    route_name = google_cloud_run_v2_service.frontend.name
+  }
+}
+
+resource "google_cloud_run_domain_mapping" "landingpage" {
+  name     = var.landingpage_domain
+  location = var.region
+
+  metadata {
+    namespace = var.project_id
+  }
+
+  spec {
+    route_name = google_cloud_run_v2_service.landingpage.name
   }
 }

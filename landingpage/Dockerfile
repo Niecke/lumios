@@ -1,6 +1,6 @@
 FROM docker.io/library/nginx:1.29-alpine
 
-ARG APP_URL=https://app.lumios.at
+ARG APP_URL=https://app.lumios.niecke-it.de
 
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY index.html /usr/share/nginx/html/index.html

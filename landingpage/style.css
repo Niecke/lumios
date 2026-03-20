@@ -87,6 +87,22 @@ nav a.nav-login:hover {
     box-shadow: var(--dp2);
 }
 
+/* Beta banner */
+.beta-banner {
+    background: var(--clr-primary);
+    color: #fff;
+    text-align: center;
+    padding: 10px 0;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.beta-banner a {
+    color: #fff;
+    font-weight: 700;
+    text-decoration: underline;
+}
+
 /* Hero */
 .hero {
     padding: 96px 0 80px;
