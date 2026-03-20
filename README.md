@@ -10,6 +10,13 @@ Right now all photos go through the backend service this is not efficient. Shoul
 
 If the project grows and we want more control over deployments, we can evolve to pin the image SHA in a Terraform variable (e.g. `terraform.tfvars`), have CI auto-commit the new SHA to that file and open a PR, then merge the PR to trigger deployment via Terraform.
 
+## Landingpage
+
+For local dev
+```
+cd ./landingpage && python3 -m http.server 5500
+```
+
 ## Frontend
 
 Development

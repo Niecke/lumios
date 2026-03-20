@@ -1,4 +1,4 @@
-name: Docker — Backend
+name: Docker — Landingpage
 
 on:
   push:
@@ -6,21 +6,17 @@ on:
       - main
       - dev
     paths:
-      - "backend/**"
+      - "landingpage/**"
   pull_request:
     paths:
-      - "backend/**"
+      - "landingpage/**"
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
-  test:
-    uses: ./.github/workflows/backend-tests.yml
-
   build:
-    needs: test
     runs-on: ubuntu-latest
     environment: prod
 
@@ -47,7 +43,7 @@ jobs:
         id: tags
         run: |
           SHA=$(git rev-parse --short HEAD)
-          REPO="europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lumios/backend"
+          REPO="europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lumios/landingpage"
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "tags=${REPO}:${SHA},${REPO}:latest" >> "$GITHUB_OUTPUT"
           elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
@@ -59,15 +55,16 @@ jobs:
       - name: Build image
         uses: docker/build-push-action@v7
         with:
-          context: backend
+          context: landingpage
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.tags.outputs.tags }}
-          build-args: GIT_SHA=${{ github.sha }}
+          build-args: |
+            APP_URL=https://app.lumios.niecke-it.de
 
       - name: Deploy to Cloud Run
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           SHA=$(git rev-parse --short HEAD)
-          gcloud run services update lumios-backend \
-            --image=europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lumios/backend:${SHA} \
+          gcloud run services update lumios-landingpage \
+            --image=europe-west1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/lumios/landingpage:${SHA} \
             --region=europe-west1
