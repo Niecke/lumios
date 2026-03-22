@@ -7,6 +7,7 @@ from flask import (
     url_for,
     current_app,
 )
+from datetime import datetime, timezone
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from models import db, User, Role, Library, Image
@@ -40,7 +41,11 @@ def index():
 @require_role("admin")
 def dashboard():
     users = (
-        db.session.execute(select(User).options(selectinload(User.roles)))
+        db.session.execute(
+            select(User)
+            .where(User.deleted_at.is_(None))
+            .options(selectinload(User.roles))
+        )
         .scalars()
         .all()
     )
@@ -260,9 +265,10 @@ def user_delete(id):
         flash("System users cannot be deleted.", "error")
         return redirect(url_for("admin.dashboard"))
 
-    db.session.delete(user)
+    user.deleted_at = datetime.now(timezone.utc)
+    user.active = False
     db.session.commit()
 
-    current_app.logger.info("User deleted: %s", user.email, extra={"log_type": "audit"})
+    current_app.logger.info("User soft-deleted: %s", user.email, extra={"log_type": "audit"})
     flash(f'User "{user.email}" deleted!', "success")
     return redirect(url_for("admin.dashboard"))

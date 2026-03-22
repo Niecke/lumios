@@ -1,9 +1,10 @@
+import secrets
 from flask import Blueprint, current_app, request, jsonify, g, redirect
 from jwt import PyJWKClient
 import jwt
 from urllib.parse import urlencode
 from main import limiter
-from config import GOOGLE_FRONTEND_CLIENT_ID
+from config import GOOGLE_FRONTEND_CLIENT_ID, REDIS_URL
 from services.auth import login_google, AuthError
 from services.token import create_token
 from security import require_api_auth, require_api_role
@@ -96,14 +97,49 @@ def google_verify():
     )
 
 
+def _store_login_code(token: str) -> str:
+    """Store a JWT under a random one-time code in Redis (TTL 60s).
+
+    Falls back to an in-memory dict when Redis is unavailable (local dev).
+    """
+    code = secrets.token_urlsafe(32)
+    if REDIS_URL:
+        import redis as _redis
+
+        r = _redis.from_url(REDIS_URL)
+        r.setex(f"login_code:{code}", 60, token)
+    else:
+        _login_codes[code] = token
+    return code
+
+
+def _consume_login_code(code: str) -> str | None:
+    """Retrieve and delete a one-time login code. Returns the JWT or None."""
+    if REDIS_URL:
+        import redis as _redis
+
+        r = _redis.from_url(REDIS_URL)
+        pipe = r.pipeline()
+        key = f"login_code:{code}"
+        pipe.get(key)
+        pipe.delete(key)
+        token_bytes, _ = pipe.execute()
+        return token_bytes.decode() if token_bytes else None
+    return _login_codes.pop(code, None)
+
+
+# In-memory fallback for local dev without Redis
+_login_codes: dict[str, str] = {}
+
+
 @auth_api.route("/google/callback", methods=["POST"])
 @limiter.limit("5 per minute")
 def google_callback():
     """Handle the GIS redirect flow.
 
     Google POSTs the credential as a form field. We verify it, create a JWT,
-    and redirect back to the frontend login page with the token as a query
-    parameter so the SPA can pick it up.
+    store it under a short-lived one-time code, and redirect back to the
+    frontend with ?code=... so the SPA can exchange it for the JWT via POST.
     """
     if not GOOGLE_FRONTEND_CLIENT_ID:
         return jsonify({"error": "Google login is not configured"}), 501
@@ -144,4 +180,24 @@ def google_callback():
         name=idinfo.get("name"),
         picture=idinfo.get("picture"),
     )
-    return redirect("/login?" + urlencode({"token": token}))
+    code = _store_login_code(token)
+    return redirect("/login?" + urlencode({"code": code}))
+
+
+@auth_api.route("/exchange", methods=["POST"])
+@limiter.limit("10 per minute")
+def exchange_code():
+    """Exchange a one-time login code for a JWT.
+
+    The code is consumed on first use and expires after 60 seconds.
+    """
+    data = request.get_json(silent=True) or {}
+    code = data.get("code", "")
+    if not code:
+        return jsonify({"error": "Missing code"}), 400
+
+    token = _consume_login_code(code)
+    if not token:
+        return jsonify({"error": "Invalid or expired code"}), 401
+
+    return jsonify({"token": token})

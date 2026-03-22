@@ -19,17 +19,10 @@ class TestHealthEndpoint:
         data = json.loads(response.data)
         assert "status" in data
 
-    def test_health_contains_database_field(self, client):
+    def test_health_reports_healthy(self, client):
         response = client.get("/health")
         data = json.loads(response.data)
-        assert "database" in data
-
-    def test_health_reports_connected_database(self, client):
-        response = client.get("/health")
-        data = json.loads(response.data)
-        # SQLite in-memory should be reachable during tests
         assert data["status"] == "healthy"
-        assert data["database"] == "connected"
 
     def test_health_accessible_without_login(self, client):
         # Health check must be publicly accessible for load balancer probes

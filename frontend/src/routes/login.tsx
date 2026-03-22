@@ -47,21 +47,26 @@ function LoginPage() {
   const [pending, setPending] = useState(false);
   const googleBtnRef = useRef<HTMLDivElement>(null);
 
-  // On mount: check for token or error from the redirect callback
+  // On mount: check for code or error from the redirect callback
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
+    const code = params.get("code");
     const err = params.get("error");
 
-    if (token) {
-      tokenStore.set(token);
+    if (code) {
       window.history.replaceState(null, "", "/login");
       setPending(true);
-      authApi.me().then(
-        () => router.navigate({ to: "/", replace: true }),
+      authApi.exchangeCode(code).then(
+        () => authApi.me().then(
+          () => router.navigate({ to: "/", replace: true }),
+          () => {
+            tokenStore.clear();
+            setError("Session invalid. Please sign in again.");
+            setPending(false);
+          }
+        ),
         () => {
-          tokenStore.clear();
-          setError("Session invalid. Please sign in again.");
+          setError("Login failed. Please try again.");
           setPending(false);
         }
       );

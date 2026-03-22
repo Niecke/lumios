@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, request
+from main import limiter
 from models import db, Library, Image, CustomerState, Notification, NotificationType
 from sqlalchemy import select
 from services import storage
@@ -8,6 +9,7 @@ public_api = Blueprint("public_api", __name__, url_prefix="/public")
 
 
 @public_api.route("/libraries/<library_uuid>", methods=["GET"])
+@limiter.limit("30 per minute")
 def get_public_library(library_uuid: str):
     library = db.session.execute(
         select(Library).where(
@@ -46,7 +48,9 @@ def get_public_library(library_uuid: str):
             "library": {
                 "uuid": library.uuid,
                 "name": library.name,
-                "finished_at": library.finished_at.isoformat() if library.finished_at else None,
+                "finished_at": (
+                    library.finished_at.isoformat() if library.finished_at else None
+                ),
             },
             "images": image_dicts,
             "count": len(image_dicts),
@@ -57,6 +61,7 @@ def get_public_library(library_uuid: str):
 @public_api.route(
     "/libraries/<library_uuid>/images/<image_uuid>/state", methods=["PATCH"]
 )
+@limiter.limit("30 per minute")
 def update_customer_state(library_uuid: str, image_uuid: str):
     body = request.get_json(silent=True) or {}
     new_state = body.get("customer_state")
@@ -91,6 +96,7 @@ def update_customer_state(library_uuid: str, image_uuid: str):
 
 
 @public_api.route("/libraries/<library_uuid>/finish", methods=["POST"])
+@limiter.limit("5 per minute")
 def finish_library(library_uuid: str):
     library = db.session.execute(
         select(Library).where(
@@ -115,7 +121,10 @@ def finish_library(library_uuid: str):
     ).scalar()
 
     if liked_count == 0:
-        return jsonify({"error": "You must like at least one photo before finishing"}), 422
+        return (
+            jsonify({"error": "You must like at least one photo before finishing"}),
+            422,
+        )
 
     library.finished_at = datetime.now(timezone.utc)
 
@@ -127,7 +136,9 @@ def finish_library(library_uuid: str):
     db.session.add(notification)
     db.session.commit()
 
-    return jsonify({
-        "uuid": library.uuid,
-        "finished_at": library.finished_at.isoformat(),
-    })
+    return jsonify(
+        {
+            "uuid": library.uuid,
+            "finished_at": library.finished_at.isoformat(),
+        }
+    )
