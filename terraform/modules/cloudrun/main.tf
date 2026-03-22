@@ -3,6 +3,16 @@ resource "google_service_account" "cloudrun" {
   display_name = "Lumios Cloud Run"
 }
 
+resource "google_service_account" "cloudrun_frontend" {
+  account_id   = "lumios-cloudrun-frontend"
+  display_name = "Lumios Cloud Run Frontend"
+}
+
+resource "google_service_account" "cloudrun_landingpage" {
+  account_id   = "lumios-cloudrun-landingpage"
+  display_name = "Lumios Cloud Run Landingpage"
+}
+
 resource "google_secret_manager_secret_iam_member" "cloudrun_postgres_password" {
   secret_id = var.postgres_password_secret_id
   role      = "roles/secretmanager.secretAccessor"
@@ -279,6 +289,8 @@ resource "google_cloud_run_v2_service" "frontend" {
   }
 
   template {
+    service_account = google_service_account.cloudrun_frontend.email
+
     scaling {
       max_instance_count = 2
     }
@@ -326,6 +338,8 @@ resource "google_cloud_run_v2_service" "landingpage" {
   }
 
   template {
+    service_account = google_service_account.cloudrun_landingpage.email
+
     scaling {
       max_instance_count = 2
     }
