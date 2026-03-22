@@ -180,8 +180,11 @@ class TestAdminUserDelete:
         html = response.data.decode()
         assert 'deleted!' in html
 
-        # Confirm user is gone from the database
-        assert db.session.get(User, user_id) is None
+        # Confirm user is soft-deleted
+        user = db.session.get(User, user_id)
+        assert user is not None
+        assert user.deleted_at is not None
+        assert user.active is False
 
     def test_user_delete_unknown_id_shows_error(self, client, admin_user):
         login_admin(client, admin_user)
