@@ -17,6 +17,8 @@ RUN npm run build
 # ---- Stage 2: Runtime ----
 FROM docker.io/library/nginx:1.29-alpine
 
+ENV NGINX_ENVSUBST_FILTER=^(BACKEND_URL|BACKEND_HOST)$
+
 COPY --from=builder /build/dist /usr/share/nginx/html
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 

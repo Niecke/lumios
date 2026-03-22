@@ -92,6 +92,7 @@ services:
     container_name: lumios-frontend
     environment:
       BACKEND_URL: "http://lumios-backend:8080"
+      BACKEND_HOST: "lumios-backend"
     ports:
       - "8081:8080"
     #depends_on:

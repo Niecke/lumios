@@ -217,6 +217,8 @@ def upload_image(library_id: int):
     # Generate 300px thumbnail
     thumb_img = pil_img.copy()
     thumb_img.thumbnail((THUMB_SIZE, THUMB_SIZE))
+    if thumb_img.mode in ("RGBA", "P", "LA"):
+        thumb_img = thumb_img.convert("RGB")
     thumb_buf = io.BytesIO()
     thumb_img.save(thumb_buf, format="JPEG", quality=85)
     thumb_buf.seek(0)

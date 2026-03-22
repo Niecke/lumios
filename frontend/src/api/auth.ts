@@ -121,6 +121,15 @@ export const authApi = {
     return { email: data.email, roles: data.roles, max_libraries: data.max_libraries };
   },
 
+  // Exchange a one-time login code (from the OAuth redirect) for a JWT.
+  exchangeCode: async (code: string): Promise<void> => {
+    const data = await apiFetch<{ token: string }>("/api/v1/auth/exchange", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    });
+    tokenStore.set(data.token);
+  },
+
   logout: () => {
     tokenStore.clear();
     googleProfileStore.clear();
