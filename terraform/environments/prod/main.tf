@@ -58,8 +58,8 @@ module "cloudrun" {
   google_client_secret_secret_id      = module.secrets.google_client_secret_secret_id
   google_frontend_client_id_secret_id = module.secrets.google_frontend_client_id_secret_id
   project_id                          = var.project_id
-  public_base_url                     = "https://backend.lumios.niecke-it.de"
-  frontend_url                        = "https://app.lumios.niecke-it.de"
+  public_base_url                     = "https://lumios-api.niecke-it.de"
+  frontend_url                        = "https://lumios-app.niecke-it.de"
   landingpage_domain                  = "lumios.niecke-it.de"
 
   depends_on = [module.apis, module.network, module.vm, module.secrets, module.storage]
@@ -69,8 +69,8 @@ module "monitoring" {
   source               = "../../modules/monitoring"
   project_id           = var.project_id
   notification_email   = "daniel@niecke-it.de"
-  backend_domain       = "backend.lumios.niecke-it.de"
-  frontend_domain      = "app.lumios.niecke-it.de"
+  backend_domain       = "lumios-api.niecke-it.de"
+  frontend_domain      = "lumios-app.niecke-it.de"
   landingpage_domain   = "lumios.niecke-it.de"
   enable_uptime_checks = false
 
