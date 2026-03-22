@@ -58,7 +58,7 @@ jobs:
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
-            APP_URL=https://app.lumios.niecke-it.de
+            APP_URL=https://lumios-app.niecke-it.de
 
   deploy:
     needs: build

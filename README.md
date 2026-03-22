@@ -2,8 +2,6 @@
 
 ## Reminders
 
-The disk of the VM could be changed, but needs to be done manually otherwise terraform deletes the disk and recreates it without data.
-
 What happens when the Storage deletes the files automatically. The metadata will still be there. This might not be the perfect solution.
 
 ## Scaling Ideas
