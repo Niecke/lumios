@@ -5,6 +5,8 @@ ARG APP_URL=https://lumios-app.niecke-it.de
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY index.html /usr/share/nginx/html/index.html
 COPY impressum.html /usr/share/nginx/html/impressum.html
+COPY agb.html /usr/share/nginx/html/agb.html
+COPY datenschutz.html /usr/share/nginx/html/datenschutz.html
 COPY style.css /usr/share/nginx/html/style.css
 COPY favicon.ico /usr/share/nginx/html/favicon.ico
 COPY favicon-16x16.png /usr/share/nginx/html/favicon-16x16.png
