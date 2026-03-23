@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Ticket #{{ ticket.id }} — Lumios Management{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h1>Ticket #{{ ticket.id }}</h1>
+        <a href="{{ url_for('admin.support_list') }}" class="btn btn-secondary btn-sm">← Back</a>
+    </div>
+
+    <div class="info-row">
+        <span class="info-row__label">Status</span>
+        <span class="badge {{ 'badge-success' if ticket.status.value == 'open' else 'badge-error' }}">
+            {{ ticket.status.value }}
+        </span>
+    </div>
+    <div class="info-row">
+        <span class="info-row__label">User</span>
+        <span>{{ ticket.user.email }}</span>
+    </div>
+    <div class="info-row">
+        <span class="info-row__label">Created</span>
+        <span>{{ ticket.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+    </div>
+
+    <h2 style="margin-top: 1.5rem;">{{ ticket.subject }}</h2>
+    <div class="support-body">{{ ticket.body }}</div>
+
+    {% if ticket.comments %}
+    <h3 style="margin-top: 1.5rem;">Comments</h3>
+    {% for comment in ticket.comments %}
+    <div class="support-comment">
+        <div class="support-comment__meta">{{ comment.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+        <div class="support-comment__body">{{ comment.body }}</div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if ticket.status.value == 'open' %}
+    <h3 style="margin-top: 2rem;">Add Comment</h3>
+    <form method="POST" action="{{ url_for('admin.support_add_comment', ticket_id=ticket.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+            <textarea name="body" rows="5" class="form-control" placeholder="Your reply…" required></textarea>
+        </div>
+        <div class="form-group" style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+                <input type="checkbox" name="close" value="on">
+                Close ticket after commenting
+            </label>
+            <button type="submit" class="btn">Add Comment</button>
+        </div>
+    </form>
+
+    <form method="POST" action="{{ url_for('admin.support_close', ticket_id=ticket.id) }}" style="margin-top: 0.5rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-danger btn-sm"
+            onclick="return confirm('Close this ticket without a comment?')">
+            Close without comment
+        </button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

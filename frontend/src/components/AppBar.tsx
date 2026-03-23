@@ -136,6 +136,11 @@ export function AppBar({ name, picture }: AppBarProps) {
         )}
       </div>
 
+      <Link to="/support" className="btn btn-text">
+        <span className="material-icons">help_outline</span>
+        Support
+      </Link>
+
       <Link to="/account" className="btn btn-text app-bar__account-btn">
         {picture ? (
           <img

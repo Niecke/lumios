@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AccountRouteImport } from './routes/account'
+import { Route as SupportRouteImport } from './routes/support'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LibraryLibraryUuidRouteImport } from './routes/library.$libraryUuid'
 
@@ -22,6 +23,11 @@ const LoginRoute = LoginRouteImport.update({
 const AccountRoute = AccountRouteImport.update({
   id: '/account',
   path: '/account',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SupportRoute = SupportRouteImport.update({
+  id: '/support',
+  path: '/support',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -38,12 +44,14 @@ const LibraryLibraryUuidRoute = LibraryLibraryUuidRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
+  '/support': typeof SupportRoute
   '/login': typeof LoginRoute
   '/library/$libraryUuid': typeof LibraryLibraryUuidRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
+  '/support': typeof SupportRoute
   '/login': typeof LoginRoute
   '/library/$libraryUuid': typeof LibraryLibraryUuidRoute
 }
@@ -51,20 +59,22 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
+  '/support': typeof SupportRoute
   '/login': typeof LoginRoute
   '/library/$libraryUuid': typeof LibraryLibraryUuidRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/account' | '/login' | '/library/$libraryUuid'
+  fullPaths: '/' | '/account' | '/support' | '/login' | '/library/$libraryUuid'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/account' | '/login' | '/library/$libraryUuid'
-  id: '__root__' | '/' | '/account' | '/login' | '/library/$libraryUuid'
+  to: '/' | '/account' | '/support' | '/login' | '/library/$libraryUuid'
+  id: '__root__' | '/' | '/account' | '/support' | '/login' | '/library/$libraryUuid'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccountRoute: typeof AccountRoute
+  SupportRoute: typeof SupportRoute
   LoginRoute: typeof LoginRoute
   LibraryLibraryUuidRoute: typeof LibraryLibraryUuidRoute
 }
@@ -83,6 +93,13 @@ declare module '@tanstack/react-router' {
       path: '/account'
       fullPath: '/account'
       preLoaderRoute: typeof AccountRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/support': {
+      id: '/support'
+      path: '/support'
+      fullPath: '/support'
+      preLoaderRoute: typeof SupportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -105,6 +122,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountRoute: AccountRoute,
+  SupportRoute: SupportRoute,
   LoginRoute: LoginRoute,
   LibraryLibraryUuidRoute: LibraryLibraryUuidRoute,
 }
