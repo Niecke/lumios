@@ -47,5 +47,11 @@
     <footer class="footer">
         <p>&copy; 2026 Lumios &middot; <span class="text-muted">{{ GIT_HASH[:8] }}</span></p>
     </footer>
+
+    <div id="cookie-banner" class="cookie-banner" role="region" aria-label="Cookie notice">
+        <p>This site uses only essential cookies for session management and CSRF protection. No tracking or analytics.</p>
+        <button id="cookie-banner-dismiss" type="button">Got it</button>
+    </div>
+    <script src="{{ url_for('static', filename='js/cookie-banner.js') }}"></script>
 </body>
 </html>

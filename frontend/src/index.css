@@ -1116,3 +1116,41 @@ body {
   color: var(--clr-error);
   flex-shrink: 0;
 }
+
+/* ── Cookie banner ─────────────────────────────────────── */
+.cookie-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1.5rem;
+  background: var(--clr-on-surface);
+  color: rgba(255, 255, 255, 0.87);
+  font-size: 0.875rem;
+  flex-wrap: wrap;
+}
+
+.cookie-banner__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.cookie-banner__btn {
+  flex-shrink: 0;
+  padding: 0.45rem 1.25rem;
+  border: none;
+  border-radius: var(--radius-xl);
+  background: var(--clr-primary);
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.cookie-banner__btn:hover { background: var(--clr-primary-dark); }

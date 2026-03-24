@@ -87,3 +87,29 @@ input:focus { outline: none; border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(2
 }
 .divider::before { margin-right: 0.75rem; }
 .divider::after { margin-left: 0.75rem; }
+
+/* Cookie banner */
+.cookie-banner {
+    display: none;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 500;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 0.9rem 1.5rem;
+    background: #202124;
+    color: rgba(255,255,255,0.87);
+    font-size: 0.875rem;
+}
+.cookie-banner p { margin: 0; flex: 1; }
+.cookie-banner button {
+    flex-shrink: 0;
+    background: #1a73e8; color: #fff;
+    border: none; border-radius: 20px;
+    padding: 0.45rem 1.25rem;
+    font-size: 0.875rem; font-weight: 500;
+    cursor: pointer; width: auto;
+}
+.cookie-banner button:hover { background: #1557b0; color: #fff; border-color: transparent; }
