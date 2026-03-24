@@ -9,11 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SupportRouteImport } from './routes/support'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AccountRouteImport } from './routes/account'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LibraryLibraryUuidRouteImport } from './routes/library.$libraryUuid'
 
+const SupportRoute = SupportRouteImport.update({
+  id: '/support',
+  path: '/support',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -39,12 +45,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
   '/login': typeof LoginRoute
+  '/support': typeof SupportRoute
   '/library/$libraryUuid': typeof LibraryLibraryUuidRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
   '/login': typeof LoginRoute
+  '/support': typeof SupportRoute
   '/library/$libraryUuid': typeof LibraryLibraryUuidRoute
 }
 export interface FileRoutesById {
@@ -52,25 +60,40 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
   '/login': typeof LoginRoute
+  '/support': typeof SupportRoute
   '/library/$libraryUuid': typeof LibraryLibraryUuidRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/account' | '/login' | '/library/$libraryUuid'
+  fullPaths: '/' | '/account' | '/login' | '/support' | '/library/$libraryUuid'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/account' | '/login' | '/library/$libraryUuid'
-  id: '__root__' | '/' | '/account' | '/login' | '/library/$libraryUuid'
+  to: '/' | '/account' | '/login' | '/support' | '/library/$libraryUuid'
+  id:
+    | '__root__'
+    | '/'
+    | '/account'
+    | '/login'
+    | '/support'
+    | '/library/$libraryUuid'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccountRoute: typeof AccountRoute
   LoginRoute: typeof LoginRoute
+  SupportRoute: typeof SupportRoute
   LibraryLibraryUuidRoute: typeof LibraryLibraryUuidRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/support': {
+      id: '/support'
+      path: '/support'
+      fullPath: '/support'
+      preLoaderRoute: typeof SupportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -106,6 +129,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountRoute: AccountRoute,
   LoginRoute: LoginRoute,
+  SupportRoute: SupportRoute,
   LibraryLibraryUuidRoute: LibraryLibraryUuidRoute,
 }
 export const routeTree = rootRouteImport

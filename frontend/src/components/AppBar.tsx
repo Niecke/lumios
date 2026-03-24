@@ -26,6 +26,9 @@ function notificationMessage(n: Notification): string {
   if (n.type === "library_marked") {
     return `Library "${n.library_name ?? "Unknown"}" was marked as finished by the customer`;
   }
+  if (n.type === "ticket_comment_added") {
+    return `New reply on your ticket "${n.ticket_subject ?? "support ticket"}"`;
+  }
   return "New notification";
 }
 
@@ -74,9 +77,11 @@ export function AppBar({ name, picture }: AppBarProps) {
     if (!n.seen_at) {
       markSeen.mutate(n.id);
     }
-    if (n.related_object) {
-      setShowDropdown(false);
+    setShowDropdown(false);
+    if (n.type === "library_marked" && n.related_object) {
       navigate({ to: "/library/$libraryUuid", params: { libraryUuid: n.related_object } });
+    } else if (n.type === "ticket_comment_added") {
+      navigate({ to: "/support" });
     }
   }
 
@@ -118,7 +123,7 @@ export function AppBar({ name, picture }: AppBarProps) {
                     onClick={() => handleNotificationClick(n)}
                   >
                     <span className="material-icons notification-item__icon">
-                      {n.type === "library_marked" ? "check_circle" : "info"}
+                      {n.type === "library_marked" ? "check_circle" : n.type === "ticket_comment_added" ? "chat" : "info"}
                     </span>
                     <div className="notification-item__body">
                       <span className="notification-item__text">
@@ -135,6 +140,11 @@ export function AppBar({ name, picture }: AppBarProps) {
           </div>
         )}
       </div>
+
+      <Link to="/support" className="btn btn-text">
+        <span className="material-icons">help_outline</span>
+        Support
+      </Link>
 
       <Link to="/account" className="btn btn-text app-bar__account-btn">
         {picture ? (

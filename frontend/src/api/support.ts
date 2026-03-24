@@ -1,20 +1,25 @@
-// notifications.ts — API client for photographer notifications
+// support.ts — API client for support tickets
 
 import { tokenStore } from "./auth";
 
-export interface Notification {
+export interface SupportComment {
   id: number;
-  type: string;
+  body: string;
   created_at: string;
-  seen_at: string | null;
-  related_object: string | null;
-  library_name?: string;
-  ticket_subject?: string;
 }
 
-export interface NotificationList {
-  notifications: Notification[];
-  unseen_count: number;
+export interface SupportTicket {
+  id: number;
+  subject: string;
+  body: string;
+  status: "open" | "closed";
+  created_at: string;
+  updated_at: string;
+  comments: SupportComment[];
+}
+
+export interface SupportTicketList {
+  tickets: SupportTicket[];
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -38,11 +43,14 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-export const notificationsApi = {
-  list: () => apiFetch<NotificationList>("/api/v1/notifications"),
+export const supportApi = {
+  list: () => apiFetch<SupportTicketList>("/api/v1/support/tickets"),
 
-  markSeen: (id: number) =>
-    apiFetch<Notification>(`/api/v1/notifications/${id}/seen`, {
-      method: "PATCH",
+  get: (id: number) => apiFetch<SupportTicket>(`/api/v1/support/tickets/${id}`),
+
+  create: (subject: string, body: string) =>
+    apiFetch<SupportTicket>("/api/v1/support/tickets", {
+      method: "POST",
+      body: JSON.stringify({ subject, body }),
     }),
 };

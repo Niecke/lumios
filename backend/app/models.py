@@ -19,6 +19,7 @@ class CustomerState(enum.Enum):
 
 class NotificationType(enum.Enum):
     library_marked = "library_marked"
+    ticket_comment_added = "ticket_comment_added"
 
 
 roles_users = db.Table(
@@ -170,6 +171,72 @@ class Image(db.Model):
             "original_url": original_url,
             "preview_url": preview_url,
             "thumb_url": thumb_url,
+        }
+
+
+class SupportTicketStatus(enum.Enum):
+    open = "open"
+    closed = "closed"
+
+
+class SupportTicket(db.Model):
+    id = db.Column(db.Integer(), primary_key=True)
+    user_id = db.Column(
+        db.Integer(), db.ForeignKey("user.id"), nullable=False, index=True
+    )
+    subject = db.Column(db.String(255), nullable=False)
+    body = db.Column(db.Text(), nullable=False)
+    status = db.Column(
+        db.Enum(SupportTicketStatus, name="supportticketstatus"),
+        nullable=False,
+        default=SupportTicketStatus.open,
+        server_default=SupportTicketStatus.open.value,
+    )
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    user = db.relationship("User", backref=db.backref("support_tickets", lazy="dynamic"))
+    comments = db.relationship(
+        "SupportTicketComment",
+        backref="ticket",
+        order_by="SupportTicketComment.created_at",
+        lazy="select",
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "subject": self.subject,
+            "body": self.body,
+            "status": self.status.value,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+            "comments": [c.to_dict() for c in self.comments],
+        }
+
+
+class SupportTicketComment(db.Model):
+    id = db.Column(db.Integer(), primary_key=True)
+    ticket_id = db.Column(
+        db.Integer(), db.ForeignKey("support_ticket.id"), nullable=False, index=True
+    )
+    body = db.Column(db.Text(), nullable=False)
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "body": self.body,
+            "created_at": self.created_at.isoformat(),
         }
 
 

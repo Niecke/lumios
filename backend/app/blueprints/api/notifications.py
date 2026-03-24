@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, g
 from security import require_api_auth, require_api_role
-from models import db, Notification, Library
-from sqlalchemy import select
+from models import db, Notification, NotificationType, Library, SupportTicket
+from sqlalchemy import select, cast, String
 from datetime import datetime, timezone
 
 notifications_api = Blueprint(
@@ -15,11 +15,17 @@ notifications_api = Blueprint(
 def list_notifications():
     user_id = int(g.token_payload["sub"])
     rows = db.session.execute(
-        select(Notification, Library.name)
+        select(Notification, Library.name, SupportTicket.subject)
         .outerjoin(
             Library,
             (Library.uuid == Notification.related_object)
             & (Library.user_id == user_id),
+        )
+        .outerjoin(
+            SupportTicket,
+            (cast(SupportTicket.id, String) == Notification.related_object)
+            & (Notification.type == NotificationType.ticket_comment_added)
+            & (SupportTicket.user_id == user_id),
         )
         .where(Notification.user_id == user_id)
         .order_by(Notification.created_at.desc())
@@ -28,10 +34,12 @@ def list_notifications():
 
     result = []
     unseen_count = 0
-    for n, library_name in rows:
+    for n, library_name, ticket_subject in rows:
         entry = n.to_dict()
         if library_name:
             entry["library_name"] = library_name
+        if ticket_subject:
+            entry["ticket_subject"] = ticket_subject
         if n.seen_at is None:
             unseen_count += 1
         result.append(entry)

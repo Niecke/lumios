@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Support Tickets — Lumios Management{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>Support Tickets</h1>
+
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Status</th>
+                    <th>User</th>
+                    <th>Subject</th>
+                    <th>Replies</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ticket in tickets %}
+                <tr>
+                    <td>{{ ticket.id }}</td>
+                    <td>
+                        <span class="badge {{ 'badge-success' if ticket.status.value == 'open' else 'badge-error' }}">
+                            {{ ticket.status.value }}
+                        </span>
+                    </td>
+                    <td>{{ ticket.user.email }}</td>
+                    <td>{{ ticket.subject }}</td>
+                    <td>{{ ticket.comments | length }}</td>
+                    <td>{{ ticket.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        <a href="{{ url_for('admin.support_detail', ticket_id=ticket.id) }}" class="btn btn-secondary btn-sm">View</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7">No support tickets yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
