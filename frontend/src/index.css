@@ -541,7 +541,8 @@ body {
   font-weight: 500;
   color: var(--clr-on-surface-var);
 }
-.text-field input {
+.text-field input,
+.text-field textarea {
   width: 100%;
   padding: 0.65rem 0.9rem;
   border: 1px solid var(--clr-outline);
@@ -552,8 +553,10 @@ body {
   background: var(--clr-surface);
   outline: none;
   transition: border-color var(--transition), box-shadow var(--transition);
+  resize: vertical;
 }
-.text-field input:focus {
+.text-field input:focus,
+.text-field textarea:focus {
   border-color: var(--clr-primary);
   box-shadow: 0 0 0 3px rgba(249,115,22,.15);
 }
@@ -663,6 +666,10 @@ body {
   font-weight: 500;
   background: var(--clr-primary-100);
   color: var(--clr-primary-dark);
+}
+.chip--muted {
+  background: var(--clr-outline);
+  color: var(--clr-on-surface-var);
 }
 
 /* ── Progress bar ──────────────────────────────────── */

@@ -10,7 +10,7 @@ from flask import (
 from datetime import datetime, timezone
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from models import db, User, Role, Library, Image, SupportTicket, SupportTicketComment, SupportTicketStatus
+from models import db, User, Role, Library, Image, SupportTicket, SupportTicketComment, SupportTicketStatus, Notification, NotificationType
 from security import login_required, require_role
 
 admin = Blueprint("admin", __name__)
@@ -342,6 +342,13 @@ def support_add_comment(ticket_id: int):
         )
     else:
         ticket.updated_at = datetime.now(timezone.utc)
+
+    notification = Notification(
+        user_id=ticket.user_id,
+        type=NotificationType.ticket_comment_added,
+        related_object=str(ticket.id),
+    )
+    db.session.add(notification)
 
     db.session.commit()
     flash("Comment added.", "success")

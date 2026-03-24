@@ -53,7 +53,8 @@ function NewTicketForm({ onCreated }: { onCreated: () => void }) {
 
   if (!open) {
     return (
-      <button className="btn" onClick={() => setOpen(true)}>
+      <button className="btn btn-contained" onClick={() => setOpen(true)}>
+        <span className="material-icons">add</span>
         New ticket
       </button>
     );
@@ -61,50 +62,52 @@ function NewTicketForm({ onCreated }: { onCreated: () => void }) {
 
   return (
     <div className="account-card" style={{ marginBottom: "1.5rem" }}>
-      <h2 style={{ marginTop: 0 }}>New support ticket</h2>
-      {create.isError && (
-        <div className="alert alert-error">
-          {(create.error as Error).message}
+      <div style={{ padding: "1.25rem 1.5rem" }}>
+        <h2 style={{ fontSize: "1.1rem", fontWeight: 500, marginBottom: "1rem" }}>
+          New support ticket
+        </h2>
+        {create.isError && (
+          <div className="alert alert--error" style={{ marginBottom: "1rem" }}>
+            {(create.error as Error).message}
+          </div>
+        )}
+        <div className="text-field" style={{ marginBottom: "1rem" }}>
+          <label htmlFor="support-subject">Subject</label>
+          <input
+            id="support-subject"
+            type="text"
+            maxLength={255}
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="Brief description of your issue"
+          />
         </div>
-      )}
-      <div className="form-group">
-        <label htmlFor="support-subject">Subject</label>
-        <input
-          id="support-subject"
-          className="form-control"
-          type="text"
-          maxLength={255}
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          placeholder="Brief description of your issue"
-        />
-      </div>
-      <div className="form-group">
-        <label htmlFor="support-body">Message</label>
-        <textarea
-          id="support-body"
-          className="form-control"
-          rows={5}
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Describe your issue in detail…"
-        />
-      </div>
-      <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-        <button
-          className="btn"
-          disabled={create.isPending || !subject.trim() || !body.trim()}
-          onClick={() => create.mutate()}
-        >
-          {create.isPending ? "Submitting…" : "Submit ticket"}
-        </button>
-        <button
-          className="btn btn-outlined"
-          onClick={() => setOpen(false)}
-          disabled={create.isPending}
-        >
-          Cancel
-        </button>
+        <div className="text-field" style={{ marginBottom: "1.25rem" }}>
+          <label htmlFor="support-body">Message</label>
+          <textarea
+            id="support-body"
+            rows={5}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="Describe your issue in detail…"
+          />
+        </div>
+        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+          <button
+            className="btn btn-contained"
+            disabled={create.isPending || !subject.trim() || !body.trim()}
+            onClick={() => create.mutate()}
+          >
+            {create.isPending ? "Submitting…" : "Submit ticket"}
+          </button>
+          <button
+            className="btn btn-outlined"
+            onClick={() => setOpen(false)}
+            disabled={create.isPending}
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -120,6 +123,7 @@ function TicketCard({ ticket }: { ticket: SupportTicket }) {
     <div className="account-card" style={{ marginBottom: "1rem" }}>
       <div
         style={{
+          padding: "1rem 1.5rem",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "flex-start",
@@ -130,45 +134,77 @@ function TicketCard({ ticket }: { ticket: SupportTicket }) {
       >
         <div>
           <span
-            className={`chip ${ticket.status === "open" ? "" : "chip--muted"}`}
+            className={`chip ${ticket.status === "closed" ? "chip--muted" : ""}`}
             style={{ marginRight: "0.5rem" }}
           >
             {ticket.status}
           </span>
           <strong>{ticket.subject}</strong>
         </div>
-        <div style={{ whiteSpace: "nowrap", fontSize: "0.85rem", color: "var(--color-muted, #888)" }}>
+        <div
+          style={{
+            whiteSpace: "nowrap",
+            fontSize: "0.85rem",
+            color: "var(--clr-on-surface-var)",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.25rem",
+            flexShrink: 0,
+          }}
+        >
           {formatDate(ticket.created_at)}
           {hasReplies && (
-            <span style={{ marginLeft: "0.5rem" }}>
-              · {ticket.comments.length} {ticket.comments.length === 1 ? "reply" : "replies"}
+            <span>
+              · {ticket.comments.length}{" "}
+              {ticket.comments.length === 1 ? "reply" : "replies"}
             </span>
           )}
-          <span className="material-icons" style={{ fontSize: "1rem", verticalAlign: "middle", marginLeft: "0.25rem" }}>
+          <span className="material-icons" style={{ fontSize: "1.1rem" }}>
             {expanded ? "expand_less" : "expand_more"}
           </span>
         </div>
       </div>
 
       {expanded && (
-        <div style={{ marginTop: "1rem" }}>
-          <p style={{ whiteSpace: "pre-wrap" }}>{ticket.body}</p>
+        <div
+          style={{
+            padding: "0 1.5rem 1.25rem",
+            borderTop: "1px solid var(--clr-outline)",
+          }}
+        >
+          <p style={{ whiteSpace: "pre-wrap", margin: "1rem 0" }}>
+            {ticket.body}
+          </p>
 
           {ticket.comments.length > 0 && (
             <>
-              <hr />
-              <h4 style={{ margin: "0.75rem 0 0.5rem" }}>Replies</h4>
+              <p
+                style={{
+                  fontSize: "0.8rem",
+                  fontWeight: 500,
+                  color: "var(--clr-on-surface-var)",
+                  marginBottom: "0.5rem",
+                }}
+              >
+                Replies
+              </p>
               {ticket.comments.map((c) => (
                 <div
                   key={c.id}
                   style={{
-                    background: "var(--color-surface-alt, #f5f5f5)",
-                    borderRadius: "6px",
-                    padding: "0.75rem",
+                    background: "var(--clr-background)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "0.75rem 1rem",
                     marginBottom: "0.5rem",
                   }}
                 >
-                  <div style={{ fontSize: "0.8rem", color: "var(--color-muted, #888)", marginBottom: "0.25rem" }}>
+                  <div
+                    style={{
+                      fontSize: "0.8rem",
+                      color: "var(--clr-on-surface-var)",
+                      marginBottom: "0.25rem",
+                    }}
+                  >
                     {formatDate(c.created_at)}
                   </div>
                   <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{c.body}</p>
@@ -208,19 +244,31 @@ function SupportPage() {
         <div className="account-layout">
           <div style={{ width: "100%" }}>
             <NewTicketForm
-              onCreated={() => queryClient.invalidateQueries({ queryKey: ["support-tickets"] })}
+              onCreated={() =>
+                queryClient.invalidateQueries({ queryKey: ["support-tickets"] })
+              }
             />
 
-            {isLoading && <p>Loading tickets…</p>}
-            {isError && <p className="alert alert-error">Failed to load tickets.</p>}
+            {isLoading && <p style={{ color: "var(--clr-on-surface-var)" }}>Loading tickets…</p>}
+            {isError && (
+              <p className="alert alert--error">Failed to load tickets.</p>
+            )}
 
             {!isLoading && !isError && tickets.length === 0 && (
-              <p style={{ color: "var(--color-muted, #888)" }}>No tickets yet. Use the button above to get in touch.</p>
+              <p style={{ color: "var(--clr-on-surface-var)", marginTop: "1rem" }}>
+                No tickets yet. Use the button above to get in touch.
+              </p>
             )}
 
             {tickets.length > 0 && (
               <>
-                <p style={{ color: "var(--color-muted, #888)", fontSize: "0.9rem", margin: "0.5rem 0 1rem" }}>
+                <p
+                  style={{
+                    color: "var(--clr-on-surface-var)",
+                    fontSize: "0.9rem",
+                    margin: "0.75rem 0 1rem",
+                  }}
+                >
                   {openCount} open · {tickets.length - openCount} closed
                 </p>
                 {tickets.map((t) => (

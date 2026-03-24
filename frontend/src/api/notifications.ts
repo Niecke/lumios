@@ -9,6 +9,7 @@ export interface Notification {
   seen_at: string | null;
   related_object: string | null;
   library_name?: string;
+  ticket_subject?: string;
 }
 
 export interface NotificationList {

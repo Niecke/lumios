@@ -19,6 +19,7 @@ class CustomerState(enum.Enum):
 
 class NotificationType(enum.Enum):
     library_marked = "library_marked"
+    ticket_comment_added = "ticket_comment_added"
 
 
 roles_users = db.Table(
