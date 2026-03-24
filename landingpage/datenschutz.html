@@ -79,7 +79,7 @@
             <ul>
                 <li>Bestandsdaten (Name, E-Mail-Adresse, Nutzer-ID)</li>
                 <li>Kontaktdaten</li>
-                <li>Inhaltsdaten (hochgeladene Fotos, Bildmetadaten inkl. EXIF-Daten)</li>
+                <li>Inhaltsdaten (hochgeladene Fotos)</li>
                 <li>Vertragsdaten</li>
                 <li>Zahlungsdaten</li>
                 <li>Nutzungsdaten (Seitenaufrufe, Klickpfade, Fotoauswahl)</li>
@@ -125,11 +125,11 @@
             <h2>Sicherheitsmaßnahmen</h2>
             <p>Wir treffen nach Maßgabe der gesetzlichen Vorgaben geeignete technische und organisatorische Maßnahmen, um ein dem Risiko angemessenes Schutzniveau zu gewährleisten. Dazu gehören insbesondere:</p>
             <ul>
-                <li>Verschlüsselte Datenübertragung mittels TLS 1.3/HTTPS</li>
+                <li>Verschlüsselte Datenübertragung mittels TLS 1.0–1.3/HTTPS</li>
                 <li>Verschlüsselte Speicherung von Fotodaten in Google Cloud Storage</li>
-                <li>Zugriff auf Fotodaten ausschließlich über zeitlich begrenzte, signierte URLs</li>
+                <li>Clientlinks verwenden nicht erratbare UUIDs</li>
                 <li>Zugangskontrollen und Authentifizierungspflicht für Fotografen</li>
-                <li>Wasserzeichenversionen für Clientvorschauen; Originaldateien nur für Fotografen zugänglich</li>
+                <li>Standardmäßig Wasserzeichenversionen als Clientvorschau; der Fotograf kann pro Bibliothek das Original als Vorschau aktivieren</li>
             </ul>
         </div>
 
@@ -200,13 +200,12 @@
             <p>Der Kernzweck von Lumios ist die Verwaltung und Bereitstellung professioneller Fotogalerien. Im Rahmen dieser Leistung verarbeiten wir von Fotografen hochgeladene Bilddateien. Diese können personenbezogene Daten enthalten, insbesondere:</p>
             <ul>
                 <li><strong>Abbildungen von Personen:</strong> Fotos, die Gesichter oder anderweitig identifizierbare Merkmale zeigen, können biometrische Daten im Sinne von Art. 4 Nr. 14 DSGVO darstellen und fallen ggf. unter die besonderen Datenkategorien gemäß Art. 9 DSGVO.</li>
-                <li><strong>EXIF-Metadaten:</strong> Bildmetadaten können GPS-Standortdaten, Aufnahmezeitpunkte und Geräteinformationen enthalten. GPS-Koordinaten stellen Standortdaten und damit personenbezogene Daten dar.</li>
             </ul>
             <p><strong>Verantwortlichkeit:</strong> Der Fotograf (Nutzer) ist für die Rechtmäßigkeit der Verarbeitung der von ihm hochgeladenen Bildinhalte verantwortlich, insbesondere für das Vorliegen einer geeigneten Rechtsgrundlage gegenüber den abgebildeten Personen (z. B. Einwilligung, Vertragserfüllung im Rahmen eines Fotoauftrags). Lumios verarbeitet diese Daten im Auftrag des Fotografen als Auftragsverarbeiter gemäß Art. 28 DSGVO.</p>
-            <p><strong>Technische Schutzmaßnahmen:</strong> Alle hochgeladenen Fotos werden verschlüsselt in Google Cloud Storage gespeichert. Für die Clientansicht werden Wasserzeichenversionen verwendet; Originaldateien sind ausschließlich für den jeweiligen Fotografen zugänglich. Der Zugriff erfolgt über zeitlich begrenzte, signierte URLs.</p>
+            <p><strong>Technische Schutzmaßnahmen:</strong> Alle hochgeladenen Fotos werden verschlüsselt in Google Cloud Storage gespeichert. Für die Clientansicht werden standardmäßig Wasserzeichenversionen als Vorschau verwendet; der Fotograf kann pro Bibliothek konfigurieren, dass stattdessen das Original als Vorschau ausgespielt wird. Der Zugriff auf Originaldateien erfolgt über zeitlich begrenzte, signierte URLs; Clientlinks verwenden nicht erratbare UUIDs ohne Ablaufdatum.</p>
             <div class="dsg-info-block">
                 <ul>
-                    <li><strong>Verarbeitete Datenarten:</strong> Inhaltsdaten (Fotos, Bildmetadaten, EXIF-Daten inkl. GPS-Koordinaten).</li>
+                    <li><strong>Verarbeitete Datenarten:</strong> Inhaltsdaten (Fotos).</li>
                     <li><strong>Betroffene Personen:</strong> Fotografen; auf Fotos abgebildete Dritte.</li>
                     <li><strong>Zwecke:</strong> Bereitstellung der Plattformleistung (Galerie-Hosting, Client-Ansicht, Fotoauswahl).</li>
                     <li><strong>Aufbewahrung:</strong> Bis zur Löschung durch den Fotografen oder bis zu 30 Tage nach Kündigung des Kontos.</li>
@@ -329,10 +328,13 @@
         <!-- E-Mail -->
         <div class="dsg-section" id="email">
             <h2>E-Mail-Benachrichtigungen</h2>
-            <p>Wir versenden transaktionale E-Mails über den Dienstleister <strong>Brevo SAS</strong>. Es handelt sich ausschließlich um betriebsnotwendige Benachrichtigungen im Rahmen der Vertragserfüllung; Werbe-Newsletter werden nicht versandt. Folgende E-Mails werden versendet:</p>
+            <p>Wir versenden transaktionale E-Mails über den Dienstleister <strong>Brevo SAS</strong>. Es handelt sich ausschließlich um betriebsnotwendige Benachrichtigungen im Rahmen der Vertragserfüllung sowie gesetzlich erforderliche Mitteilungen; Werbe-Newsletter werden nicht versandt. Folgende E-Mails werden versendet:</p>
             <ul>
                 <li><strong>Registrierungsbestätigung</strong> – einmalig nach erfolgreicher Kontoerstellung an den Fotografen.</li>
                 <li><strong>Galerieauswahl abgeschlossen</strong> – Benachrichtigung an den Fotografen, wenn ein Client die Fotoauswahl als abgeschlossen markiert. Die E-Mail enthält den Galerienamen, eine Client-Kennung sowie einen Deep-Link zur Galerie in der App.</li>
+                <li><strong>Kündigungsbestätigung</strong> – Bestätigung der Kündigung des Abonnements an den Fotografen.</li>
+                <li><strong>Änderungen an AGB oder Datenschutzerklärung</strong> – Information an alle registrierten Fotografen bei wesentlichen Änderungen der Nutzungsbedingungen oder dieser Datenschutzerklärung.</li>
+                <li><strong>Angebotsänderungen</strong> – Information an registrierte Fotografen bei wesentlichen Änderungen am Leistungsangebot (z. B. Preisanpassungen, Änderungen im Funktionsumfang).</li>
             </ul>
             <div class="dsg-info-block">
                 <ul>
@@ -340,8 +342,8 @@
                     <li><strong>Datenschutzerklärung:</strong> <a href="https://www.brevo.com/legal/privacypolicy/">https://www.brevo.com/legal/privacypolicy/</a></li>
                     <li><strong>Verarbeitete Datenarten:</strong> Kontaktdaten (E-Mail-Adresse), Inhaltsdaten (Galeriename, Client-Kennung).</li>
                     <li><strong>Betroffene Personen:</strong> Registrierte Fotografen.</li>
-                    <li><strong>Zwecke:</strong> Transaktionale Kommunikation im Rahmen der Vertragserfüllung.</li>
-                    <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung).</li>
+                    <li><strong>Zwecke:</strong> Transaktionale Kommunikation im Rahmen der Vertragserfüllung; gesetzlich erforderliche Informationspflichten.</li>
+                    <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung); Art. 6 Abs. 1 lit. c DSGVO (rechtliche Verpflichtung) für Pflichtmitteilungen zu AGB- und Datenschutzänderungen.</li>
                 </ul>
             </div>
         </div>
@@ -361,10 +363,9 @@
                 <li><strong>Verantwortlicher:</strong> Die natürliche oder juristische Person, die über Zwecke und Mittel der Verarbeitung entscheidet (Art. 4 Nr. 7 DSGVO).</li>
                 <li><strong>Auftragsverarbeiter:</strong> Eine Person oder Stelle, die personenbezogene Daten im Auftrag des Verantwortlichen verarbeitet (Art. 4 Nr. 8 DSGVO).</li>
                 <li><strong>Bestandsdaten:</strong> Daten zur Identifikation und Verwaltung von Nutzerkonten (Name, E-Mail-Adresse, Nutzer-ID).</li>
-                <li><strong>Inhaltsdaten:</strong> Vom Nutzer hochgeladene oder erstellte Inhalte, insbesondere Fotos und Bildmetadaten.</li>
+                <li><strong>Inhaltsdaten:</strong> Vom Nutzer hochgeladene oder erstellte Inhalte, insbesondere Fotos.</li>
                 <li><strong>Nutzungsdaten:</strong> Informationen über die Interaktion mit der Plattform (Seitenaufrufe, Klickpfade, Fotoauswahl).</li>
                 <li><strong>Protokolldaten:</strong> Technische Zugriffsprotokolle (IP-Adressen, Zeitstempel, aufgerufene URLs).</li>
-                <li><strong>EXIF-Daten:</strong> In Bilddateien eingebettete Metadaten, die u. a. Aufnahmezeit, Kameramodell und GPS-Koordinaten enthalten können.</li>
             </ul>
         </div>
     </main>
