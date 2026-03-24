@@ -10,7 +10,7 @@ from flask import (
 from datetime import datetime, timezone
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from models import db, User, Role, Library, Image
+from models import db, User, Role, Library, Image, SupportTicket, SupportTicketComment, SupportTicketStatus, Notification, NotificationType
 from security import login_required, require_role
 
 admin = Blueprint("admin", __name__)
@@ -272,3 +272,104 @@ def user_delete(id):
     current_app.logger.info("User soft-deleted: %s", user.email, extra={"log_type": "audit"})
     flash(f'User "{user.email}" deleted!', "success")
     return redirect(url_for("admin.dashboard"))
+
+
+# ---------------------------------------------------------------------------
+# Support ticket management (admin only)
+# ---------------------------------------------------------------------------
+
+
+@admin.route("/admin/support", methods=["GET"])
+@login_required
+@require_role("admin")
+def support_list():
+    tickets = (
+        db.session.execute(
+            select(SupportTicket)
+            .options(selectinload(SupportTicket.user), selectinload(SupportTicket.comments))
+            .order_by(
+                # open tickets first, then by newest
+                SupportTicket.status.asc(),
+                SupportTicket.created_at.desc(),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return render_template("admin/support_list.html", tickets=tickets)
+
+
+@admin.route("/admin/support/<int:ticket_id>", methods=["GET"])
+@login_required
+@require_role("admin")
+def support_detail(ticket_id: int):
+    ticket = db.session.execute(
+        select(SupportTicket)
+        .where(SupportTicket.id == ticket_id)
+        .options(selectinload(SupportTicket.user), selectinload(SupportTicket.comments))
+    ).scalar_one_or_none()
+
+    if ticket is None:
+        flash("Ticket not found.", "error")
+        return redirect(url_for("admin.support_list"))
+
+    return render_template("admin/support_detail.html", ticket=ticket)
+
+
+@admin.route("/admin/support/<int:ticket_id>/comment", methods=["POST"])
+@login_required
+@require_role("admin")
+def support_add_comment(ticket_id: int):
+    ticket = db.session.get(SupportTicket, ticket_id)
+    if ticket is None:
+        flash("Ticket not found.", "error")
+        return redirect(url_for("admin.support_list"))
+
+    body = (request.form.get("body") or "").strip()
+    if not body:
+        flash("Comment body is required.", "error")
+        return redirect(url_for("admin.support_detail", ticket_id=ticket_id))
+
+    comment = SupportTicketComment(ticket_id=ticket_id, body=body)
+    db.session.add(comment)
+
+    if request.form.get("close") == "on":
+        ticket.status = SupportTicketStatus.closed
+        ticket.updated_at = datetime.now(timezone.utc)
+        current_app.logger.info(
+            "Support ticket #%d closed by admin with comment", ticket_id,
+            extra={"log_type": "audit"},
+        )
+    else:
+        ticket.updated_at = datetime.now(timezone.utc)
+
+    notification = Notification(
+        user_id=ticket.user_id,
+        type=NotificationType.ticket_comment_added,
+        related_object=str(ticket.id),
+    )
+    db.session.add(notification)
+
+    db.session.commit()
+    flash("Comment added.", "success")
+    return redirect(url_for("admin.support_detail", ticket_id=ticket_id))
+
+
+@admin.route("/admin/support/<int:ticket_id>/close", methods=["POST"])
+@login_required
+@require_role("admin")
+def support_close(ticket_id: int):
+    ticket = db.session.get(SupportTicket, ticket_id)
+    if ticket is None:
+        flash("Ticket not found.", "error")
+        return redirect(url_for("admin.support_list"))
+
+    ticket.status = SupportTicketStatus.closed
+    ticket.updated_at = datetime.now(timezone.utc)
+    db.session.commit()
+
+    current_app.logger.info(
+        "Support ticket #%d closed by admin", ticket_id, extra={"log_type": "audit"}
+    )
+    flash("Ticket closed.", "success")
+    return redirect(url_for("admin.support_detail", ticket_id=ticket_id))
