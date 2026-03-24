@@ -366,6 +366,39 @@ footer a:hover {
     line-height: 1.7;
 }
 
+/* Cookie banner */
+.cookie-banner {
+    display: none;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 500;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 0.9rem 1.5rem;
+    background: var(--clr-on-surface);
+    color: rgba(255, 255, 255, 0.87);
+    font-size: 0.875rem;
+}
+
+.cookie-banner p { margin: 0; flex: 1; }
+
+.cookie-banner button {
+    flex-shrink: 0;
+    background: var(--clr-primary);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-xl);
+    padding: 0.45rem 1.25rem;
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--transition);
+}
+.cookie-banner button:hover { background: var(--clr-primary-dark); }
+
 /* Responsive */
 @media (max-width: 640px) {
     .hero h1 {
