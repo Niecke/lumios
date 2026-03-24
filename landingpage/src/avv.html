@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auftragsverarbeitungsvertrag - Lumios</title>
+    <meta name="description" content="Auftragsverarbeitungsvertrag (AVV) gemäß Art. 28 DSGVO von Lumios.">
+    <link rel="stylesheet" href="fonts.css">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <a href="/" class="logo">Lumios</a>
+            <nav>
+                <a href="/">Home</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="impressum-main">
+        <h1>Auftragsverarbeitungsvertrag (AVV)</h1>
+        <p class="impressum-subtitle">Vereinbarung über eine Auftragsverarbeitung gemäß Art. 28 DSGVO<br>Stand: 23. März 2026</p>
+
+        <!-- Präambel -->
+        <div class="dsg-section">
+            <h2>Präambel</h2>
+            <p>Diese Vereinbarung über die Auftragsverarbeitung (nachfolgend „AVV") ergänzt die Allgemeinen Geschäftsbedingungen (AGB) und die Datenschutzerklärung von Lumios. Sie regelt die datenschutzrechtlichen Pflichten zwischen dem Nutzer (Fotograf) als Verantwortlichem und dem Anbieter von Lumios als Auftragsverarbeiter im Sinne der Datenschutz-Grundverordnung (DSGVO).</p>
+            <p>Mit der Registrierung und Nutzung der Plattform Lumios akzeptiert der Nutzer diesen AVV in seiner jeweils gültigen Fassung.</p>
+        </div>
+
+        <!-- Inhaltsübersicht -->
+        <div class="dsg-toc">
+            <div class="impressum-block-label">Inhaltsübersicht</div>
+            <ul>
+                <li><a href="#parteien">§ 1 Vertragsparteien</a></li>
+                <li><a href="#gegenstand">§ 2 Gegenstand und Zweck der Verarbeitung</a></li>
+                <li><a href="#dauer">§ 3 Dauer der Vereinbarung</a></li>
+                <li><a href="#pflichten-an">§ 4 Pflichten des Auftragsverarbeiters</a></li>
+                <li><a href="#pflichten-ag">§ 5 Pflichten des Auftraggebers</a></li>
+                <li><a href="#ort">§ 6 Ort der Datenverarbeitung</a></li>
+                <li><a href="#sub">§ 7 Sub-Auftragsverarbeiter</a></li>
+                <li><a href="#betroffenenrechte">§ 8 Rechte betroffener Personen</a></li>
+                <li><a href="#datenpanne">§ 9 Meldung von Datenschutzverletzungen</a></li>
+                <li><a href="#beendigung">§ 10 Beendigung und Datenrückgabe</a></li>
+                <li><a href="#tom">Anlage 1 – Technisch-organisatorische Maßnahmen</a></li>
+            </ul>
+        </div>
+
+        <!-- § 1 Vertragsparteien -->
+        <div class="dsg-section" id="parteien">
+            <h2>§ 1 Vertragsparteien</h2>
+            <p>(1) <strong>Auftraggeber (Verantwortlicher):</strong> Der registrierte Nutzer der Plattform Lumios (nachfolgend „Fotograf" oder „Auftraggeber"). Der Fotograf entscheidet über Zwecke und Mittel der Verarbeitung personenbezogener Daten, die er über die Plattform hochlädt oder verarbeiten lässt.</p>
+            <p>(2) <strong>Auftragnehmer (Auftragsverarbeiter):</strong></p>
+            <div class="impressum-block">
+                <address>
+                    Daniel Niecke<br>
+                    Radelmayergasse 2/7<br>
+                    1190 Wien, Österreich<br>
+                    E-Mail: <a href="mailto:datenschutz@niecke-it.de">datenschutz@niecke-it.de</a>
+                </address>
+            </div>
+            <p>(nachfolgend „Lumios", „Auftragnehmer" oder „Auftragsverarbeiter")</p>
+        </div>
+
+        <!-- § 2 Gegenstand -->
+        <div class="dsg-section" id="gegenstand">
+            <h2>§ 2 Gegenstand und Zweck der Verarbeitung</h2>
+            <p>(1) Gegenstand dieses Auftrags ist die Durchführung folgender Aufgaben im Rahmen der SaaS-Plattform Lumios:</p>
+            <ul>
+                <li>Speicherung und Hosting von durch den Fotografen hochgeladenen Bilddateien in Google Cloud Storage</li>
+                <li>Technische Verarbeitung der Bilddateien, insbesondere Erstellung von Wasserzeichenversionen und Vorschaubildern sowie Entfernung von EXIF-Metadaten (einschließlich GPS-Standortdaten) beim Upload</li>
+                <li>Bereitstellung der Fotogalerien über private Share-Links für Clients (Endkunden des Fotografen)</li>
+                <li>Erfassung und Übermittlung der Fotoauswahl (Favoriten) der Clients an den Fotografen</li>
+                <li>Versand transaktionaler E-Mail-Benachrichtigungen an den Fotografen (z. B. bei abgeschlossener Clientauswahl)</li>
+            </ul>
+            <p>Diese Vereinbarung ist als Ergänzung zu den Allgemeinen Geschäftsbedingungen von Lumios (Stand: 23. März 2026) zu verstehen.</p>
+
+            <p>(2) Folgende Datenkategorien werden verarbeitet:</p>
+            <ul>
+                <li><strong>Inhaltsdaten:</strong> Vom Fotografen hochgeladene Bilddateien (Fotos)</li>
+                <li><strong>Bestandsdaten des Fotografen:</strong> Name, E-Mail-Adresse, Nutzer-ID (übermittelt via SSO)</li>
+                <li><strong>Nutzungsdaten der Clients:</strong> Fotoauswahl (Favoriten), Abschluss-Status</li>
+                <li><strong>Protokolldaten der Clients:</strong> IP-Adresse, Zugriffszeit (Server-Logfiles, max. 30 Tage)</li>
+            </ul>
+
+            <p>(3) Folgende Kategorien betroffener Personen unterliegen der Verarbeitung:</p>
+            <ul>
+                <li><strong>Fotografen</strong> (registrierte Nutzer der Plattform)</li>
+                <li><strong>Auf Fotos abgebildete Personen</strong> (Dritte, deren Bilder der Fotograf hochlädt)</li>
+                <li><strong>Clients</strong> (anonyme Besucher freigegebener Fotogalerien)</li>
+            </ul>
+
+            <p>(4) <strong>Besondere Datenkategorien:</strong> Die hochgeladenen Fotos können Abbildungen von Personen enthalten, die biometrische Daten im Sinne von Art. 4 Nr. 14 DSGVO darstellen und unter die besonderen Datenkategorien gemäß Art. 9 DSGVO fallen können. Der Fotograf ist als Verantwortlicher für das Vorliegen einer geeigneten Rechtsgrundlage (z. B. Einwilligung gemäß Art. 9 Abs. 2 lit. a DSGVO) gegenüber den abgebildeten Personen verantwortlich.</p>
+        </div>
+
+        <!-- § 3 Dauer -->
+        <div class="dsg-section" id="dauer">
+            <h2>§ 3 Dauer der Vereinbarung</h2>
+            <p>(1) Diese Vereinbarung tritt mit der Registrierung des Fotografen auf der Plattform Lumios in Kraft und gilt für die Dauer des Vertragsverhältnisses gemäß den AGB.</p>
+            <p>(2) Die Vereinbarung endet automatisch mit der Kündigung oder Löschung des Nutzerkontos. Die Pflichten aus dieser Vereinbarung, insbesondere die Löschpflichten gemäß § 10, bleiben über das Ende der Vereinbarung hinaus bestehen.</p>
+            <p>(3) Das Recht zur außerordentlichen Kündigung aus wichtigem Grund bleibt unberührt. Ein wichtiger Grund liegt insbesondere vor, wenn der Auftragnehmer wesentliche Bestimmungen dieser Vereinbarung verletzt.</p>
+        </div>
+
+        <!-- § 4 Pflichten des Auftragsverarbeiters -->
+        <div class="dsg-section" id="pflichten-an">
+            <h2>§ 4 Pflichten des Auftragsverarbeiters</h2>
+            <p>(1) Der Auftragnehmer verarbeitet personenbezogene Daten ausschließlich im Rahmen der schriftlichen Weisungen des Auftraggebers und zum Zweck der Erbringung der in § 2 beschriebenen Leistungen. Die Nutzung der Plattform durch den Fotografen gilt als dokumentierte Weisung. Erhält der Auftragnehmer einen behördlichen Auftrag, Daten des Auftraggebers herauszugeben, so hat er — sofern gesetzlich zulässig — den Auftraggeber unverzüglich darüber zu informieren und die Behörde an diesen zu verweisen.</p>
+            <p>(2) Der Auftragnehmer erklärt rechtsverbindlich, dass er alle mit der Datenverarbeitung beauftragten Personen vor Aufnahme der Tätigkeit zur Vertraulichkeit verpflichtet hat oder diese einer angemessenen gesetzlichen Verschwiegenheitsverpflichtung unterliegen. Die Verschwiegenheitsverpflichtung bleibt auch nach Beendigung der Tätigkeit und Ausscheiden beim Auftragnehmer aufrecht.</p>
+            <p>(3) Der Auftragnehmer erklärt rechtsverbindlich, dass er alle erforderlichen Maßnahmen zur Gewährleistung der Sicherheit der Verarbeitung nach Art. 32 DSGVO ergriffen hat. Einzelheiten sind der Anlage 1 (Technisch-organisatorische Maßnahmen) zu entnehmen.</p>
+            <p>(4) Der Auftragnehmer unterstützt den Auftraggeber bei der Einhaltung der in den Art. 32 bis 36 DSGVO genannten Pflichten, insbesondere bei Datensicherheitsmaßnahmen, Meldungen von Datenschutzverletzungen an die Aufsichtsbehörde, Benachrichtigung betroffener Personen, Datenschutz-Folgenabschätzungen und vorherigen Konsultationen.</p>
+            <p>(5) Der Auftragnehmer führt für die vorliegende Auftragsverarbeitung ein Verarbeitungsverzeichnis nach Art. 30 DSGVO.</p>
+            <p>(6) Dem Auftraggeber wird das Recht eingeräumt, die Einhaltung der datenschutzrechtlichen Verpflichtungen zu überprüfen. Der Auftragnehmer stellt dem Auftraggeber alle Informationen zur Verfügung, die zur Kontrolle der Einhaltung dieser Vereinbarung notwendig sind. Die Überprüfung erfolgt in der Regel durch schriftliche Anfrage. Vor-Ort-Prüfungen bedürfen einer angemessenen Vorankündigung (mindestens 14 Tage) und dürfen den Geschäftsbetrieb des Auftragnehmers nicht unverhältnismäßig beeinträchtigen.</p>
+            <p>(7) Der Auftragnehmer hat den Auftraggeber unverzüglich zu informieren, falls er der Ansicht ist, eine Weisung des Auftraggebers verstößt gegen Datenschutzbestimmungen der Union oder der Mitgliedstaaten.</p>
+        </div>
+
+        <!-- § 5 Pflichten des Auftraggebers -->
+        <div class="dsg-section" id="pflichten-ag">
+            <h2>§ 5 Pflichten des Auftraggebers</h2>
+            <p>(1) Der Auftraggeber ist als Verantwortlicher für die Rechtmäßigkeit der Verarbeitung personenbezogener Daten verantwortlich, die er über die Plattform Lumios verarbeiten lässt. Dies umfasst insbesondere:</p>
+            <ul>
+                <li>Das Vorliegen einer geeigneten Rechtsgrundlage für die Verarbeitung der hochgeladenen Fotos gegenüber den abgebildeten Personen (z. B. Einwilligung, Vertragserfüllung im Rahmen eines Fotoauftrags)</li>
+                <li>Die Erfüllung der Informationspflichten gemäß Art. 13 und 14 DSGVO gegenüber den betroffenen Personen</li>
+                <li>Die Sicherstellung, dass die Bereitstellung der Fotos über Lumios keine Rechte Dritter verletzt</li>
+            </ul>
+            <p>(2) Der Auftraggeber stellt den Auftragnehmer von allen Ansprüchen Dritter frei, die aus einer Verletzung der in Absatz 1 genannten Pflichten entstehen.</p>
+        </div>
+
+        <!-- § 6 Ort der Datenverarbeitung -->
+        <div class="dsg-section" id="ort">
+            <h2>§ 6 Ort der Datenverarbeitung</h2>
+            <p>(1) Die primäre Datenverarbeitung erfolgt auf einer virtuellen Maschine der Google Cloud Platform (GCP) in der Region Europe-West (EU/EWR). Fotodaten werden in Google Cloud Storage innerhalb der EU/EWR gespeichert.</p>
+            <p>(2) Durch den Einsatz der in § 7 genannten Sub-Auftragsverarbeiter kann eine Verarbeitung auch außerhalb der EU/des EWR stattfinden. In diesen Fällen wird die Datenübermittlung durch geeignete Garantien gemäß Art. 46 DSGVO abgesichert (Standardvertragsklauseln, Data Privacy Framework). Details sind der Datenschutzerklärung zu entnehmen.</p>
+        </div>
+
+        <!-- § 7 Sub-Auftragsverarbeiter -->
+        <div class="dsg-section" id="sub">
+            <h2>§ 7 Sub-Auftragsverarbeiter</h2>
+            <p>(1) Der Auftragnehmer ist befugt, die folgenden Sub-Auftragsverarbeiter zur Erbringung der vertraglichen Leistungen heranzuziehen:</p>
+
+            <div class="dsg-info-block">
+                <ul>
+                    <li><strong>Google Cloud Platform (Google Ireland Ltd.)</strong><br>
+                        Sitz: Gordon House, Barrow Street, Dublin 4, Irland<br>
+                        Tätigkeit: Hosting der Anwendung (GCP e2-small VM, Region Europe-West) und Speicherung von Fotodaten (Google Cloud Storage)<br>
+                        Grundlage Drittlandtransfers: Data Privacy Framework (DPF), Standardvertragsklauseln (SCC)</li>
+                    <li><strong>Cloudflare, Inc.</strong><br>
+                        Sitz: 101 Townsend St, San Francisco, CA 94107, USA<br>
+                        Tätigkeit: Content Delivery Network (CDN), DNS, DDoS-Schutz<br>
+                        Grundlage Drittlandtransfers: Data Privacy Framework (DPF), Standardvertragsklauseln (SCC)</li>
+                    <li><strong>Brevo SAS</strong><br>
+                        Sitz: 7 rue de Madrid, 75008 Paris, Frankreich<br>
+                        Tätigkeit: Versand transaktionaler E-Mails<br>
+                        Drittlandtransfer: Keiner (EU)</li>
+                    <li><strong>Paddle.com Market Ltd.</strong><br>
+                        Sitz: Judd House, 18–29 Mora Street, London, EC1V 8BT, UK<br>
+                        Tätigkeit: Zahlungsabwicklung als Merchant of Record<br>
+                        Grundlage Drittlandtransfers: UK Adequacy Decision, Standardvertragsklauseln (SCC)</li>
+                </ul>
+            </div>
+
+            <p>(2) Beabsichtigte Änderungen hinsichtlich der Hinzuziehung oder Ersetzung von Sub-Auftragsverarbeitern werden dem Auftraggeber per E-Mail oder durch einen Hinweis innerhalb der Plattform mitgeteilt. Der Auftraggeber hat die Möglichkeit, innerhalb von 30 Tagen nach Zugang der Mitteilung Einspruch zu erheben. Erhebt der Auftraggeber begründeten Einspruch und kann keine einvernehmliche Lösung gefunden werden, steht dem Auftraggeber ein Sonderkündigungsrecht zu.</p>
+            <p>(3) Der Auftragnehmer schließt mit jedem Sub-Auftragsverarbeiter die erforderlichen Vereinbarungen im Sinne des Art. 28 Abs. 4 DSGVO ab. Dabei ist sichergestellt, dass der Sub-Auftragsverarbeiter dieselben Datenschutzpflichten eingeht, die dem Auftragnehmer auf Grund dieser Vereinbarung obliegen.</p>
+            <p>(4) Kommt der Sub-Auftragsverarbeiter seinen Datenschutzpflichten nicht nach, so haftet der Auftragnehmer gegenüber dem Auftraggeber für die Einhaltung der Pflichten des Sub-Auftragsverarbeiters.</p>
+        </div>
+
+        <!-- § 8 Betroffenenrechte -->
+        <div class="dsg-section" id="betroffenenrechte">
+            <h2>§ 8 Rechte betroffener Personen</h2>
+            <p>(1) Der Auftragnehmer ergreift die technischen und organisatorischen Maßnahmen, damit der Auftraggeber die Rechte der betroffenen Personen nach Kapitel III der DSGVO (Information, Auskunft, Berichtigung und Löschung, Datenübertragbarkeit, Widerspruch sowie automatisierte Entscheidungsfindung im Einzelfall) innerhalb der gesetzlichen Fristen jederzeit erfüllen kann.</p>
+            <p>(2) Wird ein Antrag einer betroffenen Person direkt an den Auftragnehmer gerichtet und lässt dieser erkennen, dass der Antragsteller den Auftragnehmer irrtümlich für den Verantwortlichen hält, leitet der Auftragnehmer den Antrag unverzüglich an den Auftraggeber weiter und teilt dies dem Antragsteller mit.</p>
+            <p>(3) Die Plattform stellt dem Fotografen folgende Möglichkeiten zur Verfügung, um Betroffenenrechte zu erfüllen:</p>
+            <ul>
+                <li>Löschung einzelner Fotos oder ganzer Bibliotheken über die App</li>
+                <li>Export von Kontodaten auf Anfrage an <a href="mailto:datenschutz@niecke-it.de">datenschutz@niecke-it.de</a></li>
+                <li>Löschung des gesamten Nutzerkontos inkl. aller Inhalte</li>
+            </ul>
+        </div>
+
+        <!-- § 9 Datenpanne -->
+        <div class="dsg-section" id="datenpanne">
+            <h2>§ 9 Meldung von Datenschutzverletzungen</h2>
+            <p>(1) Der Auftragnehmer informiert den Auftraggeber unverzüglich, nachdem ihm eine Verletzung des Schutzes personenbezogener Daten bekannt wird. Die Benachrichtigung erfolgt per E-Mail an die beim Nutzerkonto hinterlegte E-Mail-Adresse.</p>
+            <p>(2) Die Benachrichtigung enthält mindestens folgende Informationen, soweit diese zum Zeitpunkt der Meldung bekannt sind:</p>
+            <ul>
+                <li>Beschreibung der Art der Verletzung, einschließlich der Kategorien und der ungefähren Zahl der betroffenen Personen und Datensätze</li>
+                <li>Beschreibung der wahrscheinlichen Folgen der Verletzung</li>
+                <li>Beschreibung der ergriffenen oder vorgeschlagenen Maßnahmen zur Behebung und Abmilderung der Folgen</li>
+            </ul>
+            <p>(3) Der Auftragnehmer unterstützt den Auftraggeber bei der Erfüllung seiner Meldepflichten nach Art. 33 und 34 DSGVO.</p>
+        </div>
+
+        <!-- § 10 Beendigung -->
+        <div class="dsg-section" id="beendigung">
+            <h2>§ 10 Beendigung und Datenrückgabe</h2>
+            <p>(1) Nach Beendigung des Vertragsverhältnisses löscht der Auftragnehmer alle im Auftrag des Fotografen verarbeiteten personenbezogenen Daten innerhalb von 30 Tagen unwiderruflich, sofern keine gesetzlichen Aufbewahrungspflichten entgegenstehen.</p>
+            <p>(2) Vor der Löschung hat der Auftraggeber die Möglichkeit, seine Daten über die Plattformfunktionen herunterzuladen. Die Fotodaten werden in dem Format herausgegeben, in dem sie vom Auftraggeber hochgeladen wurden (Originaldateien).</p>
+            <p>(3) Server-Logfiles, die personenbezogene Daten des Auftraggebers oder seiner Clients enthalten, werden spätestens 30 Tage nach Erstellung automatisiert gelöscht.</p>
+            <p>(4) Steuerlich relevante Vertragsdaten (z. B. Abonnementinformationen) werden gemäß § 132 BAO und §§ 190–212 UGB für bis zu 7 Jahre aufbewahrt und anschließend gelöscht.</p>
+        </div>
+
+        <!-- Anlage 1 – TOM -->
+        <div class="dsg-section" id="tom">
+            <h2>Anlage 1 – Technisch-organisatorische Maßnahmen</h2>
+            <p>Der Auftragnehmer hat gemäß Art. 32 DSGVO folgende technische und organisatorische Maßnahmen zur Gewährleistung der Sicherheit der Verarbeitung ergriffen:</p>
+
+            <h3>A. Vertraulichkeit</h3>
+
+            <h4>Zutrittskontrolle</h4>
+            <p>Die Infrastruktur wird vollständig in der Cloud betrieben (Google Cloud Platform). Physische Zutrittskontrollen werden durch den Cloud-Anbieter gewährleistet (ISO 27001-zertifizierte Rechenzentren). Es gibt keine physischen Datenverarbeitungsanlagen beim Auftragnehmer.</p>
+
+            <h4>Zugangskontrolle</h4>
+            <ul>
+                <li>Authentifizierung der Fotografen ausschließlich über Single-Sign-On (Google Sign-In, Apple Sign In) — keine eigene Passwortspeicherung durch Lumios</li>
+                <li>Zugang zur Serverinfrastruktur (GCP VM) über SSH-Key-basierte Authentifizierung</li>
+                <li>Zugriff auf Datenbank und Cloud Storage über rollenbasierte IAM-Berechtigungen (Google Cloud IAM)</li>
+                <li>Automatische Sperrmechanismen bei Inaktivität</li>
+            </ul>
+
+            <h4>Zugriffskontrolle</h4>
+            <ul>
+                <li>Strikte Mandantentrennung: Jeder Fotograf hat ausschließlich Zugriff auf seine eigenen Bibliotheken und Daten</li>
+                <li>Clientzugriff auf Fotogalerien über nicht erratbare UUIDs in Share-Links</li>
+                <li>Zugriff auf Originaldateien in Google Cloud Storage über zeitlich begrenzte, signierte URLs</li>
+                <li>Administrativer Zugriff auf Produktionssysteme ist auf den Betreiber beschränkt</li>
+            </ul>
+
+            <h3>B. Datenintegrität</h3>
+
+            <h4>Weitergabekontrolle</h4>
+            <ul>
+                <li>Verschlüsselte Datenübertragung mittels TLS 1.2–1.3/HTTPS für alle Verbindungen</li>
+                <li>Cloudflare als CDN mit erzwungenem HTTPS</li>
+                <li>Verschlüsselte Speicherung von Fotodaten in Google Cloud Storage (serverseitige Verschlüsselung, AES-256)</li>
+            </ul>
+
+            <h4>Eingabekontrolle</h4>
+            <ul>
+                <li>Protokollierung von Dateneingaben (Upload, Löschung) mit Zeitstempel und Nutzer-ID</li>
+                <li>Server-Logfiles zur Nachvollziehbarkeit von Zugriffen (Aufbewahrung max. 30 Tage)</li>
+            </ul>
+
+            <h4>Schutz von Fotodaten</h4>
+            <ul>
+                <li>Automatische Entfernung von EXIF-Metadaten (insbesondere GPS-Standortdaten) beim Upload</li>
+                <li>Standardmäßige Wasserzeichenversionen als Clientvorschau; der Fotograf kann pro Bibliothek das Original als Vorschau aktivieren</li>
+            </ul>
+
+            <h3>C. Verfügbarkeit und Belastbarkeit</h3>
+
+            <h4>Verfügbarkeitskontrolle</h4>
+            <ul>
+                <li>Hosting auf Google Cloud Platform mit hoher Verfügbarkeit der Infrastruktur</li>
+                <li>Cloudflare CDN für DDoS-Schutz und Lastverteilung</li>
+                <li>Containerisierte Anwendung (Podman) für schnelle Wiederherstellung</li>
+                <li>Infrastruktur als Code (Terraform) und CI/CD (GitHub Actions) für reproduzierbare Deployments</li>
+            </ul>
+
+            <h4>Rasche Wiederherstellbarkeit</h4>
+            <ul>
+                <li>Fotodaten in Google Cloud Storage sind georedundant gespeichert</li>
+                <li>PostgreSQL-Datenbank mit regelmäßigen Backups</li>
+                <li>Infrastruktur-Recovery über Terraform möglich</li>
+            </ul>
+
+            <h3>D. Verfahren zur regelmäßigen Überprüfung</h3>
+            <ul>
+                <li><strong>Datenschutz-Management:</strong> Regelmäßige Überprüfung der technischen und organisatorischen Maßnahmen durch den Betreiber</li>
+                <li><strong>Incident-Response-Management:</strong> Definierter Prozess zur Erkennung und Meldung von Datenschutzverletzungen gemäß § 9 dieser Vereinbarung</li>
+                <li><strong>Datenschutzfreundliche Voreinstellungen:</strong> Wasserzeichenversionen als Standard-Clientvorschau; EXIF-Stripping beim Upload; anonymer Clientzugang ohne Registrierungspflicht; ausschließlich technisch notwendige Cookies</li>
+                <li><strong>Auftragskontrolle:</strong> Klare vertragliche Regelung durch diese Vereinbarung; keine Verarbeitung personenbezogener Daten zu eigenen Zwecken des Auftragnehmers</li>
+            </ul>
+        </div>
+
+        <!-- Kontakt -->
+        <div class="dsg-section">
+            <h2>Kontakt</h2>
+            <p>Bei Fragen zu diesem Auftragsverarbeitungsvertrag wenden Sie sich bitte an: <a href="mailto:datenschutz@niecke-it.de">datenschutz@niecke-it.de</a></p>
+            <p>Dieser Auftragsverarbeitungsvertrag basiert auf dem Mustervertrag der Wirtschaftskammern Österreichs (WKO) für die Auftragsverarbeitung nach Art. 28 DSGVO und wurde an die spezifischen Gegebenheiten der Plattform Lumios angepasst.</p>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 Lumios &middot; <a href="impressum.html">Impressum</a> &middot; <a href="datenschutz.html">Datenschutz</a> &middot; <a href="agb.html">AGB</a> &middot; <a href="avv.html">AVV</a></p>
+        </div>
+    </footer>
+</body>
+</html>
