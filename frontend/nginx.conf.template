@@ -7,6 +7,17 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # Security headers
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    # script-src: accounts.google.com for Google Sign-In; hash covers Cloudflare Bot Management injection.
+    # img-src: googleusercontent.com for Google profile pictures.
+    # frame-src: accounts.google.com for Google Sign-In iframe; challenges.cloudflare.com for Cloudflare challenge.
+    # connect-src: accounts.google.com for Google OAuth token exchange.
+    # Update the hash if Cloudflare rotates their injected script content.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://accounts.google.com 'sha256-gC+Lq+aSUf7/B7bXjhoLOl7bar2RUmxKsQ6Dlzn9byQ='; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' https://*.googleusercontent.com; connect-src 'self' https://accounts.google.com; frame-src https://accounts.google.com https://challenges.cloudflare.com" always;
+
     # Proxy API requests to the backend
     location /api/ {
         proxy_pass ${BACKEND_URL};
