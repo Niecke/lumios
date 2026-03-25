@@ -9,12 +9,21 @@ server {
     add_header X-Frame-Options "DENY" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    add_header Content-Security-Policy "default-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self'" always;
+    # Hash covers the Cloudflare Bot Management inline script injection.
+    # frame-src allows Cloudflare's challenge iframe.
+    # Update the hash if Cloudflare rotates their injected script content.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-gC+Lq+aSUf7/B7bXjhoLOl7bar2RUmxKsQ6Dlzn9byQ=' https://challenges.cloudflare.com; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self'; frame-src https://challenges.cloudflare.com" always;
 
-    # Cache static assets
+    # Cache static assets.
+    # Security headers are repeated here because a location block with its own
+    # add_header directives does not inherit add_header from the server block.
     location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
         expires 7d;
         add_header Cache-Control "public, immutable";
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-gC+Lq+aSUf7/B7bXjhoLOl7bar2RUmxKsQ6Dlzn9byQ=' https://challenges.cloudflare.com; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self'; frame-src https://challenges.cloudflare.com" always;
     }
 
     # SPA fallback
