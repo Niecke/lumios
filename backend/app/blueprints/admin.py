@@ -12,6 +12,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from models import db, User, Role, Library, Image, SupportTicket, SupportTicketComment, SupportTicketStatus, Notification, NotificationType
 from security import login_required, require_role
+from services.mail import notify_agb_change, notify_account_cancellation, notify_registration
 
 admin = Blueprint("admin", __name__)
 
@@ -111,6 +112,7 @@ def user_create():
         current_app.logger.info(
             "User created: %s (%s)", email, account_type, extra={"log_type": "audit"}
         )
+        notify_registration(email)
         flash(f'User "{email}" created successfully!', "success")
         return redirect(url_for("admin.dashboard"))
 
@@ -265,12 +267,14 @@ def user_delete(id):
         flash("System users cannot be deleted.", "error")
         return redirect(url_for("admin.dashboard"))
 
+    deleted_email = user.email
     user.deleted_at = datetime.now(timezone.utc)
     user.active = False
     db.session.commit()
 
-    current_app.logger.info("User soft-deleted: %s", user.email, extra={"log_type": "audit"})
-    flash(f'User "{user.email}" deleted!', "success")
+    current_app.logger.info("User soft-deleted: %s", deleted_email, extra={"log_type": "audit"})
+    notify_account_cancellation(deleted_email)
+    flash(f'User "{deleted_email}" deleted!', "success")
     return redirect(url_for("admin.dashboard"))
 
 
@@ -373,3 +377,43 @@ def support_close(ticket_id: int):
     )
     flash("Ticket closed.", "success")
     return redirect(url_for("admin.support_detail", ticket_id=ticket_id))
+
+
+# ---------------------------------------------------------------------------
+# AGB / Datenschutz change notification (AGB §13)
+# ---------------------------------------------------------------------------
+
+
+@admin.route("/admin/notify_agb", methods=["GET", "POST"])
+@login_required
+@require_role("admin")
+def notify_agb():
+    if request.method == "POST":
+        agb_version = (request.form.get("agb_version") or "").strip()
+        summary = (request.form.get("summary") or "").strip()
+
+        if not agb_version or not summary:
+            flash("Bitte Version und Zusammenfassung angeben.", "error")
+            return render_template("admin/notify_agb.html")
+
+        users = (
+            db.session.execute(
+                select(User).where(User.deleted_at.is_(None), User.active.is_(True))
+            )
+            .scalars()
+            .all()
+        )
+
+        for user in users:
+            notify_agb_change(user.email, agb_version, summary)
+
+        current_app.logger.info(
+            "AGB change notification sent to %d users: version=%r",
+            len(users),
+            agb_version,
+            extra={"log_type": "audit"},
+        )
+        flash(f"AGB-Benachrichtigung an {len(users)} Nutzer gesendet.", "success")
+        return redirect(url_for("admin.notify_agb"))
+
+    return render_template("admin/notify_agb.html")

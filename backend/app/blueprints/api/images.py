@@ -17,7 +17,7 @@ ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 THUMB_SIZE = 600  # longest side in pixels
 PREVIEW_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
-WATERMARK_TEXT = "lumios.at"
+WATERMARK_TEXT = "lumios.niecke-it.de"
 WATERMARK_OPACITY = 80  # 0-255
 
 # Magic byte signatures for allowed image formats
@@ -32,10 +32,10 @@ PREVIEW_MAX_PX = 2048  # max longest side for preview before watermarking
 # Exif IFD tags that identify the specific device or its owner and must be
 # removed before storing the original file.
 _PRIVATE_EXIF_TAGS = {
-    piexif.ExifIFD.MakerNote,        # manufacturer data, often embeds serial numbers
+    piexif.ExifIFD.MakerNote,  # manufacturer data, often embeds serial numbers
     piexif.ExifIFD.CameraOwnerName,  # owner's name written by the camera
-    piexif.ExifIFD.BodySerialNumber, # camera body serial number
-    piexif.ExifIFD.LensSerialNumber, # lens serial number
+    piexif.ExifIFD.BodySerialNumber,  # camera body serial number
+    piexif.ExifIFD.LensSerialNumber,  # lens serial number
 }
 
 

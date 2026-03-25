@@ -20,6 +20,7 @@
 {% if require_role('admin') %}
                 <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
                 <a href="{{ url_for('admin.support_list') }}">Support</a>
+                <a href="{{ url_for('admin.notify_agb') }}">AGB-Mail</a>
                 {% endif %}
                 <a href="{{ url_for('admin.change_password') }}">Password</a>
                 <form method="POST" action="{{ url_for('auth.do_logout') }}">
