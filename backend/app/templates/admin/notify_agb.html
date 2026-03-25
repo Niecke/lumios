@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}AGB-Benachrichtigung – Lumios Management{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>AGB / Datenschutz-Benachrichtigung</h1>
+    <p>
+        Sendet eine E-Mail an alle aktiven Nutzer über eine Änderung der AGB oder
+        Datenschutzerklärung (gemäß AGB §13).
+    </p>
+
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="form-group">
+            <label for="agb_version">Version / Datum</label>
+            <input
+                type="text"
+                id="agb_version"
+                name="agb_version"
+                class="form-control"
+                placeholder="z. B. Version 2.1 vom 25. März 2026"
+                required
+            >
+        </div>
+
+        <div class="form-group">
+            <label for="summary">Zusammenfassung der Änderungen</label>
+            <textarea
+                id="summary"
+                name="summary"
+                class="form-control"
+                rows="5"
+                placeholder="Beschreiben Sie kurz, was sich geändert hat …"
+                required
+            ></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-danger"
+                onclick="return confirm('Benachrichtigung wirklich an alle aktiven Nutzer senden?')">
+            Benachrichtigung senden
+        </button>
+        <a href="{{ url_for('admin.dashboard') }}" class="btn">Abbrechen</a>
+    </form>
+</div>
+{% endblock %}

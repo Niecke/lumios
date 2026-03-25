@@ -94,6 +94,12 @@ CLOUD_TRACE_SERVICE_VERSION = os.getenv("CLOUD_TRACE_SERVICE_VERSION", GIT_HASH)
 # When set, traces are exported via OTLP to this endpoint (e.g. Jaeger) instead of Cloud Trace
 OTEL_EXPORTER_ENDPOINT = os.getenv("OTEL_EXPORTER_ENDPOINT", "")
 
+# Brevo transactional email
+BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
+MAIL_SENDER_EMAIL = os.getenv("MAIL_SENDER_EMAIL", "lumios@niecke-it.de")
+MAIL_SENDER_NAME = os.getenv("MAIL_SENDER_NAME", "Lumios")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "")
+
 # FAIL-FAST: Check required vars
 REQUIRED_VARS = ["POSTGRES_PASSWORD", "SECRET_KEY", "JWT_SECRET"]
 missing = [var for var in REQUIRED_VARS if not os.getenv(var)]

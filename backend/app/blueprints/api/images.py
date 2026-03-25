@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 import uuid as uuid_module
 from PIL import Image as PilImage, ImageDraw, ImageFont, ImageOps
 import io
+import piexif
+import tempfile
+import os
 from services import storage
 
 images_api = Blueprint("images_api", __name__, url_prefix="/libraries")
@@ -14,7 +17,7 @@ ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 THUMB_SIZE = 600  # longest side in pixels
 PREVIEW_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
-WATERMARK_TEXT = "lumios.at"
+WATERMARK_TEXT = "lumios.niecke-it.de"
 WATERMARK_OPACITY = 80  # 0-255
 
 # Magic byte signatures for allowed image formats
@@ -25,6 +28,44 @@ MAGIC_BYTES = {
 
 
 PREVIEW_MAX_PX = 2048  # max longest side for preview before watermarking
+
+# Exif IFD tags that identify the specific device or its owner and must be
+# removed before storing the original file.
+_PRIVATE_EXIF_TAGS = {
+    piexif.ExifIFD.MakerNote,  # manufacturer data, often embeds serial numbers
+    piexif.ExifIFD.CameraOwnerName,  # owner's name written by the camera
+    piexif.ExifIFD.BodySerialNumber,  # camera body serial number
+    piexif.ExifIFD.LensSerialNumber,  # lens serial number
+}
+
+
+def _strip_private_exif(file_data: bytes) -> bytes:
+    """Remove privacy-sensitive EXIF data from a JPEG.
+
+    Strips the GPS IFD entirely and removes individual Exif IFD tags that can
+    identify the specific device or its owner (MakerNote, serial numbers,
+    CameraOwnerName).  Camera settings and copyright tags are preserved.
+    Returns the original bytes unchanged on any error.
+    """
+    try:
+        exif_dict = piexif.load(file_data)
+        exif_dict.pop("GPS", None)
+        exif_ifd = exif_dict.get("Exif", {})
+        for tag in _PRIVATE_EXIF_TAGS:
+            exif_ifd.pop(tag, None)
+        clean_exif = piexif.dump(exif_dict)
+        # piexif.insert only accepts a file path, not raw bytes — use a temp file
+        fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
+        try:
+            os.write(fd, file_data)
+            os.close(fd)
+            piexif.insert(clean_exif, tmp_path)
+            with open(tmp_path, "rb") as f:
+                return f.read()
+        finally:
+            os.unlink(tmp_path)
+    except Exception:
+        return file_data  # malformed or missing EXIF — proceed with original
 
 
 def _build_watermark_tile() -> PilImage.Image:
@@ -227,6 +268,9 @@ def upload_image(library_id: int):
     # Generate watermarked preview (max 2 MB)
     preview_buf = _create_watermarked_preview(pil_img)
     pil_img.close()
+
+    if content_type == "image/jpeg":
+        file_data = _strip_private_exif(file_data)
 
     ext = "jpg" if content_type == "image/jpeg" else "png"
     photo_uuid = str(uuid_module.uuid4())
