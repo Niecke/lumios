@@ -8,11 +8,15 @@ Coverage targets:
   - rejects corrupt image data
   - accepts valid JPEG
   - accepts valid PNG
+  - strips private EXIF (GPS, serial numbers, MakerNote) from JPEG originals
 """
 
 import io
+import os
+import tempfile
 from unittest.mock import patch
 
+import piexif
 import pytest
 from PIL import Image as PilImage
 
@@ -39,6 +43,37 @@ def make_jpeg_bytes() -> bytes:
     img = PilImage.new("RGB", (2, 2), color="red")
     img.save(buf, format="JPEG")
     return buf.getvalue()
+
+
+def make_jpeg_with_private_exif() -> bytes:
+    """Create a JPEG that contains GPS coordinates and a body serial number."""
+    base = make_jpeg_bytes()
+    exif_dict = {
+        "0th": {},
+        "Exif": {
+            piexif.ExifIFD.BodySerialNumber: b"SN-12345678",
+            piexif.ExifIFD.LensSerialNumber: b"LENS-99",
+            piexif.ExifIFD.CameraOwnerName: b"John Doe",
+            piexif.ExifIFD.MakerNote: b"\x00\x01some proprietary data",
+        },
+        "GPS": {
+            piexif.GPSIFD.GPSLatitude: ((48, 1), (12, 1), (0, 1)),
+            piexif.GPSIFD.GPSLatitudeRef: b"N",
+            piexif.GPSIFD.GPSLongitude: ((16, 1), (22, 1), (0, 1)),
+            piexif.GPSIFD.GPSLongitudeRef: b"E",
+        },
+        "1st": {},
+        "thumbnail": None,
+    }
+    fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
+    try:
+        os.write(fd, base)
+        os.close(fd)
+        piexif.insert(piexif.dump(exif_dict), tmp_path)
+        with open(tmp_path, "rb") as f:
+            return f.read()
+    finally:
+        os.unlink(tmp_path)
 
 
 def make_png_bytes() -> bytes:
@@ -236,3 +271,34 @@ class TestUploadValidImages:
         assert preview_key.endswith(".png")
         assert thumb_key.startswith(f"photos/{photographer.id}/{library.id}/thumbs/")
         assert thumb_key.endswith(".png")
+
+
+class TestExifStripping:
+    """GPS and device-identifying EXIF tags must be removed from JPEG originals."""
+
+    @patch("blueprints.api.images.storage")
+    def test_gps_and_serial_stripped_from_original(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        token = make_token(photographer)
+        jpeg_with_exif = make_jpeg_with_private_exif()
+
+        res = upload(
+            client, library.id, token,
+            jpeg_with_exif, "geotagged.jpg", "image/jpeg",
+        )
+        assert res.status_code == 201
+
+        # The first upload_fileobj call is the original
+        calls = mock_storage.upload_fileobj.call_args_list
+        original_buf: io.BytesIO = calls[0][0][0]
+        stored_bytes = original_buf.read()
+
+        exif_dict = piexif.load(stored_bytes)
+        assert exif_dict.get("GPS") == {}, "GPS IFD must be empty"
+        exif_ifd = exif_dict.get("Exif", {})
+        assert piexif.ExifIFD.BodySerialNumber not in exif_ifd
+        assert piexif.ExifIFD.LensSerialNumber not in exif_ifd
+        assert piexif.ExifIFD.CameraOwnerName not in exif_ifd
+        assert piexif.ExifIFD.MakerNote not in exif_ifd
