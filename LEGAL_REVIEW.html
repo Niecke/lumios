@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lumios Legal Compliance Review</title>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --surface2: #242836;
+            --border: #2e3344;
+            --text: #e1e4ed;
+            --text-muted: #8b90a0;
+            --accent: #6c8aff;
+            --critical: #ff5c5c;
+            --critical-bg: #2a1a1a;
+            --warning: #ffb347;
+            --warning-bg: #2a2418;
+            --ok: #4ecb71;
+            --ok-bg: #1a2a1e;
+            --low: #8b90a0;
+            --low-bg: #1e1f28;
+            --code-bg: #161821;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 2rem;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+        h2 { font-size: 1.3rem; margin: 2.5rem 0 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+        h3 { font-size: 1.05rem; margin: 1.5rem 0 0.75rem; color: var(--text); }
+        p, li { color: var(--text-muted); }
+        .subtitle { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem; }
+        code {
+            background: var(--code-bg);
+            padding: 0.15rem 0.4rem;
+            border-radius: 3px;
+            font-size: 0.85rem;
+            color: var(--accent);
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+
+        /* Task cards */
+        .task {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 0.75rem;
+            display: grid;
+            grid-template-columns: 28px 1fr;
+            gap: 0 0.75rem;
+            align-items: start;
+            transition: border-color 0.15s;
+        }
+        .task:hover { border-color: var(--accent); }
+        .task input[type="checkbox"] {
+            width: 18px; height: 18px;
+            margin-top: 3px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+        .task-body { min-width: 0; }
+        .task-title { font-weight: 600; color: var(--text); margin-bottom: 0.25rem; }
+        .task-detail { font-size: 0.88rem; color: var(--text-muted); }
+        .task-detail strong { color: var(--text); font-weight: 500; }
+        .task-file { font-size: 0.82rem; color: var(--text-muted); margin-top: 0.35rem; }
+        .task-file code { font-size: 0.8rem; }
+
+        /* Severity badges */
+        .badge {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            padding: 0.15rem 0.5rem;
+            border-radius: 3px;
+            text-transform: uppercase;
+            margin-right: 0.5rem;
+            vertical-align: middle;
+        }
+        .badge-critical { background: var(--critical-bg); color: var(--critical); border: 1px solid var(--critical); }
+        .badge-medium { background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning); }
+        .badge-low { background: var(--low-bg); color: var(--low); border: 1px solid var(--low); }
+        .badge-ok { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok); }
+
+        /* Comparison tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.88rem;
+        }
+        th {
+            background: var(--surface2);
+            color: var(--text);
+            text-align: left;
+            padding: 0.6rem 0.75rem;
+            border: 1px solid var(--border);
+            font-weight: 600;
+        }
+        td {
+            padding: 0.6rem 0.75rem;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            background: var(--surface);
+        }
+        tr:hover td { background: var(--surface2); }
+
+        /* Section dividers */
+        .section-intro {
+            background: var(--surface);
+            border-left: 3px solid var(--accent);
+            padding: 0.75rem 1rem;
+            margin-bottom: 1.5rem;
+            border-radius: 0 6px 6px 0;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        /* Progress tracker */
+        .progress-bar {
+            background: var(--surface2);
+            border-radius: 4px;
+            height: 8px;
+            margin: 1rem 0 2rem;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--accent), var(--ok));
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+        .progress-text {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            text-align: right;
+        }
+
+        /* Checked task styling */
+        .task:has(input:checked) { opacity: 0.5; }
+        .task:has(input:checked) .task-title { text-decoration: line-through; }
+    </style>
+</head>
+<body>
+
+<h1>Lumios Legal Compliance Review</h1>
+<p class="subtitle">AGB &middot; Datenschutzerkl&auml;rung &middot; AVV &mdash; vs. Implementation &amp; Competitors &middot; 25 March 2026</p>
+
+<div class="progress-text">Completed: <span id="done">0</span> / <span id="total">0</span></div>
+<div class="progress-bar"><div class="progress-fill" id="bar"></div></div>
+
+<!-- ============================================================ -->
+<h2>Part 1 &mdash; Critical: Must Fix Before Go-Live</h2>
+<div class="section-intro">These items represent false claims in the legal documents or missing legally required functionality. Each one is a compliance risk.</div>
+
+<div class="task">
+    <input type="checkbox" id="t1">
+    <div class="task-body">
+        <div class="task-title"><span class="badge badge-critical">Critical</span> Implement EXIF / GPS stripping on upload</div>
+        <div class="task-detail">
+            <strong>Legal claim:</strong> AVV &sect;2(1), Datenschutz &ldquo;Fotodaten&rdquo;, TOM Annex all state &ldquo;Automatische Entfernung von EXIF-Metadaten (insbesondere GPS-Standortdaten) beim Upload&rdquo;.<br>
+            <strong>Reality:</strong> Only <code>ImageOps.exif_transpose()</code> is called &mdash; this reads orientation but does <em>not</em> strip EXIF. Original files are uploaded to GCS with full GPS coordinates intact. Previews/thumbs may lose EXIF incidentally via Pillow re-save, but this is not guaranteed.<br>
+            <strong>Fix:</strong> After <code>exif_transpose()</code>, explicitly strip all EXIF data from the original image before uploading to GCS. Simplest approach: re-encode the original through Pillow without copying EXIF info tags.
+        </div>
+        <div class="task-file">File: <code>backend/app/blueprints/api/images.py:209</code></div>
+    </div>
+</div>
+
+<div class="task">
+    <input type="checkbox" id="t2">
+    <div class="task-body">
+        <div class="task-title"><span class="badge badge-critical">Critical</span> Remove Apple Sign In from Datenschutz</div>
+        <div class="task-detail">
+            <strong>Legal claim:</strong> Datenschutz SSO section contains an entire &ldquo;Apple Sign In&rdquo; block describing data processing with Apple Inc., SCC transfer basis, and privacy policy link.<br>
+            <strong>Reality:</strong> Apple Sign In is not implemented anywhere in the backend. No Apple OAuth code, no Apple client ID config, no Apple token verification. Only Google OAuth exists.<br>
+            <strong>Fix:</strong> Remove the entire &ldquo;Apple Sign In&rdquo; &lt;h3&gt; block from Datenschutz. Also remove &ldquo;Apple Sign In&rdquo; references from AVV TOM Annex (&ldquo;Zugangskontrolle&rdquo;) and AGB &sect;3(1). Optionally mark as &ldquo;(geplant)&rdquo; if launch is imminent.
+        </div>
+        <div class="task-file">File: <code>landingpage/src/datenschutz.html:316&ndash;325</code></div>
+    </div>
+</div>
+
+<div class="task">
+    <input type="checkbox" id="t3">
+    <div class="task-body">
+        <div class="task-title"><span class="badge badge-critical">Critical</span> Implement transactional emails (or adjust claims)</div>
+        <div class="task-detail">
+            <strong>Legal claim:</strong> Datenschutz &ldquo;E-Mail-Benachrichtigungen&rdquo; lists 5 email types via Brevo: registration confirmation, gallery completion, cancellation confirmation, AGB/Datenschutz changes, offer changes. AGB &sect;13 legally requires email notification of AGB changes.<br>
+            <strong>Reality:</strong> <code>mail.py</code> is a stub &mdash; only <code>notify_new_support_ticket()</code> exists and it just logs, never sends. No Brevo SDK. No API key config. Zero emails are sent.<br>
+            <strong>Fix:</strong> At minimum implement: (1) gallery-completion notification (core feature), (2) AGB/Datenschutz change notification (legally required by AGB &sect;13). Full Brevo integration preferred. Alternatively, temporarily reduce Datenschutz claims to match reality during beta.
+        </div>
+        <div class="task-file">File: <code>backend/app/services/mail.py</code></div>
+    </div>
+</div>
+
+<div class="task">
+    <input type="checkbox" id="t4">
+    <div class="task-body">
+        <div class="task-title"><span class="badge badge-critical">Critical</span> Implement 30-day hard-delete job</div>
+        <div class="task-detail">
+            <strong>Legal claim:</strong> AGB &sect;6(5), Datenschutz &ldquo;Registrierung&rdquo;, AVV &sect;10(1) all promise: &ldquo;alle Daten innerhalb von 30 Tagen unwiderruflich gel&ouml;scht&rdquo;.<br>
+            <strong>Reality:</strong> Only soft-delete is implemented (<code>deleted_at</code> timestamp set, <code>active=False</code>). No scheduled job exists to hard-delete records or clean up GCS objects. Soft-deleted data persists indefinitely.<br>
+            <strong>Fix:</strong> Create a management command / scheduled Cloud Run Job that: finds users/libraries/images with <code>deleted_at</code> older than 30 days, deletes associated GCS objects, then hard-deletes DB records. Run daily via Cloud Scheduler.
+        </div>
+        <div class="task-file">File: new <code>backend/app/commands/cleanup.py</code> or Flask CLI command</div>
+    </div>
+</div>
+
+<div class="task">
+    <input type="checkbox" id="t5">
+    <div class="task-body">
+        <div class="task-title"><span class="badge badge-critical">Critical</span> Add AGB acceptance mechanism</div>
+        <div class="task-detail">
+            <strong>Legal claim:</strong> AGB &sect;3(1): &ldquo;Der Vertrag kommt durch die Registrierung des Nutzers &uuml;ber Google Sign-In &hellip; und die Best&auml;tigung dieser AGB zustande.&rdquo;<br>
+            <strong>Reality:</strong> Google Sign-In goes straight through to account creation. No AGB or Datenschutz acceptance checkbox or consent screen exists in the frontend. No acceptance timestamp stored in the DB.<br>
+            <strong>Fix:</strong> After first successful Google OAuth, show an interstitial page with checkboxes for AGB + Datenschutz acceptance. Store <code>agb_accepted_at</code> and <code>datenschutz_accepted_at</code> timestamps in the User model. Block access until accepted.
+        </div>
+        <div class="task-file">Files: <code>frontend/src/routes/login.tsx</code>, <code>backend/app/models.py</code></div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<h2>Part 2 &mdash; Medium: Should Fix Before Go-Live</h2>
+<div class="section-intro">These items are discrepancies that should be resolved but are less immediately risky than Part 1.</div>
+
+<div class="task">
+    <input type="checkbox" id="t6">
+    <div class="task-body">
+        <div class="task-title"><span class="badge badge-medium">Medium</span> Align server logfile claims with reality</div>
+        <div class="task-detail">
+            <strong>Legal claim:</strong> Datenschutz &ldquo;Hosting&rdquo; states: &ldquo;Server-Logfiles erstellt, die IP-Adresse, Zeitstempel, aufgerufene URLs, Browsertyp und Betriebssystem enthalten&rdquo; with 30-day retention. AVV &sect;2(2) lists &ldquo;Protokolldaten der Clients: IP-Adresse, Zugriffszeit&rdquo;.<br>
+            <strong>Reality:</strong> No IPs are logged or stored by the application. <code>_get_real_ip()</code> extracts IP only for rate limiting (in-memory). No <code>audit_logs</code> table exists. Gunicorn may produce access logs to stdout, but these are not structured or retained with any defined policy.<br>
+            <strong>Fix:</strong> Either (a) implement structured request logging that captures IP, URL, user-agent with 30-day retention in a log sink, or (b) update Datenschutz to reflect that only Cloudflare/GCP infrastructure logs exist and reference their retention policies.
+        </div>
+        <div class="task-file">Files: <code>backend/app/main.py</code>, <code>landingpage/src/datenschutz.html:255&ndash;268</code></div>
+    </div>
+</div>
+
+<div class="task">
+    <input type="checkbox" id="t7">
+    <div class="task-body">
+        <div class="task-title"><span class="badge badge-medium">Medium</span> Remove &ldquo;Original als Vorschau&rdquo; claim</div>
+        <div class="task-detail">
+            <strong>Legal claim:</strong> Datenschutz &ldquo;Sicherheitsma&szlig;nahmen&rdquo; and TOM Annex both state: &ldquo;der Fotograf kann pro Bibliothek das Original als Vorschau aktivieren&rdquo;.<br>
+            <strong>Reality:</strong> No such feature exists. The <code>Library</code> model has no field for preview mode. All client previews are always watermarked.<br>
+            <strong>Fix:</strong> Remove this claim from both Datenschutz and AVV TOM Annex. The current watermark-only behavior is more privacy-protective, so just describe reality.
+        </div>
+        <div class="task-file">Files: <code>landingpage/src/datenschutz.html:132</code>, <code>landingpage/src/avv.html:249</code></div>
+    </div>
+</div>
+
+<div class="task">
+    <input type="checkbox" id="t8">
+    <div class="task-body">
+        <div class="task-title"><span class="badge badge-medium">Medium</span> Implement data export capability</div>
+        <div class="task-detail">
+            <strong>Legal claim:</strong> AVV &sect;8(3): &ldquo;Export von Kontodaten auf Anfrage an datenschutz@niecke-it.de&rdquo;. AVV &sect;10(2): &ldquo;Vor der L&ouml;schung hat der Auftraggeber die M&ouml;glichkeit, seine Daten &uuml;ber die Plattformfunktionen herunterzuladen.&rdquo; GDPR Art. 20 requires data portability.<br>
+            <strong>Reality:</strong> No export endpoint. No download mechanism. No admin process documented.<br>
+            <strong>Fix:</strong> Implement an API endpoint or admin action that packages user account data + photo originals for download. At minimum, define and document a manual admin process for DSAR requests.
+        </div>
+        <div class="task-file">File: new endpoint in <code>backend/app/blueprints/api/</code></div>
+    </div>
+</div>
+
+<div class="task">
+    <input type="checkbox" id="t9">
+    <div class="task-body">
+        <div class="task-title"><span class="badge badge-medium">Medium</span> Add cookie details table to Datenschutz</div>
+        <div class="task-detail">
+            <strong>Legal claim:</strong> Datenschutz mentions &ldquo;Session-Cookies zur Authentifizierung&rdquo; generically.<br>
+            <strong>Reality:</strong> The application sets a <code>session</code> cookie (Flask-Session, HttpOnly, Secure, SameSite=Lax). Frontend stores <code>cookie_banner_dismissed</code> in localStorage and <code>lumios_token</code> + <code>lumios_google_profile</code> in sessionStorage.<br>
+            <strong>Fix:</strong> Add a table listing each cookie/storage item with name, purpose, duration, and type. Best practice seen in PicDrop and other German/Austrian providers. Also covers the localStorage items (which are technically not cookies but should be disclosed).
+        </div>
+        <div class="task-file">File: <code>landingpage/src/datenschutz.html:271&ndash;282</code></div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<h2>Part 3 &mdash; Low: Track for Later</h2>
+<div class="section-intro">Non-blocking items to address over time or when related features are built.</div>
+
+<div class="task">
+    <input type="checkbox" id="t10">
+    <div class="task-body">
+        <div class="task-title"><span class="badge badge-low">Low</span> Paddle payment integration (when leaving beta)</div>
+        <div class="task-detail">AGB &sect;7, Datenschutz, AVV &sect;7 reference Paddle.com as MoR. Not implemented yet. Acceptable during free beta but required before paid launch. Include Widerrufsrecht checkbox (AGB &sect;8) in the subscription flow.</div>
+    </div>
+</div>
+
+<div class="task">
+    <input type="checkbox" id="t11">
+    <div class="task-body">
+        <div class="task-title"><span class="badge badge-low">Low</span> Fix CLAUDE.md: SendGrid &rarr; Brevo</div>
+        <div class="task-detail">CLAUDE.md references SendGrid as email provider. Legal docs and code TODOs reference Brevo. Internal inconsistency. Update CLAUDE.md to match.</div>
+        <div class="task-file">File: <code>CLAUDE.md</code></div>
+    </div>
+</div>
+
+<div class="task">
+    <input type="checkbox" id="t12">
+    <div class="task-body">
+        <div class="task-title"><span class="badge badge-low">Low</span> Disclose OpenTelemetry / Cloud Trace if used in production</div>
+        <div class="task-detail">OpenTelemetry with Cloud Trace or Jaeger OTLP exporter is implemented and configurable via <code>CLOUD_TRACE_ENABLED</code>. If enabled in production, traces may contain request metadata. Should be mentioned in Datenschutz under &ldquo;Hosting&rdquo; or as a separate section. Google Cloud would need to be referenced as sub-processor for this specifically.</div>
+        <div class="task-file">File: <code>backend/app/main.py:63&ndash;91</code></div>
+    </div>
+</div>
+
+<div class="task">
+    <input type="checkbox" id="t13">
+    <div class="task-body">
+        <div class="task-title"><span class="badge badge-low">Low</span> Consider &ldquo;No AI Training&rdquo; clause</div>
+        <div class="task-detail">Neither PicDrop nor Lumios explicitly address whether uploaded photos may be used for AI/ML training. Given current industry concerns, adding an explicit &ldquo;Uploaded content will not be used for AI training&rdquo; clause to AGB &sect;6 and AVV &sect;4 would be a differentiator and trust signal.</div>
+    </div>
+</div>
+
+<div class="task">
+    <input type="checkbox" id="t14">
+    <div class="task-body">
+        <div class="task-title"><span class="badge badge-low">Low</span> Add GDPR guide for photographers</div>
+        <div class="task-detail">PicDrop has a dedicated FAQ explaining GDPR implications for photographers (their role as data controller, when AVV is needed, portrait photo handling). Lumios has none. A simple help page would increase trust and reduce support load.</div>
+    </div>
+</div>
+
+<div class="task">
+    <input type="checkbox" id="t15">
+    <div class="task-body">
+        <div class="task-title"><span class="badge badge-low">Low</span> In-app AVV signing flow</div>
+        <div class="task-detail">PicDrop offers AVV signing directly in account settings under &ldquo;Payments &amp; Legal&rdquo;. Lumios accepts AVV implicitly on registration. An explicit signing flow with downloadable PDF would be more transparent and is considered best practice in DACH markets.</div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<h2>Part 4 &mdash; Competitor Comparison</h2>
+
+<h3>PicDrop (Germany, picdrop.com)</h3>
+<table>
+    <tr><th style="width:22%">Aspect</th><th style="width:30%">PicDrop</th><th style="width:30%">Lumios</th><th style="width:18%">Status</th></tr>
+    <tr><td>Legal entity</td><td>GmbH (Berlin)</td><td>Einzelunternehmen (Vienna)</td><td><span class="badge badge-medium">Consider</span></td></tr>
+    <tr><td>Server location</td><td>Germany only</td><td>GCP Europe-West (Belgium)</td><td><span class="badge badge-ok">OK</span></td></tr>
+    <tr><td>AVV process</td><td>In-app signing under &ldquo;Payments &amp; Legal&rdquo;</td><td>Implicit acceptance on registration</td><td><span class="badge badge-medium">Improve</span></td></tr>
+    <tr><td>Sub-processor list</td><td>In AVV within app, changes notified</td><td>Static HTML page</td><td><span class="badge badge-ok">OK</span></td></tr>
+    <tr><td>GDPR guide</td><td>Dedicated FAQ for photographers</td><td>None</td><td><span class="badge badge-medium">Missing</span></td></tr>
+    <tr><td>Photo/biometric data</td><td>Portraits treated as potentially biometric</td><td>Same approach (Art. 9 DSGVO)</td><td><span class="badge badge-ok">Aligned</span></td></tr>
+    <tr><td>DPO contact</td><td>privacy@picdrop.com</td><td>datenschutz@niecke-it.de</td><td><span class="badge badge-ok">OK</span></td></tr>
+</table>
+
+<h3>facturo.at (Austria, invoicing SaaS)</h3>
+<table>
+    <tr><th style="width:22%">Aspect</th><th style="width:30%">facturo.at</th><th style="width:30%">Lumios</th><th style="width:18%">Status</th></tr>
+    <tr><td>Austrian law refs</td><td>Standard Austrian compliance</td><td>BAO &sect;132, UGB &sect;&sect;190&ndash;212, KSchG, FAGG, UStG &sect;6</td><td><span class="badge badge-ok">Thorough</span></td></tr>
+    <tr><td>Kleinunternehmer</td><td>Unknown</td><td>Explicitly stated in AGB &sect;1(3)</td><td><span class="badge badge-ok">Good</span></td></tr>
+    <tr><td>OS-Plattform (ODR)</td><td>Standard EU link</td><td>AGB &sect;14(3)</td><td><span class="badge badge-ok">Covered</span></td></tr>
+    <tr><td>GISA number</td><td>Unknown</td><td>In Impressum</td><td><span class="badge badge-ok">Compliant</span></td></tr>
+    <tr><td>Widerrufsrecht</td><td>Standard FAGG compliance</td><td>AGB &sect;8 with detailed Widerrufsverzicht</td><td><span class="badge badge-ok">Good</span></td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2>Part 5 &mdash; Items Where Implementation Exceeds Claims</h2>
+<div class="section-intro">Features in code not mentioned in legal docs. Generally fine, but worth noting.</div>
+
+<table>
+    <tr><th>Feature</th><th>In Code</th><th>In Legal Docs</th><th>Risk</th></tr>
+    <tr><td>Support ticket system</td><td>Full CRUD with comments</td><td>Not mentioned</td><td>None</td></tr>
+    <tr><td>In-app notifications</td><td>Notification model + API</td><td>Not mentioned</td><td>None</td></tr>
+    <tr><td>OpenTelemetry tracing</td><td>Cloud Trace / Jaeger export</td><td>Not disclosed</td><td>Low &mdash; disclose if production-enabled</td></tr>
+    <tr><td>sessionStorage usage</td><td><code>lumios_token</code>, <code>lumios_google_profile</code></td><td>Not disclosed</td><td>Low &mdash; add to cookie/storage table</td></tr>
+</table>
+
+<script>
+    // Simple progress tracker — persists to localStorage
+    const STORAGE_KEY = 'lumios_legal_review_progress';
+    const boxes = document.querySelectorAll('input[type="checkbox"]');
+    const totalEl = document.getElementById('total');
+    const doneEl = document.getElementById('done');
+    const barEl = document.getElementById('bar');
+    totalEl.textContent = boxes.length;
+
+    // Restore state
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    boxes.forEach(cb => { if (saved[cb.id]) cb.checked = true; });
+    updateProgress();
+
+    boxes.forEach(cb => cb.addEventListener('change', () => {
+        const state = {};
+        boxes.forEach(b => { if (b.checked) state[b.id] = true; });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        updateProgress();
+    }));
+
+    function updateProgress() {
+        const done = [...boxes].filter(b => b.checked).length;
+        doneEl.textContent = done;
+        barEl.style.width = (done / boxes.length * 100) + '%';
+    }
+</script>
+
+</body>
+</html>
