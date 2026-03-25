@@ -71,12 +71,16 @@ class TestApiMe:
         res = client.get(f"{BASE}/me", headers=auth_header(token))
         assert res.status_code == 200
 
-    def test_returns_email_and_roles(self, client, photographer_user):
+    def test_returns_account_info(self, client, photographer_user):
         token = make_token(photographer_user)
         res = client.get(f"{BASE}/me", headers=auth_header(token))
         data = res.get_json()
         assert data["email"] == "photo@test.com"
-        assert isinstance(data["roles"], list)
+        assert data["account_type"] == "local"
+        assert data["subscription"] in ("free", "standard", "premium")
+        assert isinstance(data["storage_used_bytes"], int)
+        assert isinstance(data["storage_limit_bytes"], int)
+        assert "created_at" in data
 
     def test_no_token_returns_401(self, client):
         res = client.get(f"{BASE}/me")
@@ -110,10 +114,10 @@ class TestApiMe:
         assert res.status_code == 401
         assert res.get_json()["error"] == "Token expired"
 
-    def test_token_with_roles_returns_roles(self, client, photographer_user):
+    def test_returns_subscription(self, client, photographer_user):
         token = make_token(photographer_user)
         res = client.get(f"{BASE}/me", headers=auth_header(token))
-        assert "photographer" in res.get_json()["roles"]
+        assert res.get_json()["subscription"] == "free"
 
     def test_user_without_photographer_role_returns_403(self, client, regular_user):
         token = make_token(regular_user)

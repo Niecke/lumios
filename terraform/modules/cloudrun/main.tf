@@ -55,6 +55,12 @@ resource "google_secret_manager_secret_iam_member" "cloudrun_google_frontend_cli
   member    = "serviceAccount:${google_service_account.cloudrun.email}"
 }
 
+resource "google_secret_manager_secret_iam_member" "cloudrun_brevo_api_key" {
+  secret_id = var.brevo_api_key_secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.cloudrun.email}"
+}
+
 resource "google_project_iam_member" "cloudrun_trace_agent" {
   project = var.project_id
   role    = "roles/cloudtrace.agent"
@@ -258,6 +264,19 @@ resource "google_cloud_run_v2_service" "backend" {
         name  = "S3_BUCKET"
         value = var.photos_bucket_name
       }
+      env {
+        name = "BREVO_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = var.brevo_api_key_secret_id
+            version = "latest"
+          }
+        }
+      }
+      env {
+        name  = "ADMIN_EMAIL"
+        value = var.admin_email
+      }
 
       resources {
         limits = {
@@ -306,6 +325,11 @@ resource "google_cloud_run_v2_service" "frontend" {
       env {
         name  = "BACKEND_HOST"
         value = replace(var.public_base_url, "https://", "")
+      }
+
+      env {
+        name  = "S3_ENDPOINT_URL"
+        value = "https://storage.googleapis.com"
       }
 
       resources {

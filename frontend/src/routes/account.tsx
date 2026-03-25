@@ -1,12 +1,10 @@
 // account.tsx — photographer account info page at /account
 //
-// Shows Google profile (avatar, name, email), assigned roles, and a progress
-// bar for library usage (libraries used / max libraries).
+// Shows Google profile (avatar, name, email), account details (subscription,
+// storage usage), and a progress bar for storage usage.
 
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
 import { authApi, type UserInfo } from "../api/auth";
-import { librariesApi } from "../api/libraries";
 import { AppBar } from "../components/AppBar";
 
 export const Route = createFileRoute("/account")({
@@ -21,38 +19,47 @@ export const Route = createFileRoute("/account")({
   component: AccountPage,
 });
 
-// ── Progress bar ──────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-interface LibraryProgressProps {
-  count: number;
-  max: number | null;
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-function LibraryProgress({ count, max }: LibraryProgressProps) {
-  const pct = max ? Math.min(100, (count / max) * 100) : 0;
+// ── Progress bar ──────────────────────────────────────────────────────────────
+
+interface StorageProgressProps {
+  used: number;
+  limit: number | null;
+}
+
+function StorageProgress({ used, limit }: StorageProgressProps) {
+  const pct = limit ? Math.min(100, (used / limit) * 100) : 0;
   const fillClass =
     pct >= 100 ? "progress-fill--full" : pct >= 75 ? "progress-fill--warning" : "";
 
   return (
     <div className="progress-section">
       <div className="progress-header">
-        <span className="progress-header__label">Libraries</span>
+        <span className="progress-header__label">Storage</span>
         <span className="progress-header__count">
-          {count} / {max ?? "\u221e"}
+          {formatBytes(used)} / {limit != null ? formatBytes(limit) : "\u221e"}
         </span>
       </div>
       <div className="progress-track">
         <div
           className={`progress-fill ${fillClass}`}
-          style={{ width: max ? `${pct}%` : "0%" }}
+          style={{ width: limit ? `${pct}%` : "0%" }}
         />
       </div>
       <p className="progress-caption">
-        {max === null
-          ? "No library limit set."
+        {limit === null
+          ? "No storage limit set."
           : pct >= 100
-          ? "Limit reached — delete a library to create a new one."
-          : `${max - count} slot${max - count === 1 ? "" : "s"} remaining.`}
+          ? "Storage limit reached — delete photos to free up space."
+          : `${formatBytes(limit - used)} remaining.`}
       </p>
     </div>
   );
@@ -62,14 +69,6 @@ function LibraryProgress({ count, max }: LibraryProgressProps) {
 
 function AccountPage() {
   const { user } = Route.useRouteContext() as { user: UserInfo };
-
-  const { data: libraryData } = useQuery({
-    queryKey: ["libraries"],
-    queryFn: librariesApi.list,
-  });
-
-  const count = libraryData?.count ?? 0;
-  const max = libraryData?.max_libraries ?? user.max_libraries;
 
   const displayName = user.name ?? user.email;
 
@@ -103,20 +102,24 @@ function AccountPage() {
 
             <div className="account-card__body">
               <div className="info-row">
-                <span className="info-row__label">Roles</span>
-                <span style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-                  {user.roles.length > 0
-                    ? user.roles.map((r) => (
-                        <span key={r} className="chip">
-                          {r}
-                        </span>
-                      ))
-                    : "\u2014"}
+                <span className="info-row__label">Subscription</span>
+                <span className="chip">{user.subscription ?? "—"}</span>
+              </div>
+              <div className="info-row">
+                <span className="info-row__label">Account type</span>
+                <span>{user.account_type ?? "—"}</span>
+              </div>
+              <div className="info-row">
+                <span className="info-row__label">Member since</span>
+                <span>
+                  {user.created_at
+                    ? new Date(user.created_at).toLocaleDateString()
+                    : "—"}
                 </span>
               </div>
             </div>
 
-            <LibraryProgress count={count} max={max} />
+            <StorageProgress used={user.storage_used_bytes} limit={user.storage_limit_bytes} />
           </div>
         </div>
       </main>

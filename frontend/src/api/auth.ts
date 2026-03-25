@@ -10,11 +10,16 @@
 //   4. Both the JWT and the Google profile are stored in sessionStorage so
 //      they are cleared automatically when the tab closes.
 
-// Shape returned by /api/v1/auth/me and /api/v1/auth/google/verify
+// Shape returned by /api/v1/auth/me
 export interface UserInfo {
   email: string;
-  roles: string[];
+  created_at: string | null;
+  account_type: string | null;
+  subscription: string | null;
+  storage_used_bytes: number;
+  storage_limit_bytes: number | null;
   max_libraries: number | null;
+  max_images_per_library: number | null;
   name?: string;
   picture?: string;
 }
@@ -118,7 +123,7 @@ export const authApi = {
 
     tokenStore.set(data.token);
     googleProfileStore.set(profile);
-    return { email: data.email, roles: data.roles, max_libraries: data.max_libraries };
+    return authApi.me();
   },
 
   // Exchange a one-time login code (from the OAuth redirect) for a JWT.
