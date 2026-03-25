@@ -3,6 +3,7 @@ from main import limiter
 from models import db, Library, Image, CustomerState, Notification, NotificationType
 from sqlalchemy import select
 from services import storage
+from services.mail import notify_gallery_finished
 from datetime import datetime, timezone
 
 public_api = Blueprint("public_api", __name__, url_prefix="/public")
@@ -135,6 +136,13 @@ def finish_library(library_uuid: str):
     )
     db.session.add(notification)
     db.session.commit()
+
+    notify_gallery_finished(
+        photographer_email=library.photographer.email,
+        library_name=library.name,
+        library_uuid=library.uuid,
+        liked_count=liked_count,
+    )
 
     return jsonify(
         {
