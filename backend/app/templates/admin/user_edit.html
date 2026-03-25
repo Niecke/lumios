@@ -39,6 +39,17 @@
         </div>
 
         <div class="form-group">
+            <label for="subscription">Subscription</label>
+            <select id="subscription" name="subscription" class="form-control">
+                {% for st in subscription_types %}
+                <option value="{{ st.value }}" {{ 'selected' if user.subscription == st }}>
+                    {{ st.value | capitalize }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
             <label class="checkbox-label">
                 <input type="checkbox" name="active" {{ 'checked' if user.active }}>
                 Active Account

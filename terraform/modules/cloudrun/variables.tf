@@ -63,6 +63,16 @@ variable "google_frontend_client_id_secret_id" {
   type        = string
 }
 
+variable "brevo_api_key_secret_id" {
+  description = "Secret Manager secret ID for the Brevo transactional email API key"
+  type        = string
+}
+
+variable "admin_email" {
+  description = "Admin email address for support ticket notifications"
+  type        = string
+}
+
 variable "frontend_image" {
   description = "Full container image URL for the frontend including tag"
   type        = string

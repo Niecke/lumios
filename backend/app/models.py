@@ -1,7 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from password_handler import hash_password, password_hasher
 from argon2.exceptions import VerifyMismatchError
-from config import MIN_PASSWORD_LENGTH
+from config import MIN_PASSWORD_LENGTH, SUBSCRIPTION_LIMITS
 from datetime import datetime, timezone
 from flask_migrate import Migrate
 import enum
@@ -10,6 +10,12 @@ from tracing import traced
 
 db = SQLAlchemy()
 migrate = Migrate()
+
+
+class SubscriptionType(enum.Enum):
+    free = "free"
+    standard = "standard"
+    premium = "premium"
 
 
 class CustomerState(enum.Enum):
@@ -52,6 +58,12 @@ class User(db.Model):
     is_system = db.Column(
         db.Boolean, nullable=False, default=False, server_default=db.false()
     )
+    subscription = db.Column(
+        db.Enum(SubscriptionType, name="subscriptiontype"),
+        nullable=False,
+        default=SubscriptionType.free,
+        server_default=SubscriptionType.free.value,
+    )
     roles = db.relationship(
         "Role", secondary=roles_users, backref=db.backref("users", lazy="dynamic")
     )
@@ -59,6 +71,22 @@ class User(db.Model):
     @property
     def is_authenticated(self):
         return self.active and self.deleted_at is None
+
+    @property
+    def effective_limits(self) -> dict:
+        """Return the enforced limits for this user.
+
+        Subscription tier sets the cap; the per-user max_* columns allow the
+        admin to impose stricter limits for a specific user (lower wins).
+        """
+        tier = SUBSCRIPTION_LIMITS[self.subscription.value]
+        return {
+            "max_libraries": min(self.max_libraries, tier["max_libraries"]),
+            "max_images_per_library": min(
+                self.max_images_per_library, tier["max_images_per_library"]
+            ),
+            "max_storage_bytes": tier["max_storage_bytes"],
+        }
 
     def set_password(self, password):
         if len(password) < MIN_PASSWORD_LENGTH:
@@ -202,7 +230,9 @@ class SupportTicket(db.Model):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    user = db.relationship("User", backref=db.backref("support_tickets", lazy="dynamic"))
+    user = db.relationship(
+        "User", backref=db.backref("support_tickets", lazy="dynamic")
+    )
     comments = db.relationship(
         "SupportTicketComment",
         backref="ticket",
@@ -253,9 +283,7 @@ class Notification(db.Model):
     user_id = db.Column(db.Integer(), db.ForeignKey("user.id"), nullable=False)
     related_object = db.Column(db.String(255), nullable=True)
 
-    user = db.relationship(
-        "User", backref=db.backref("notifications", lazy="dynamic")
-    )
+    user = db.relationship("User", backref=db.backref("notifications", lazy="dynamic"))
 
     def to_dict(self):
         return {

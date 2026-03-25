@@ -10,9 +10,25 @@ from flask import (
 from datetime import datetime, timezone
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from models import db, User, Role, Library, Image, SupportTicket, SupportTicketComment, SupportTicketStatus, Notification, NotificationType
+from models import (
+    db,
+    User,
+    Role,
+    Library,
+    Image,
+    SupportTicket,
+    SupportTicketComment,
+    SupportTicketStatus,
+    Notification,
+    NotificationType,
+    SubscriptionType,
+)
 from security import login_required, require_role
-from services.mail import notify_agb_change, notify_account_cancellation, notify_registration
+from services.mail import (
+    notify_agb_change,
+    notify_account_cancellation,
+    notify_registration,
+)
 
 admin = Blueprint("admin", __name__)
 
@@ -84,14 +100,18 @@ def user_create():
 
         if account_type not in ("local", "google"):
             flash("Invalid account type.", "error")
-            return render_template("admin/user_create.html", email=email, all_roles=all_roles)
+            return render_template(
+                "admin/user_create.html", email=email, all_roles=all_roles
+            )
 
         # Check if user exists
         if db.session.execute(
             select(User).where(User.email == email)
         ).scalar_one_or_none():
             flash("Email already exists!", "error")
-            return render_template("admin/user_create.html", email=email, all_roles=all_roles)
+            return render_template(
+                "admin/user_create.html", email=email, all_roles=all_roles
+            )
 
         user = User(email=email, active=active, account_type=account_type)
 
@@ -101,7 +121,9 @@ def user_create():
                 user.set_password(password)
             except ValueError as ex:
                 flash(str(ex), "error")
-                return render_template("admin/user_create.html", email=email, all_roles=all_roles)
+                return render_template(
+                    "admin/user_create.html", email=email, all_roles=all_roles
+                )
 
         selected_role_ids = set(int(r) for r in request.form.getlist("roles"))
         user.roles = [r for r in all_roles if r.id in selected_role_ids]
@@ -142,6 +164,7 @@ def user_edit(id):
         password = request.form.get("password", "").strip()
         active = "active" in request.form
         selected_role_ids = set(int(r) for r in request.form.getlist("roles"))
+        subscription_value = request.form.get("subscription", "").strip()
 
         changes = []
         if password:
@@ -150,7 +173,10 @@ def user_edit(id):
             except ValueError as ex:
                 flash(str(ex), "error")
                 return render_template(
-                    "admin/user_edit.html", user=user, all_roles=all_roles
+                    "admin/user_edit.html",
+                    user=user,
+                    all_roles=all_roles,
+                    subscription_types=SubscriptionType,
                 )
             changes.append("password")
 
@@ -163,6 +189,21 @@ def user_edit(id):
             changes.append("roles")
         user.roles = new_roles
 
+        if subscription_value:
+            try:
+                new_subscription = SubscriptionType(subscription_value)
+                if new_subscription != user.subscription:
+                    changes.append(f"subscription={new_subscription.value}")
+                user.subscription = new_subscription
+            except ValueError:
+                flash("Invalid subscription type.", "error")
+                return render_template(
+                    "admin/user_edit.html",
+                    user=user,
+                    all_roles=all_roles,
+                    subscription_types=SubscriptionType,
+                )
+
         db.session.commit()
 
         current_app.logger.info(
@@ -174,7 +215,12 @@ def user_edit(id):
         flash(f'User "{user.email}" updated successfully!', "success")
         return redirect(url_for("admin.dashboard"))
 
-    return render_template("admin/user_edit.html", user=user, all_roles=all_roles)
+    return render_template(
+        "admin/user_edit.html",
+        user=user,
+        all_roles=all_roles,
+        subscription_types=SubscriptionType,
+    )
 
 
 @admin.route("/change_password", methods=["GET", "POST"])
@@ -272,7 +318,9 @@ def user_delete(id):
     user.active = False
     db.session.commit()
 
-    current_app.logger.info("User soft-deleted: %s", deleted_email, extra={"log_type": "audit"})
+    current_app.logger.info(
+        "User soft-deleted: %s", deleted_email, extra={"log_type": "audit"}
+    )
     notify_account_cancellation(deleted_email)
     flash(f'User "{deleted_email}" deleted!', "success")
     return redirect(url_for("admin.dashboard"))
@@ -290,7 +338,9 @@ def support_list():
     tickets = (
         db.session.execute(
             select(SupportTicket)
-            .options(selectinload(SupportTicket.user), selectinload(SupportTicket.comments))
+            .options(
+                selectinload(SupportTicket.user), selectinload(SupportTicket.comments)
+            )
             .order_by(
                 # open tickets first, then by newest
                 SupportTicket.status.asc(),
@@ -341,7 +391,8 @@ def support_add_comment(ticket_id: int):
         ticket.status = SupportTicketStatus.closed
         ticket.updated_at = datetime.now(timezone.utc)
         current_app.logger.info(
-            "Support ticket #%d closed by admin with comment", ticket_id,
+            "Support ticket #%d closed by admin with comment",
+            ticket_id,
             extra={"log_type": "audit"},
         )
     else:

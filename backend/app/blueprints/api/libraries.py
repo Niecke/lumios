@@ -28,7 +28,7 @@ def list_libraries():
         {
             "libraries": [lib.to_dict() for lib in libraries],
             "count": len(libraries),
-            "max_libraries": user.max_libraries if user else None,
+            "max_libraries": user.effective_limits["max_libraries"] if user else None,
         }
     )
 
@@ -61,11 +61,12 @@ def create_library():
         )
     ).scalar()
 
-    if current_count >= user.max_libraries:
+    limits = user.effective_limits
+    if current_count >= limits["max_libraries"]:
         return (
             jsonify(
                 {
-                    "error": f"Library limit reached ({user.max_libraries}). Delete an existing library to create a new one."
+                    "error": f"Library limit reached ({limits['max_libraries']}). Delete an existing library to create a new one."
                 }
             ),
             422,

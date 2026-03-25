@@ -32,3 +32,8 @@ output "google_frontend_client_id_secret_id" {
   description = "Secret Manager secret ID for the Google OAuth frontend client ID"
   value       = google_secret_manager_secret.google_frontend_client_id.secret_id
 }
+
+output "brevo_api_key_secret_id" {
+  description = "Secret Manager secret ID for the Brevo transactional email API key"
+  value       = google_secret_manager_secret.brevo_api_key.secret_id
+}
