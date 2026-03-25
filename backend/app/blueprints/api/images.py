@@ -190,7 +190,7 @@ def list_images(library_id: int):
         {
             "images": image_dicts,
             "count": len(image_dicts),
-            "max_images_per_library": user.max_images_per_library if user else None,
+            "max_images_per_library": user.effective_limits["max_images_per_library"] if user else None,
         }
     )
 
@@ -208,19 +208,38 @@ def upload_image(library_id: int):
     if user is None:
         return jsonify({"error": "User not found"}), 404
 
+    limits = user.effective_limits
+
     current_count = db.session.execute(
         select(db.func.count())
         .select_from(Image)
         .where(Image.library_id == library_id, Image.deleted_at.is_(None))
     ).scalar()
 
-    if current_count >= user.max_images_per_library:
+    if current_count >= limits["max_images_per_library"]:
         return (
             jsonify(
                 {
-                    "error": f"Image limit reached ({user.max_images_per_library}) for this library."
+                    "error": f"Image limit reached ({limits['max_images_per_library']}) for this library."
                 }
             ),
+            422,
+        )
+
+    storage_used = db.session.execute(
+        select(db.func.coalesce(db.func.sum(Image.size), 0))
+        .join(Image.library)
+        .where(
+            Library.user_id == user_id,
+            Image.deleted_at.is_(None),
+            Library.deleted_at.is_(None),
+        )
+    ).scalar()
+
+    if storage_used >= limits["max_storage_bytes"]:
+        limit_mb = limits["max_storage_bytes"] // (1024 * 1024)
+        return (
+            jsonify({"error": f"Storage limit reached ({limit_mb} MB) for your subscription."}),
             422,
         )
 

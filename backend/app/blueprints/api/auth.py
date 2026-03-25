@@ -8,7 +8,7 @@ from config import GOOGLE_FRONTEND_CLIENT_ID, REDIS_URL
 from services.auth import login_google, AuthError
 from services.token import create_token
 from security import require_api_auth, require_api_role
-from models import db, User
+from models import db, User, Library, Image
 from sqlalchemy import select
 
 auth_api = Blueprint("auth_api", __name__, url_prefix="/auth")
@@ -25,13 +25,31 @@ _google_jwks = PyJWKClient(_GOOGLE_JWKS_URI, cache_keys=True, timeout=5)
 @require_api_role("photographer")
 def me():
     payload = g.token_payload
+    user_id = int(payload["sub"])
     user = db.session.execute(
-        select(User).filter_by(id=int(payload["sub"]))
+        select(User).filter_by(id=user_id)
     ).scalar_one_or_none()
+
+    storage_used = db.session.execute(
+        select(db.func.coalesce(db.func.sum(Image.size), 0))
+        .join(Image.library)
+        .where(
+            Library.user_id == user_id,
+            Image.deleted_at.is_(None),
+            Library.deleted_at.is_(None),
+        )
+    ).scalar()
+
+    limits = user.effective_limits if user else {}
     result = {
         "email": payload["email"],
-        "roles": payload["roles"],
-        "max_libraries": user.max_libraries if user else None,
+        "created_at": user.created_at.isoformat() if user else None,
+        "account_type": user.account_type if user else None,
+        "subscription": user.subscription.value if user else None,
+        "storage_used_bytes": storage_used,
+        "storage_limit_bytes": limits.get("max_storage_bytes"),
+        "max_libraries": limits.get("max_libraries"),
+        "max_images_per_library": limits.get("max_images_per_library"),
     }
     if payload.get("name"):
         result["name"] = payload["name"]

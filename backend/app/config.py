@@ -94,6 +94,25 @@ CLOUD_TRACE_SERVICE_VERSION = os.getenv("CLOUD_TRACE_SERVICE_VERSION", GIT_HASH)
 # When set, traces are exported via OTLP to this endpoint (e.g. Jaeger) instead of Cloud Trace
 OTEL_EXPORTER_ENDPOINT = os.getenv("OTEL_EXPORTER_ENDPOINT", "")
 
+# Subscription tier limits — lower of (tier, per-user column) is enforced
+SUBSCRIPTION_LIMITS = {
+    "free": {
+        "max_libraries": 1000,
+        "max_images_per_library": 5000,
+        "max_storage_bytes": 5 * 1024 * 1024 * 1024,  # 5 GB
+    },
+    "standard": {
+        "max_libraries": 1000,
+        "max_images_per_library": 5000,
+        "max_storage_bytes": 200 * 1024 * 1024 * 1024,  # 200 GB
+    },
+    "premium": {
+        "max_libraries": 1000,
+        "max_images_per_library": 5000,
+        "max_storage_bytes": 600 * 1024 * 1024 * 1024,  # 600 GB
+    },
+}
+
 # Brevo transactional email
 BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
 MAIL_SENDER_EMAIL = os.getenv("MAIL_SENDER_EMAIL", "lumios@niecke-it.de")

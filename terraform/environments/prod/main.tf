@@ -57,6 +57,8 @@ module "cloudrun" {
   google_client_id_secret_id          = module.secrets.google_client_id_secret_id
   google_client_secret_secret_id      = module.secrets.google_client_secret_secret_id
   google_frontend_client_id_secret_id = module.secrets.google_frontend_client_id_secret_id
+  brevo_api_key_secret_id             = module.secrets.brevo_api_key_secret_id
+  admin_email                         = "daniel@niecke-it.de"
   project_id                          = var.project_id
   public_base_url                     = "https://lumios-api.niecke-it.de"
   frontend_url                        = "https://lumios-app.niecke-it.de"

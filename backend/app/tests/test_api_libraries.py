@@ -10,7 +10,7 @@ Coverage targets:
 
 import pytest
 
-from models import db, User, Role, Library
+from models import db, User, Role, Library, SubscriptionType
 from services.token import create_token
 
 BASE = "/api/v1/libraries"
@@ -44,7 +44,10 @@ def photographer_role():
 
 @pytest.fixture
 def photographer(photographer_role):
-    user = User(email="photo@test.com", active=True, max_libraries=5)
+    user = User(
+        email="photo@test.com", active=True, max_libraries=5,
+        subscription=SubscriptionType.premium,
+    )
     user.set_password("PhotoPass123!")
     user.roles.append(photographer_role)
     db.session.add(user)
@@ -54,7 +57,10 @@ def photographer(photographer_role):
 
 @pytest.fixture
 def other_photographer(photographer_role):
-    user = User(email="other@test.com", active=True, max_libraries=5)
+    user = User(
+        email="other@test.com", active=True, max_libraries=5,
+        subscription=SubscriptionType.premium,
+    )
     user.set_password("OtherPass123!")
     user.roles.append(photographer_role)
     db.session.add(user)

@@ -94,3 +94,13 @@ resource "google_secret_manager_secret" "google_frontend_client_id" {
     auto {}
   }
 }
+
+# Brevo transactional email API key — obtained from app.brevo.com → SMTP & API → API Keys.
+# Populate after `terraform apply` with:
+#   gcloud secrets versions add lumios-brevo-api-key --data-file=-
+resource "google_secret_manager_secret" "brevo_api_key" {
+  secret_id = "lumios-brevo-api-key"
+  replication {
+    auto {}
+  }
+}

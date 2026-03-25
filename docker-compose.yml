@@ -93,6 +93,7 @@ services:
     environment:
       BACKEND_URL: "http://lumios-backend:8080"
       BACKEND_HOST: "lumios-backend"
+      S3_ENDPOINT_URL: "http://localhost:9000"
     ports:
       - "8081:8080"
     #depends_on:
