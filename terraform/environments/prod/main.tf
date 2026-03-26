@@ -67,6 +67,25 @@ module "cloudrun" {
   depends_on = [module.apis, module.network, module.vm, module.secrets, module.storage]
 }
 
+module "cleanup" {
+  source = "../../modules/cleanup"
+
+  region                        = var.region
+  project_id                    = var.project_id
+  network_id                    = module.network.network_id
+  subnet_id                     = module.network.subnet_id
+  image                         = "europe-west1-docker.pkg.dev/${var.project_id}/lumios/backend:latest"
+  vm_internal_ip                = module.vm.internal_ip
+  photos_bucket_name            = module.storage.photos_bucket_name
+  postgres_password_secret_id   = module.secrets.postgres_password_secret_id
+  secret_key_secret_id          = module.secrets.secret_key_secret_id
+  jwt_secret_secret_id          = module.secrets.jwt_secret_secret_id
+  gcs_hmac_access_key_secret_id = module.cloudrun.gcs_hmac_access_key_secret_id
+  gcs_hmac_secret_secret_id     = module.cloudrun.gcs_hmac_secret_secret_id
+
+  depends_on = [module.apis, module.network, module.vm, module.secrets, module.storage, module.cloudrun]
+}
+
 module "monitoring" {
   source               = "../../modules/monitoring"
   project_id           = var.project_id
