@@ -20,7 +20,7 @@ class TestLoginRequired:
 
     PROTECTED_ROUTES = [
         ("GET", "/"),
-        ("GET", "/admin/dashboard"),
+        ("GET", "/admin/users"),
         ("GET", "/admin/user_create"),
         ("POST", "/admin/user_create"),
         ("POST", "/admin/user_delete/1"),
@@ -63,7 +63,7 @@ class TestLoginRequired:
 class TestRequireRole:
     def test_admin_route_shows_role_error_for_regular_user(self, client, regular_user):
         do_login(client, "user@test.com", "UserPass123!")
-        response = client.get("/admin/dashboard", follow_redirects=True)
+        response = client.get("/admin/users", follow_redirects=True)
         html = unescape(response.data.decode())
         assert "Access denied." in html
 
@@ -71,17 +71,17 @@ class TestRequireRole:
         self, client, regular_user
     ):
         do_login(client, "user@test.com", "UserPass123!")
-        response = client.get("/admin/dashboard", follow_redirects=False)
+        response = client.get("/admin/users", follow_redirects=False)
         assert response.status_code == 302
 
     def test_admin_route_accessible_with_admin_role(self, client, admin_user):
         do_login(client, "admin@test.com", "AdminPass123!")
-        response = client.get("/admin/dashboard")
+        response = client.get("/admin/users")
         assert response.status_code == 200
 
     def test_unauthenticated_user_gets_login_redirect_not_role_error(self, client):
         # Without a session the login_required decorator fires before require_role
-        response = client.get("/admin/dashboard", follow_redirects=False)
+        response = client.get("/admin/users", follow_redirects=False)
         assert response.status_code == 302
         assert "/login" in response.location
 

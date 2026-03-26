@@ -1,12 +1,16 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 from main import limiter
-from models import db, Library, Image, CustomerState, Notification, NotificationType
-from sqlalchemy import select
+from models import db, Library, Image, CustomerState, Notification, NotificationType, User, Waitlist
+from sqlalchemy import select, func, or_
 from services import storage
-from services.mail import notify_gallery_finished
+from services.mail import notify_gallery_finished, add_to_brevo_waitlist
+from config import MAX_USERS, BREVO_WAITLIST_LIST_ID
 from datetime import datetime, timezone
+import re
 
 public_api = Blueprint("public_api", __name__, url_prefix="/public")
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 @public_api.route("/libraries/<library_uuid>", methods=["GET"])
@@ -150,3 +154,43 @@ def finish_library(library_uuid: str):
             "finished_at": library.finished_at.isoformat(),
         }
     )
+
+
+@public_api.route("/registration_status", methods=["GET"])
+@limiter.limit("30 per minute")
+def registration_status():
+    """Return whether new registrations are currently open."""
+    slot_count = db.session.execute(
+        select(func.count(User.id)).where(
+            or_(User.active.is_(True), User.activation_pending.is_(True)),
+            User.deleted_at.is_(None),
+        )
+    ).scalar()
+    return jsonify({"can_register": slot_count < MAX_USERS})
+
+
+@public_api.route("/waitlist", methods=["POST"])
+@limiter.limit("3 per minute")
+def join_waitlist():
+    """Add an email address to the waitlist (Brevo contact list)."""
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+    if not _EMAIL_RE.match(email):
+        return jsonify({"error": "Invalid email address"}), 400
+
+    # Store locally so admins can see waitlist entries even without Brevo configured
+    existing = db.session.execute(
+        select(Waitlist).where(Waitlist.email == email)
+    ).scalar_one_or_none()
+    if not existing:
+        db.session.add(Waitlist(email=email))
+        db.session.commit()
+
+    add_to_brevo_waitlist(email, BREVO_WAITLIST_LIST_ID)
+    current_app.logger.info(
+        "Waitlist signup: %s", email, extra={"log_type": "audit"}
+    )
+    return jsonify({"ok": True})

@@ -26,15 +26,15 @@
         </div>
     </header>
 
-    <div class="beta-banner">
-        <div class="container">Lumios is currently in closed beta. <a href="#access">Request access</a> to get started.</div>
+    <div class="beta-banner" id="beta-banner">
+        <div class="container">Lumios is currently in beta. <a href="#access">Get started</a>.</div>
     </div>
 
     <section class="hero">
         <div class="container">
             <h1>Share your photos.<br><span class="highlight">Beautifully. Securely.</span></h1>
             <p>Lumios is a photo library platform for professional photographers to share curated collections with customers through secure, private links.</p>
-            <a href="#access" class="cta-button">Request Access</a>
+            <a href="#access" class="cta-button" id="hero-cta">Get started</a>
         </div>
     </section>
 
@@ -107,8 +107,28 @@
     <section class="access" id="access">
         <div class="container">
             <h2>Get access</h2>
-            <p>Lumios is currently in closed beta. If you're a photographer interested in using Lumios, reach out to us.</p>
-            <a href="mailto:lumios@niecke-it.de" class="email-link">lumios@niecke-it.de</a>
+
+            <!-- Registration open -->
+            <div id="access-register" style="display:none">
+                <p>Sign up for a free Lumios account and start sharing your photo libraries today.</p>
+                <a id="register-btn" href="%%APP_URL%%/register" class="cta-button" target="_blank">Create account</a>
+            </div>
+
+            <!-- Waitlist -->
+            <div id="access-waitlist" style="display:none">
+                <p>Lumios is currently at capacity. Join the waitlist and we'll let you know as soon as a spot opens up.</p>
+                <form id="waitlist-form" class="waitlist-form">
+                    <input id="waitlist-email" type="email" placeholder="your@email.com" required class="waitlist-input" />
+                    <button type="submit" class="cta-button" id="waitlist-btn">Join waitlist</button>
+                </form>
+                <p id="waitlist-msg" style="display:none"></p>
+            </div>
+
+            <!-- Fallback while loading / on error -->
+            <div id="access-fallback">
+                <p>Interested in using Lumios? Reach out to us.</p>
+                <a href="mailto:lumios@niecke-it.de" class="email-link">lumios@niecke-it.de</a>
+            </div>
         </div>
     </section>
 
@@ -123,5 +143,6 @@
         <button id="cookie-banner-dismiss" type="button">Got it</button>
     </div>
     <script src="cookie-banner.js"></script>
+    <script src="registration.js"></script>
 </body>
 </html>

@@ -47,6 +47,10 @@ class User(db.Model):
     id = db.Column(db.Integer(), primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False)
     active = db.Column(db.Boolean(), nullable=False, default=True)
+    activation_pending = db.Column(
+        db.Boolean, nullable=False, default=False, server_default=db.false()
+    )
+    activation_token = db.Column(db.String(64), nullable=True, unique=True)
     account_type = db.Column(db.String(16), nullable=False, default="local")
     auth_string = db.Column(db.String(255), nullable=True)
     max_libraries = db.Column(db.Integer(), nullable=False, default=100)
@@ -54,6 +58,7 @@ class User(db.Model):
     created_at = db.Column(
         db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
+    last_login = db.Column(db.DateTime, nullable=True)
     deleted_at = db.Column(db.DateTime, nullable=True)
     is_system = db.Column(
         db.Boolean, nullable=False, default=False, server_default=db.false()
@@ -293,3 +298,11 @@ class Notification(db.Model):
             "seen_at": self.seen_at.isoformat() if self.seen_at else None,
             "related_object": self.related_object,
         }
+
+
+class Waitlist(db.Model):
+    id = db.Column(db.Integer(), primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
