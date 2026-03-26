@@ -98,6 +98,12 @@ variable "landingpage_domain" {
   type        = string
 }
 
+variable "landingpage_url" {
+  description = "Public URL of the landing page"
+  type        = string
+  default     = "https://lumios.niecke-it.de"
+}
+
 variable "project_id" {
   description = "GCP project ID"
   type        = string

@@ -277,6 +277,10 @@ resource "google_cloud_run_v2_service" "backend" {
         name  = "ADMIN_EMAIL"
         value = var.admin_email
       }
+      env {
+        name  = "LANDINGPAGE_URL"
+        value = var.landingpage_url
+      }
 
       resources {
         limits = {
