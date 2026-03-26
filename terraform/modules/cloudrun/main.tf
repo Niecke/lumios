@@ -279,7 +279,7 @@ resource "google_cloud_run_v2_service" "backend" {
       }
       env {
         name  = "LANDINGPAGE_URL"
-        value = var.admin_email
+        value = var.landingpage_url
       }
 
       resources {
