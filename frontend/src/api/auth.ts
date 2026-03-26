@@ -135,6 +135,23 @@ export const authApi = {
     tokenStore.set(data.token);
   },
 
+  // Authenticate with email and password, return a lumios JWT.
+  loginPassword: async (email: string, password: string): Promise<UserInfo> => {
+    const data = await apiFetch<{ token: string }>("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+    tokenStore.set(data.token);
+    return authApi.me();
+  },
+
+  // Change password for the authenticated local account.
+  changePassword: (currentPassword: string, newPassword: string) =>
+    apiFetch<{ ok: boolean }>("/api/v1/auth/change_password", {
+      method: "POST",
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }),
+
   logout: () => {
     tokenStore.clear();
     googleProfileStore.clear();

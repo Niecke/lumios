@@ -5,7 +5,7 @@ import jwt
 from urllib.parse import urlencode
 from main import limiter
 from config import GOOGLE_FRONTEND_CLIENT_ID, REDIS_URL
-from services.auth import login_google, AuthError
+from services.auth import login_google, login_password, AuthError
 from services.token import create_token
 from security import require_api_auth, require_api_role
 from models import db, User, Library, Image
@@ -26,9 +26,7 @@ _google_jwks = PyJWKClient(_GOOGLE_JWKS_URI, cache_keys=True, timeout=5)
 def me():
     payload = g.token_payload
     user_id = int(payload["sub"])
-    user = db.session.execute(
-        select(User).filter_by(id=user_id)
-    ).scalar_one_or_none()
+    user = db.session.execute(select(User).filter_by(id=user_id)).scalar_one_or_none()
 
     storage_used = db.session.execute(
         select(db.func.coalesce(db.func.sum(Image.size), 0))
@@ -200,6 +198,68 @@ def google_callback():
     )
     code = _store_login_code(token)
     return redirect("/login?" + urlencode({"code": code}))
+
+
+@auth_api.route("/login", methods=["POST"])
+@limiter.limit("5 per minute")
+def password_login():
+    """Authenticate with email and password, return a lumios JWT."""
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip()
+    password = data.get("password") or ""
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+
+    try:
+        user = login_password(email, password)
+    except AuthError as e:
+        return jsonify({"error": e.message}), e.status
+
+    roles = [r.name for r in user.roles]
+    token = create_token(user.id, user.email, roles)
+    return jsonify(
+        {
+            "token": token,
+            "email": user.email,
+            "roles": roles,
+            "max_libraries": user.max_libraries,
+            "account_type": user.account_type,
+        }
+    )
+
+
+@auth_api.route("/change_password", methods=["POST"])
+@require_api_auth
+@limiter.limit("5 per minute")
+def change_password():
+    """Change password for the authenticated local account."""
+    user_id = int(g.token_payload["sub"])
+    user = db.session.get(User, user_id)
+    if not user or user.account_type != "local":
+        return (
+            jsonify({"error": "Password change is only available for local accounts"}),
+            400,
+        )
+
+    data = request.get_json(silent=True) or {}
+    current_password = data.get("current_password") or ""
+    new_password = data.get("new_password") or ""
+    if not current_password or not new_password:
+        return jsonify({"error": "Current and new passwords are required"}), 400
+
+    if not user.verify_password(current_password):
+        return jsonify({"error": "Current password is incorrect"}), 401
+
+    try:
+        user.set_password(new_password)
+    except ValueError as ex:
+        return jsonify({"error": str(ex)}), 400
+
+    db.session.commit()
+    current_app.logger.info(
+        "Password changed: %s (self)", user.email, extra={"log_type": "audit"}
+    )
+    return jsonify({"ok": True})
 
 
 @auth_api.route("/exchange", methods=["POST"])
