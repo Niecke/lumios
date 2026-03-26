@@ -22,5 +22,10 @@
         <div class="stats-value">{{ total_size | filesizeformat }}</div>
         <div class="stats-label">Total Size</div>
     </div>
+    <div class="card stats-card">
+        <div class="stats-value">{{ beta_slots_used }} / {{ beta_slots_max }}</div>
+        <div class="stats-label">Beta Spots Used</div>
+        <div class="stats-label" style="margin-top:0.25rem">{{ beta_slots_max - beta_slots_used }} left</div>
+    </div>
 </div>
 {% endblock %}

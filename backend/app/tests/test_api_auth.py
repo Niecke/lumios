@@ -5,6 +5,7 @@ Coverage targets:
   GET  /api/v1/auth/me              fetch current user from JWT
   POST /api/v1/auth/google/verify   exchange Google ID token for lumios JWT
 """
+
 import pytest
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone, timedelta
@@ -20,6 +21,7 @@ BASE = "/api/v1/auth"
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def auth_header(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
@@ -32,6 +34,7 @@ def make_token(user) -> str:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def photographer_role():
@@ -64,6 +67,7 @@ def google_user(photographer_role):
 # ---------------------------------------------------------------------------
 # GET /api/v1/auth/me
 # ---------------------------------------------------------------------------
+
 
 class TestApiMe:
     def test_valid_token_returns_200(self, client, photographer_user):
@@ -102,6 +106,7 @@ class TestApiMe:
 
     def test_expired_token_returns_401(self, client, photographer_user):
         from config import JWT_SECRET
+
         payload = {
             "sub": str(photographer_user.id),
             "email": photographer_user.email,
@@ -129,6 +134,7 @@ class TestApiMe:
 # POST /api/v1/auth/google/verify
 # ---------------------------------------------------------------------------
 
+
 class TestApiGoogleVerify:
     ENDPOINT = f"{BASE}/google/verify"
 
@@ -137,7 +143,10 @@ class TestApiGoogleVerify:
         mock_key = MagicMock()
         return (
             patch("blueprints.api.auth.GOOGLE_FRONTEND_CLIENT_ID", "fake-client-id"),
-            patch("blueprints.api.auth._google_jwks.get_signing_key_from_jwt", return_value=mock_key),
+            patch(
+                "blueprints.api.auth._google_jwks.get_signing_key_from_jwt",
+                return_value=mock_key,
+            ),
             patch("jwt.decode", return_value=idinfo),
         )
 
@@ -152,17 +161,23 @@ class TestApiGoogleVerify:
         assert res.status_code == 400
 
     def test_invalid_google_token_returns_401(self, client):
-        with patch("blueprints.api.auth.GOOGLE_FRONTEND_CLIENT_ID", "fake-client-id"), \
-             patch("blueprints.api.auth._google_jwks.get_signing_key_from_jwt",
-                   side_effect=pyjwt.PyJWTError("invalid")):
+        with patch(
+            "blueprints.api.auth.GOOGLE_FRONTEND_CLIENT_ID", "fake-client-id"
+        ), patch(
+            "blueprints.api.auth._google_jwks.get_signing_key_from_jwt",
+            side_effect=pyjwt.PyJWTError("invalid"),
+        ):
             res = client.post(self.ENDPOINT, json={"credential": "bad.token.value"})
         assert res.status_code == 401
         assert "error" in res.get_json()
 
     def test_network_error_returns_503(self, client):
-        with patch("blueprints.api.auth.GOOGLE_FRONTEND_CLIENT_ID", "fake-client-id"), \
-             patch("blueprints.api.auth._google_jwks.get_signing_key_from_jwt",
-                   side_effect=Exception("timeout")):
+        with patch(
+            "blueprints.api.auth.GOOGLE_FRONTEND_CLIENT_ID", "fake-client-id"
+        ), patch(
+            "blueprints.api.auth._google_jwks.get_signing_key_from_jwt",
+            side_effect=Exception("timeout"),
+        ):
             res = client.post(self.ENDPOINT, json={"credential": "bad.token.value"})
         assert res.status_code == 503
 
@@ -180,7 +195,9 @@ class TestApiGoogleVerify:
             res = client.post(self.ENDPOINT, json={"credential": "valid.token.value"})
         assert res.status_code == 200
 
-    def test_successful_verify_response_contains_token_and_email(self, client, google_user):
+    def test_successful_verify_response_contains_token_and_email(
+        self, client, google_user
+    ):
         idinfo = {"email": "googleuser@test.com", "sub": "google-sub-abc"}
         p1, p2, p3 = self._mock_jwks(idinfo)
         with p1, p2, p3:
@@ -221,3 +238,174 @@ class TestApiGoogleVerify:
             res = client.post(self.ENDPOINT, json={"credential": "valid.token.value"})
         assert res.status_code == 401
         assert "token" not in res.get_json()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/auth/login
+# ---------------------------------------------------------------------------
+
+
+class TestApiPasswordLogin:
+    ENDPOINT = f"{BASE}/login"
+
+    def test_missing_email_returns_400(self, client):
+        res = client.post(self.ENDPOINT, json={"password": "pass"})
+        assert res.status_code == 400
+
+    def test_missing_password_returns_400(self, client):
+        res = client.post(self.ENDPOINT, json={"email": "photo@test.com"})
+        assert res.status_code == 400
+
+    def test_wrong_password_returns_401(self, client, photographer_user):
+        res = client.post(
+            self.ENDPOINT, json={"email": "photo@test.com", "password": "WrongPass!"}
+        )
+        assert res.status_code == 401
+
+    def test_unknown_email_returns_401(self, client):
+        res = client.post(
+            self.ENDPOINT, json={"email": "nobody@test.com", "password": "pass"}
+        )
+        assert res.status_code == 401
+
+    def test_inactive_user_returns_403(self, client, inactive_user):
+        res = client.post(
+            self.ENDPOINT,
+            json={"email": "inactive@test.com", "password": "InactivePass123!"},
+        )
+        assert res.status_code == 403
+
+    def test_google_account_returns_401(self, client, google_user):
+        res = client.post(
+            self.ENDPOINT, json={"email": "googleuser@test.com", "password": "anything"}
+        )
+        assert res.status_code == 401
+
+    def test_successful_login_returns_200(self, client, photographer_user):
+        res = client.post(
+            self.ENDPOINT, json={"email": "photo@test.com", "password": "PhotoPass123!"}
+        )
+        assert res.status_code == 200
+
+    def test_successful_login_returns_token(self, client, photographer_user):
+        res = client.post(
+            self.ENDPOINT, json={"email": "photo@test.com", "password": "PhotoPass123!"}
+        )
+        data = res.get_json()
+        assert "token" in data
+        payload = decode_token(data["token"])
+        assert payload["email"] == "photo@test.com"
+
+    def test_successful_login_returns_roles(self, client, photographer_user):
+        res = client.post(
+            self.ENDPOINT, json={"email": "photo@test.com", "password": "PhotoPass123!"}
+        )
+        data = res.get_json()
+        assert "photographer" in data["roles"]
+
+    def test_successful_login_returns_account_type(self, client, photographer_user):
+        res = client.post(
+            self.ENDPOINT, json={"email": "photo@test.com", "password": "PhotoPass123!"}
+        )
+        assert res.get_json()["account_type"] == "local"
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/auth/change_password
+# ---------------------------------------------------------------------------
+
+
+class TestApiChangePassword:
+    ENDPOINT = f"{BASE}/change_password"
+
+    def test_no_auth_returns_401(self, client):
+        res = client.post(
+            self.ENDPOINT, json={"current_password": "old", "new_password": "new"}
+        )
+        assert res.status_code == 401
+
+    def test_google_account_returns_400(self, client, google_user):
+        token = make_token(google_user)
+        res = client.post(
+            self.ENDPOINT,
+            json={"current_password": "x", "new_password": "y"},
+            headers=auth_header(token),
+        )
+        assert res.status_code == 400
+        assert "local" in res.get_json()["error"]
+
+    def test_missing_current_password_returns_400(self, client, photographer_user):
+        token = make_token(photographer_user)
+        res = client.post(
+            self.ENDPOINT,
+            json={"new_password": "NewPass123!"},
+            headers=auth_header(token),
+        )
+        assert res.status_code == 400
+
+    def test_missing_new_password_returns_400(self, client, photographer_user):
+        token = make_token(photographer_user)
+        res = client.post(
+            self.ENDPOINT,
+            json={"current_password": "PhotoPass123!"},
+            headers=auth_header(token),
+        )
+        assert res.status_code == 400
+
+    def test_wrong_current_password_returns_401(self, client, photographer_user):
+        token = make_token(photographer_user)
+        res = client.post(
+            self.ENDPOINT,
+            json={"current_password": "WrongPass!", "new_password": "NewPass123!"},
+            headers=auth_header(token),
+        )
+        assert res.status_code == 401
+
+    def test_too_short_new_password_returns_400(self, client, photographer_user):
+        token = make_token(photographer_user)
+        res = client.post(
+            self.ENDPOINT,
+            json={"current_password": "PhotoPass123!", "new_password": "short"},
+            headers=auth_header(token),
+        )
+        assert res.status_code == 400
+
+    def test_successful_change_returns_200(self, client, photographer_user):
+        token = make_token(photographer_user)
+        res = client.post(
+            self.ENDPOINT,
+            json={"current_password": "PhotoPass123!", "new_password": "NewPass123!"},
+            headers=auth_header(token),
+        )
+        assert res.status_code == 200
+        assert res.get_json()["ok"] is True
+
+    def test_old_password_rejected_after_change(self, client, photographer_user):
+        token = make_token(photographer_user)
+        client.post(
+            self.ENDPOINT,
+            json={"current_password": "PhotoPass123!", "new_password": "NewPass123!"},
+            headers=auth_header(token),
+        )
+        # Old password must now fail
+        res = client.post(
+            self.ENDPOINT,
+            json={
+                "current_password": "PhotoPass123!",
+                "new_password": "AnotherPass123!",
+            },
+            headers=auth_header(token),
+        )
+        assert res.status_code == 401
+
+    def test_new_password_works_after_change(self, client, photographer_user):
+        token = make_token(photographer_user)
+        client.post(
+            self.ENDPOINT,
+            json={"current_password": "PhotoPass123!", "new_password": "NewPass123!"},
+            headers=auth_header(token),
+        )
+        res = client.post(
+            f"{BASE}/login", json={"email": "photo@test.com", "password": "NewPass123!"}
+        )
+        assert res.status_code == 200

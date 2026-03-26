@@ -23,6 +23,7 @@ from models import (
     NotificationType,
     SubscriptionType,
 )
+from config import MAX_USERS
 from security import login_required, require_role
 from services.mail import (
     notify_agb_change,
@@ -45,18 +46,26 @@ def index():
             Image.deleted_at.is_(None)
         )
     ).one()
+    beta_slots_used = db.session.scalar(
+        select(func.count(User.id)).where(
+            db.or_(User.active.is_(True), User.activation_pending.is_(True)),
+            User.deleted_at.is_(None),
+        )
+    )
     return render_template(
         "index.html",
         library_count=library_count,
         image_count=image_count,
         total_size=total_size,
+        beta_slots_used=beta_slots_used,
+        beta_slots_max=MAX_USERS,
     )
 
 
-@admin.route("/admin/dashboard", methods=["GET", "POST"])
+@admin.route("/admin/users", methods=["GET", "POST"])
 @login_required
 @require_role("admin")
-def dashboard():
+def users_view():
     users = (
         db.session.execute(
             select(User)
@@ -84,7 +93,7 @@ def dashboard():
         for uid, libs, imgs, size in rows
     }
 
-    return render_template("admin/dashboard.html", users=users, user_stats=user_stats)
+    return render_template("admin/users_view.html", users=users, user_stats=user_stats)
 
 
 @admin.route("/admin/user_create", methods=["GET", "POST"])
@@ -136,7 +145,7 @@ def user_create():
         )
         notify_registration(email)
         flash(f'User "{email}" created successfully!', "success")
-        return redirect(url_for("admin.dashboard"))
+        return redirect(url_for("admin.users_view"))
 
     return render_template("admin/user_create.html", all_roles=all_roles)
 
@@ -149,7 +158,7 @@ def user_edit(id):
 
     if not user:
         flash(f'User ID "{id}" unknown!', "error")
-        return redirect(url_for("admin.dashboard"))
+        return redirect(url_for("admin.users_view"))
 
     all_roles = db.session.execute(select(Role)).scalars().all()
 
@@ -213,7 +222,7 @@ def user_edit(id):
             extra={"log_type": "audit"},
         )
         flash(f'User "{user.email}" updated successfully!', "success")
-        return redirect(url_for("admin.dashboard"))
+        return redirect(url_for("admin.users_view"))
 
     return render_template(
         "admin/user_edit.html",
@@ -269,11 +278,11 @@ def set_password(id):
     user = db.session.get(User, id)
     if not user:
         flash(f'User ID "{id}" unknown!', "error")
-        return redirect(url_for("admin.dashboard"))
+        return redirect(url_for("admin.users_view"))
 
     if user.account_type != "local":
         flash("Password can only be set for local accounts.", "error")
-        return redirect(url_for("admin.dashboard"))
+        return redirect(url_for("admin.users_view"))
 
     if request.method == "POST":
         new_password = request.form.get("new_password", "")
@@ -294,7 +303,7 @@ def set_password(id):
             "Password set by admin for: %s", user.email, extra={"log_type": "audit"}
         )
         flash(f'Password for "{user.email}" updated successfully!', "success")
-        return redirect(url_for("admin.dashboard"))
+        return redirect(url_for("admin.users_view"))
 
     return render_template("admin/set_password.html", user=user)
 
@@ -307,11 +316,11 @@ def user_delete(id):
 
     if not user:
         flash(f'User ID "{id}" unknown!', "error")
-        return redirect(url_for("admin.dashboard"))
+        return redirect(url_for("admin.users_view"))
 
     if user.is_system:
         flash("System users cannot be deleted.", "error")
-        return redirect(url_for("admin.dashboard"))
+        return redirect(url_for("admin.users_view"))
 
     deleted_email = user.email
     user.deleted_at = datetime.now(timezone.utc)
@@ -323,7 +332,7 @@ def user_delete(id):
     )
     notify_account_cancellation(deleted_email)
     flash(f'User "{deleted_email}" deleted!', "success")
-    return redirect(url_for("admin.dashboard"))
+    return redirect(url_for("admin.users_view"))
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,8 @@
 // storage usage), and a progress bar for storage usage.
 
 import { createFileRoute, redirect } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { authApi, type UserInfo } from "../api/auth";
 import { AppBar } from "../components/AppBar";
 
@@ -65,6 +67,102 @@ function StorageProgress({ used, limit }: StorageProgressProps) {
   );
 }
 
+// ── Change password card (local accounts only) ────────────────────────────────
+
+function ChangePasswordCard() {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  async function handleSubmit(e: { preventDefault(): void }) {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setError("New passwords do not match.");
+      return;
+    }
+    setError(null);
+    setSuccess(false);
+    setPending(true);
+    try {
+      await authApi.changePassword(currentPassword, newPassword);
+      setSuccess(true);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="account-card">
+      <div style={{ padding: "1.25rem 1.5rem" }}>
+        <h2 style={{ fontSize: "1.1rem", fontWeight: 500, marginBottom: "1rem" }}>
+          Change Password
+        </h2>
+        {error && (
+          <div className="alert alert--error" style={{ marginBottom: "1rem" }}>
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="alert alert--success" style={{ marginBottom: "1rem" }}>
+            Password changed successfully.
+          </div>
+        )}
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <div className="text-field">
+            <label htmlFor="current-password">Current password</label>
+            <input
+              id="current-password"
+              type="password"
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              required
+            />
+          </div>
+          <div className="text-field">
+            <label htmlFor="new-password">New password</label>
+            <input
+              id="new-password"
+              type="password"
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+            />
+          </div>
+          <div className="text-field">
+            <label htmlFor="confirm-password">Confirm new password</label>
+            <input
+              id="confirm-password"
+              type="password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            className="btn btn-contained"
+            disabled={pending}
+            style={{ alignSelf: "flex-start" }}
+          >
+            {pending ? "Saving…" : "Change password"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Account page ──────────────────────────────────────────────────────────────
 
 function AccountPage() {
@@ -121,6 +219,8 @@ function AccountPage() {
 
             <StorageProgress used={user.storage_used_bytes} limit={user.storage_limit_bytes} />
           </div>
+
+          {user.account_type === "local" && <ChangePasswordCard />}
         </div>
       </main>
     </>

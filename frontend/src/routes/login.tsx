@@ -45,6 +45,9 @@ function LoginPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [localPending, setLocalPending] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const googleBtnRef = useRef<HTMLDivElement>(null);
 
   // On mount: check for code or error from the redirect callback
@@ -118,6 +121,20 @@ function LoginPage() {
     }
   }, [router]);
 
+  async function handlePasswordLogin(e: { preventDefault(): void }) {
+    e.preventDefault();
+    setError(null);
+    setLocalPending(true);
+    try {
+      await authApi.loginPassword(email, password);
+      await authApi.me();
+      router.navigate({ to: "/", replace: true });
+    } catch (err) {
+      setError((err as Error).message);
+      setLocalPending(false);
+    }
+  }
+
   return (
     <main className="login-page">
       <div className="login-box">
@@ -126,7 +143,42 @@ function LoginPage() {
         {pending ? (
           <p className="login-pending">Signing in…</p>
         ) : (
-          <div className="google-btn-wrapper" ref={googleBtnRef} />
+          <>
+            <div className="google-btn-wrapper" ref={googleBtnRef} />
+            <div className="divider">or</div>
+            <form className="login-form" onSubmit={handlePasswordLogin}>
+              <div className="text-field">
+                <label htmlFor="login-email">Email</label>
+                <input
+                  id="login-email"
+                  //type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="text-field">
+                <label htmlFor="login-password">Password</label>
+                <input
+                  id="login-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                className="btn btn-contained"
+                disabled={localPending}
+                style={{ width: "100%", justifyContent: "center", fontSize: "1rem", fontWeight: 600 }}
+              >
+                {localPending ? "Signing in…" : "Sign in"}
+              </button>
+            </form>
+          </>
         )}
       </div>
     </main>

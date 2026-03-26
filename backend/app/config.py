@@ -118,6 +118,14 @@ BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
 MAIL_SENDER_EMAIL = os.getenv("MAIL_SENDER_EMAIL", "lumios@niecke-it.de")
 MAIL_SENDER_NAME = os.getenv("MAIL_SENDER_NAME", "Lumios")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "")
+# Brevo contact list ID for the waitlist (0 = not configured, only logs)
+BREVO_WAITLIST_LIST_ID = int(os.getenv("BREVO_WAITLIST_LIST_ID", 0))
+
+# Maximum number of active users allowed to register
+MAX_USERS = int(os.getenv("MAX_USERS", 100))
+
+# Origin of the landing page — allowed to make cross-origin requests to /api/v1/public/*
+LANDINGPAGE_URL = os.getenv("LANDINGPAGE_URL", "lumios.niecke-it.de")
 
 # FAIL-FAST: Check required vars
 REQUIRED_VARS = ["POSTGRES_PASSWORD", "SECRET_KEY", "JWT_SECRET"]

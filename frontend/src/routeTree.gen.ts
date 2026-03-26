@@ -10,7 +10,9 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SupportRouteImport } from './routes/support'
+import { Route as RegisterRouteImport } from './routes/register'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ActivateRouteImport } from './routes/activate'
 import { Route as AccountRouteImport } from './routes/account'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LibraryLibraryUuidRouteImport } from './routes/library.$libraryUuid'
@@ -20,9 +22,19 @@ const SupportRoute = SupportRouteImport.update({
   path: '/support',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ActivateRoute = ActivateRouteImport.update({
+  id: '/activate',
+  path: '/activate',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AccountRoute = AccountRouteImport.update({
@@ -44,14 +56,18 @@ const LibraryLibraryUuidRoute = LibraryLibraryUuidRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
+  '/activate': typeof ActivateRoute
   '/login': typeof LoginRoute
+  '/register': typeof RegisterRoute
   '/support': typeof SupportRoute
   '/library/$libraryUuid': typeof LibraryLibraryUuidRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
+  '/activate': typeof ActivateRoute
   '/login': typeof LoginRoute
+  '/register': typeof RegisterRoute
   '/support': typeof SupportRoute
   '/library/$libraryUuid': typeof LibraryLibraryUuidRoute
 }
@@ -59,20 +75,38 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
+  '/activate': typeof ActivateRoute
   '/login': typeof LoginRoute
+  '/register': typeof RegisterRoute
   '/support': typeof SupportRoute
   '/library/$libraryUuid': typeof LibraryLibraryUuidRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/account' | '/login' | '/support' | '/library/$libraryUuid'
+  fullPaths:
+    | '/'
+    | '/account'
+    | '/activate'
+    | '/login'
+    | '/register'
+    | '/support'
+    | '/library/$libraryUuid'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/account' | '/login' | '/support' | '/library/$libraryUuid'
+  to:
+    | '/'
+    | '/account'
+    | '/activate'
+    | '/login'
+    | '/register'
+    | '/support'
+    | '/library/$libraryUuid'
   id:
     | '__root__'
     | '/'
     | '/account'
+    | '/activate'
     | '/login'
+    | '/register'
     | '/support'
     | '/library/$libraryUuid'
   fileRoutesById: FileRoutesById
@@ -80,7 +114,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccountRoute: typeof AccountRoute
+  ActivateRoute: typeof ActivateRoute
   LoginRoute: typeof LoginRoute
+  RegisterRoute: typeof RegisterRoute
   SupportRoute: typeof SupportRoute
   LibraryLibraryUuidRoute: typeof LibraryLibraryUuidRoute
 }
@@ -94,11 +130,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SupportRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/activate': {
+      id: '/activate'
+      path: '/activate'
+      fullPath: '/activate'
+      preLoaderRoute: typeof ActivateRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/account': {
@@ -128,7 +178,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountRoute: AccountRoute,
+  ActivateRoute: ActivateRoute,
   LoginRoute: LoginRoute,
+  RegisterRoute: RegisterRoute,
   SupportRoute: SupportRoute,
   LibraryLibraryUuidRoute: LibraryLibraryUuidRoute,
 }

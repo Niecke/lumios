@@ -14,6 +14,8 @@ from config import (
     MAIL_SENDER_NAME,
 )
 
+_BREVO_CONTACTS_URL = "https://api.brevo.com/v3/contacts"
+
 _BREVO_URL = "https://api.brevo.com/v3/smtp/email"
 
 # ---------------------------------------------------------------------------
@@ -176,6 +178,70 @@ def notify_agb_change(user_email: str, agb_version: str, summary: str) -> None:
     """
     )
     _send(user_email, f"Lumios AGB-Änderung: {agb_version}", html)
+
+
+def notify_activation_email(user_email: str, activation_link: str) -> None:
+    """Send an account activation email with a one-time link."""
+    html = _html(
+        f"""
+        <h2>Willkommen bei Lumios!</h2>
+        <p>Vielen Dank für Ihre Registrierung. Bitte aktivieren Sie Ihr Konto
+           (<strong>{user_email}</strong>) durch Klick auf den folgenden Link.</p>
+        {_btn(activation_link, "Konto aktivieren")}
+        <p>Der Link ist 72 Stunden gültig. Falls Sie sich nicht registriert haben,
+           können Sie diese E-Mail ignorieren.</p>
+    """
+    )
+    _send(user_email, "Lumios – Konto aktivieren", html)
+
+
+def add_to_brevo_waitlist(email: str, list_id: int) -> bool:
+    """Add an email address to a Brevo contact list (waitlist).
+
+    Returns True on success, False on any error. Never raises.
+    """
+    if not BREVO_API_KEY:
+        current_app.logger.warning(
+            "WAITLIST skipped (BREVO_API_KEY not set): email=%s",
+            email,
+            extra={"log_type": "mail"},
+        )
+        return False
+    if not list_id:
+        current_app.logger.warning(
+            "WAITLIST skipped (BREVO_WAITLIST_LIST_ID not set): email=%s",
+            email,
+            extra={"log_type": "mail"},
+        )
+        return False
+    try:
+        resp = requests.post(
+            _BREVO_CONTACTS_URL,
+            json={"email": email, "listIds": [list_id], "updateEnabled": True},
+            headers={"api-key": BREVO_API_KEY, "content-type": "application/json"},
+            timeout=10,
+        )
+        if resp.ok or resp.status_code == 400 and "already" in resp.text.lower():
+            current_app.logger.info(
+                "WAITLIST added: email=%s list=%d",
+                email,
+                list_id,
+                extra={"log_type": "mail"},
+            )
+            return True
+        current_app.logger.error(
+            "WAITLIST Brevo error: status=%d body=%r email=%s",
+            resp.status_code,
+            resp.text[:300],
+            email,
+            extra={"log_type": "mail"},
+        )
+        return False
+    except Exception:
+        current_app.logger.exception(
+            "WAITLIST request failed: email=%s", email, extra={"log_type": "mail"}
+        )
+        return False
 
 
 def notify_new_support_ticket(ticket_id: int, subject: str, user_email: str) -> None:

@@ -104,6 +104,27 @@ export const authApi = {
   // Verify the current JWT and return user info (guards protected routes).
   me: () => apiFetch<UserInfo>("/api/v1/auth/me"),
 
+  // Register a new local account (agb_accepted must be true).
+  register: (email: string, password: string) =>
+    apiFetch<{ ok: boolean }>("/api/v1/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ email, password, agb_accepted: true }),
+    }),
+
+  // Register a new Google account (agb_accepted must be true).
+  registerGoogle: (credential: string) =>
+    apiFetch<{ ok: boolean }>("/api/v1/auth/google/register", {
+      method: "POST",
+      body: JSON.stringify({ credential, agb_accepted: true }),
+    }),
+
+  // Activate an account using the token from the activation email.
+  activate: (token: string) =>
+    apiFetch<{ ok: boolean; email: string }>("/api/v1/auth/activate", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
+
   // Exchange a Google ID token for a lumios JWT.
   // Also extracts and stores Google profile data for the info page.
   googleVerify: async (credential: string): Promise<UserInfo> => {
@@ -134,6 +155,23 @@ export const authApi = {
     });
     tokenStore.set(data.token);
   },
+
+  // Authenticate with email and password, return a lumios JWT.
+  loginPassword: async (email: string, password: string): Promise<UserInfo> => {
+    const data = await apiFetch<{ token: string }>("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+    tokenStore.set(data.token);
+    return authApi.me();
+  },
+
+  // Change password for the authenticated local account.
+  changePassword: (currentPassword: string, newPassword: string) =>
+    apiFetch<{ ok: boolean }>("/api/v1/auth/change_password", {
+      method: "POST",
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }),
 
   logout: () => {
     tokenStore.clear();
