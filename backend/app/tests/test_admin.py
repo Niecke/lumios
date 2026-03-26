@@ -1,6 +1,7 @@
 """
-Tests for the admin blueprint: dashboard, user_create, user_delete, user_edit.
+Tests for the admin blueprint: users, user_create, user_delete, user_edit.
 """
+
 import pytest
 from html import unescape
 from conftest import do_login, do_logout
@@ -16,6 +17,7 @@ def html_text(response):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def login_admin(client, admin_user):
     do_login(client, "admin@test.com", "AdminPass123!")
 
@@ -28,28 +30,29 @@ def login_regular(client, regular_user):
 # Dashboard
 # ---------------------------------------------------------------------------
 
+
 class TestAdminDashboard:
-    def test_dashboard_requires_login(self, client):
-        response = client.get("/admin/dashboard", follow_redirects=False)
+    def test_users_requires_login(self, client):
+        response = client.get("/admin/users", follow_redirects=False)
         assert response.status_code == 302
         assert "/login" in response.location
 
-    def test_dashboard_requires_admin_role(self, client, regular_user):
+    def test_users_requires_admin_role(self, client, regular_user):
         login_regular(client, regular_user)
-        response = client.get("/admin/dashboard", follow_redirects=True)
-        # Should redirect to index with error flash, not show dashboard
+        response = client.get("/admin/users", follow_redirects=True)
+        # Should redirect to index with error flash, not show users
         assert response.status_code == 200
         html = html_text(response)
-        assert 'Access denied.' in html
+        assert "Access denied." in html
 
-    def test_dashboard_accessible_to_admin(self, client, admin_user):
+    def test_users_accessible_to_admin(self, client, admin_user):
         login_admin(client, admin_user)
-        response = client.get("/admin/dashboard")
+        response = client.get("/admin/users")
         assert response.status_code == 200
 
-    def test_dashboard_lists_users(self, client, admin_user, regular_user):
+    def test_users_lists_users(self, client, admin_user, regular_user):
         login_admin(client, admin_user)
-        response = client.get("/admin/dashboard")
+        response = client.get("/admin/users")
         html = response.data.decode()
         assert "admin@test.com" in html
         assert "user@test.com" in html
@@ -58,6 +61,7 @@ class TestAdminDashboard:
 # ---------------------------------------------------------------------------
 # User create
 # ---------------------------------------------------------------------------
+
 
 class TestAdminUserCreate:
     def test_user_create_requires_login(self, client):
@@ -90,6 +94,7 @@ class TestAdminUserCreate:
 
         # Verify the user actually exists in the database
         from sqlalchemy import select
+
         user = db.session.execute(
             select(User).where(User.email == "newuser@test.com")
         ).scalar_one_or_none()
@@ -104,13 +109,16 @@ class TestAdminUserCreate:
             follow_redirects=True,
         )
         from sqlalchemy import select
+
         user = db.session.execute(
             select(User).where(User.email == "inactive_new@test.com")
         ).scalar_one_or_none()
         assert user is not None
         assert user.active is False  # 'active' not in form data
 
-    def test_user_create_duplicate_email_shows_error(self, client, admin_user, regular_user):
+    def test_user_create_duplicate_email_shows_error(
+        self, client, admin_user, regular_user
+    ):
         login_admin(client, admin_user)
         response = client.post(
             "/admin/user_create",
@@ -147,12 +155,13 @@ class TestAdminUserCreate:
         login_regular(client, regular_user)
         response = client.get("/admin/user_create", follow_redirects=True)
         html = html_text(response)
-        assert 'Access denied.' in html
+        assert "Access denied." in html
 
 
 # ---------------------------------------------------------------------------
 # User delete
 # ---------------------------------------------------------------------------
+
 
 class TestAdminUserDelete:
     def test_user_delete_requires_login(self, client, regular_user):
@@ -168,17 +177,15 @@ class TestAdminUserDelete:
             f"/admin/user_delete/{regular_user.id}", follow_redirects=True
         )
         html = html_text(response)
-        assert 'Access denied.' in html
+        assert "Access denied." in html
 
     def test_user_delete_removes_user(self, client, admin_user, regular_user):
         user_id = regular_user.id
         login_admin(client, admin_user)
-        response = client.post(
-            f"/admin/user_delete/{user_id}", follow_redirects=True
-        )
+        response = client.post(f"/admin/user_delete/{user_id}", follow_redirects=True)
         assert response.status_code == 200
         html = response.data.decode()
-        assert 'deleted!' in html
+        assert "deleted!" in html
 
         # Confirm user is soft-deleted
         user = db.session.get(User, user_id)
@@ -188,9 +195,7 @@ class TestAdminUserDelete:
 
     def test_user_delete_unknown_id_shows_error(self, client, admin_user):
         login_admin(client, admin_user)
-        response = client.post(
-            "/admin/user_delete/99999", follow_redirects=True
-        )
+        response = client.post("/admin/user_delete/99999", follow_redirects=True)
         html = response.data.decode()
         assert "unknown" in html
 
@@ -219,6 +224,7 @@ class TestAdminUserDelete:
 # User edit
 # ---------------------------------------------------------------------------
 
+
 class TestAdminUserEdit:
     def test_user_edit_requires_login(self, client):
         response = client.get("/admin/user_edit/1", follow_redirects=False)
@@ -231,7 +237,7 @@ class TestAdminUserEdit:
             f"/admin/user_edit/{regular_user.id}", follow_redirects=True
         )
         html = html_text(response)
-        assert 'Access denied.' in html
+        assert "Access denied." in html
 
     def test_user_edit_get_shows_form(self, client, admin_user, regular_user):
         login_admin(client, admin_user)
@@ -241,13 +247,15 @@ class TestAdminUserEdit:
         assert "password" in html.lower()
         assert "active" in html.lower()
 
-    def test_user_edit_get_shows_email_as_readonly(self, client, admin_user, regular_user):
+    def test_user_edit_get_shows_email_as_readonly(
+        self, client, admin_user, regular_user
+    ):
         login_admin(client, admin_user)
         response = client.get(f"/admin/user_edit/{regular_user.id}")
         html = response.data.decode()
         assert "user@test.com" in html
         # email field must be disabled, not a writable input
-        assert 'disabled' in html
+        assert "disabled" in html
 
     def test_user_edit_unknown_id_redirects_with_error(self, client, admin_user):
         login_admin(client, admin_user)
@@ -265,7 +273,9 @@ class TestAdminUserEdit:
         db.session.refresh(regular_user)
         assert regular_user.verify_password("NewPassword1!")
 
-    def test_user_edit_old_password_no_longer_works(self, client, admin_user, regular_user):
+    def test_user_edit_old_password_no_longer_works(
+        self, client, admin_user, regular_user
+    ):
         login_admin(client, admin_user)
         client.post(
             f"/admin/user_edit/{regular_user.id}",
@@ -275,7 +285,9 @@ class TestAdminUserEdit:
         db.session.refresh(regular_user)
         assert not regular_user.verify_password("UserPass123!")
 
-    def test_user_edit_blank_password_keeps_existing(self, client, admin_user, regular_user):
+    def test_user_edit_blank_password_keeps_existing(
+        self, client, admin_user, regular_user
+    ):
         login_admin(client, admin_user)
         client.post(
             f"/admin/user_edit/{regular_user.id}",
@@ -332,7 +344,9 @@ class TestAdminUserEdit:
         db.session.refresh(system)
         assert system.email == "system@test.com"
 
-    def test_user_edit_short_password_shows_error(self, client, admin_user, regular_user):
+    def test_user_edit_short_password_shows_error(
+        self, client, admin_user, regular_user
+    ):
         login_admin(client, admin_user)
         response = client.post(
             f"/admin/user_edit/{regular_user.id}",
@@ -343,7 +357,9 @@ class TestAdminUserEdit:
         html = response.data.decode()
         assert "Password needs to be longer than" in html
 
-    def test_user_edit_short_password_does_not_change_password(self, client, admin_user, regular_user):
+    def test_user_edit_short_password_does_not_change_password(
+        self, client, admin_user, regular_user
+    ):
         login_admin(client, admin_user)
         client.post(
             f"/admin/user_edit/{regular_user.id}",
@@ -361,4 +377,4 @@ class TestAdminUserEdit:
             follow_redirects=True,
         )
         html = html_text(response)
-        assert 'updated successfully!' in html
+        assert "updated successfully!" in html

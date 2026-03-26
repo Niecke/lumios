@@ -1,5 +1,6 @@
 from flask import Flask, session
 from authlib.integrations.flask_client import OAuth
+from flask_cors import CORS
 from log import setup_app_logger
 from config import (
     POSTGRES_USER,
@@ -22,6 +23,7 @@ from config import (
     CLOUD_TRACE_SERVICE,
     CLOUD_TRACE_SERVICE_VERSION,
     OTEL_EXPORTER_ENDPOINT,
+    LANDINGPAGE_URL,
 )
 from models import User
 from current_user import current_user
@@ -245,5 +247,15 @@ def create_app(test_config=None):
     csrf.exempt(notifications_api)
     csrf.exempt(support_api)
     app.register_blueprint(api)
+
+    # Allow the landing page to call the public API cross-origin.
+    # Only /api/v1/public/* is exposed; all other routes stay same-origin only.
+    # When LANDINGPAGE_URL is set (production) only that origin is accepted;
+    # otherwise any origin is allowed (local dev without the env var).
+    CORS(
+        app,
+        resources={r"/api/v1/public/*": {"origins": LANDINGPAGE_URL or "*"}},
+        methods=["GET", "POST"],
+    )
 
     return app
