@@ -4,7 +4,7 @@
 // Unauthenticated visitors see a read-only public gallery.
 
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { authApi } from "../api/auth";
 import { librariesApi } from "../api/libraries";
@@ -334,11 +334,34 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
   const [viewImage, setViewImage] = useState<Image | null>(null);
   const [showShare, setShowShare] = useState(false);
   const [showLikedOnly, setShowLikedOnly] = useState(false);
+  const [renamingLib, setRenamingLib] = useState(false);
+  const [editLibName, setEditLibName] = useState("");
 
-  const { data: library } = useQuery({
+  const { data: library, refetch: refetchLibrary } = useQuery({
     queryKey: ["library", libraryUuid],
     queryFn: () => librariesApi.getByUuid(libraryUuid),
   });
+
+  const updateLibrary = useMutation({
+    mutationFn: (patch: { name?: string; use_original_as_preview?: boolean }) =>
+      librariesApi.update(library!.id, patch),
+    onSuccess: () => {
+      refetchLibrary();
+      queryClient.invalidateQueries({ queryKey: ["libraries"] });
+    },
+  });
+
+  function startRenameLib() {
+    setEditLibName(library?.name ?? "");
+    setRenamingLib(true);
+  }
+
+  function submitRenameLib(e: { preventDefault(): void }) {
+    e.preventDefault();
+    const trimmed = editLibName.trim();
+    if (!trimmed) return;
+    updateLibrary.mutate({ name: trimmed }, { onSuccess: () => setRenamingLib(false) });
+  }
 
   const libId = library?.id;
 
@@ -400,11 +423,38 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
 
       <main className="page-content">
         <div className="page-header">
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
             <Link to="/" className="btn btn-text" style={{ padding: "0 0.5rem" }}>
               <span className="material-icons" style={{ fontSize: 20 }}>arrow_back</span>
             </Link>
-            <h1>Photos</h1>
+            {renamingLib ? (
+              <form onSubmit={submitRenameLib} style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                <input
+                  type="text"
+                  value={editLibName}
+                  onChange={(e) => setEditLibName(e.target.value)}
+                  maxLength={255}
+                  autoFocus
+                  disabled={updateLibrary.isPending}
+                  style={{ fontSize: "1.25rem", fontWeight: 600, padding: "0.2rem 0.4rem", borderRadius: "var(--radius-sm)", border: "1px solid var(--clr-outline)" }}
+                />
+                <button type="submit" className="icon-btn" disabled={!editLibName.trim() || updateLibrary.isPending} title="Save">
+                  <span className="material-icons">check</span>
+                </button>
+                <button type="button" className="icon-btn" onClick={() => setRenamingLib(false)} title="Cancel">
+                  <span className="material-icons">close</span>
+                </button>
+              </form>
+            ) : (
+              <>
+                <h1>{library?.name ?? "Library"}</h1>
+                {library && (
+                  <button className="icon-btn" onClick={startRenameLib} title="Rename library">
+                    <span className="material-icons" style={{ fontSize: 18 }}>edit</span>
+                  </button>
+                )}
+              </>
+            )}
             {library?.finished_at && (
               <span className="reviewed-chip">
                 <span className="material-icons">check_circle</span>
@@ -413,7 +463,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
             )}
           </div>
 
-          <div style={{ display: "flex", gap: "0.5rem" }}>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             {(likedCount > 0 || showLikedOnly) && (
               <button
                 className={`btn ${showLikedOnly ? "btn-tonal" : "btn-outlined"}`}
@@ -435,6 +485,29 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
             )}
           </div>
         </div>
+
+        {library && (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem", padding: "0.75rem 1rem", background: "var(--clr-surface)", borderRadius: "var(--radius-sm)", border: "1px solid var(--clr-outline)" }}>
+            <span className="material-icons" style={{ fontSize: 20, color: "var(--clr-on-surface-var)" }}>photo_filter</span>
+            <div>
+              <div style={{ fontWeight: 500, fontSize: "0.9rem" }}>Use originals as preview</div>
+              <div style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)" }}>
+                {library.use_original_as_preview
+                  ? "Customers see the original, uncompressed photos"
+                  : "Customers see watermarked preview images"}
+              </div>
+            </div>
+            <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={library.use_original_as_preview}
+                onChange={(e) => updateLibrary.mutate({ use_original_as_preview: e.target.checked })}
+                disabled={updateLibrary.isPending}
+                style={{ width: 18, height: 18, accentColor: "var(--clr-primary)", cursor: "pointer" }}
+              />
+            </label>
+          </div>
+        )}
 
         {data && (
           <p className="library-count-hint">

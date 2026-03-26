@@ -9,6 +9,7 @@ export interface Library {
   created_at: string;
   archived_at: string | null;
   finished_at: string | null;
+  use_original_as_preview: boolean;
 }
 
 export interface LibraryList {
@@ -54,6 +55,12 @@ export const librariesApi = {
     apiFetch<Library>(`/api/v1/libraries/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ name }),
+    }),
+
+  update: (id: number, patch: { name?: string; use_original_as_preview?: boolean }) =>
+    apiFetch<Library>(`/api/v1/libraries/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
     }),
 
   delete: (id: number) =>
