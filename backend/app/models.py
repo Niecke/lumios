@@ -133,6 +133,9 @@ class Library(db.Model):
     use_original_as_preview = db.Column(
         db.Boolean, nullable=False, default=False, server_default=db.false()
     )
+    download_enabled = db.Column(
+        db.Boolean, nullable=False, default=False, server_default=db.false()
+    )
 
     photographer = db.relationship(
         "User", backref=db.backref("libraries", lazy="dynamic")
@@ -147,6 +150,7 @@ class Library(db.Model):
             "archived_at": self.archived_at.isoformat() if self.archived_at else None,
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "use_original_as_preview": self.use_original_as_preview,
+            "download_enabled": self.download_enabled,
         }
 
 

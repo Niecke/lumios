@@ -10,6 +10,7 @@ export interface Library {
   archived_at: string | null;
   finished_at: string | null;
   use_original_as_preview: boolean;
+  download_enabled: boolean;
 }
 
 export interface LibraryList {
@@ -57,7 +58,7 @@ export const librariesApi = {
       body: JSON.stringify({ name }),
     }),
 
-  update: (id: number, patch: { name?: string; use_original_as_preview?: boolean }) =>
+  update: (id: number, patch: { name?: string; use_original_as_preview?: boolean; download_enabled?: boolean }) =>
     apiFetch<Library>(`/api/v1/libraries/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),

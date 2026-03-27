@@ -932,6 +932,36 @@ body {
   transform: scale(1.15);
 }
 
+/* Download button (public view) — same appearance as like, anchored bottom-left */
+.photo-tile__download {
+  position: absolute;
+  bottom: 0.5rem;
+  left: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255,255,255,.85);
+  color: var(--clr-on-surface-var);
+  cursor: pointer;
+  transition: background var(--transition), transform var(--transition);
+  padding: 0;
+  z-index: 2;
+  opacity: 0;
+}
+.photo-tile__download .material-icons { font-size: 20px; }
+.photo-tile:hover .photo-tile__download { opacity: 1; }
+@media (hover: none), (pointer: coarse) {
+  .photo-tile__download { opacity: 1; }
+}
+.photo-tile__download:hover {
+  background: rgba(255,255,255,.95);
+  transform: scale(1.15);
+}
+
 /* Liked badge (photographer view) */
 .photo-tile__liked-badge {
   position: absolute;

@@ -71,5 +71,19 @@ def get_presigned_url(key: str, expires_in: int = 3600) -> str:
     )
 
 
+def get_presigned_download_url(key: str, filename: str, expires_in: int = 3600) -> str:
+    """Presigned URL that sets Content-Disposition: attachment so the browser
+    saves the file directly instead of opening it in a new tab."""
+    return _public_client.generate_presigned_url(
+        "get_object",
+        Params={
+            "Bucket": S3_BUCKET,
+            "Key": key,
+            "ResponseContentDisposition": f'attachment; filename="{filename}"',
+        },
+        ExpiresIn=expires_in,
+    )
+
+
 def delete_object(key: str) -> None:
     _client.delete_object(Bucket=S3_BUCKET, Key=key)
