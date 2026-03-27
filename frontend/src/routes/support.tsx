@@ -3,7 +3,7 @@
 // Logged-in users can create support tickets and view their existing ones,
 // including any admin comments/replies.
 
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, redirect, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { authApi, type UserInfo } from "../api/auth";
@@ -238,7 +238,12 @@ function SupportPage() {
 
       <main className="page-content">
         <div className="page-header">
-          <h1>Support</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Link to="/" className="btn btn-text" style={{ padding: "0 0.5rem" }}>
+              <span className="material-icons" style={{ fontSize: 20 }}>arrow_back</span>
+            </Link>
+            <h1>Support</h1>
+          </div>
         </div>
 
         <div className="account-layout">

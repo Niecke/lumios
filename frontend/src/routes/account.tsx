@@ -3,7 +3,7 @@
 // Shows Google profile (avatar, name, email), account details (subscription,
 // storage usage), and a progress bar for storage usage.
 
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, redirect, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { authApi, type UserInfo } from "../api/auth";
@@ -176,7 +176,12 @@ function AccountPage() {
 
       <main className="page-content">
         <div className="page-header">
-          <h1>Account</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Link to="/" className="btn btn-text" style={{ padding: "0 0.5rem" }}>
+              <span className="material-icons" style={{ fontSize: 20 }}>arrow_back</span>
+            </Link>
+            <h1>Account</h1>
+          </div>
         </div>
 
         <div className="account-layout">

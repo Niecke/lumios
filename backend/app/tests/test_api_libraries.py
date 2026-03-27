@@ -213,9 +213,33 @@ class TestRenameLibrary:
         assert res.status_code == 200
         assert res.get_json()["name"] == "Renamed"
 
-    def test_missing_name_returns_400(self, client, photographer, library):
+    def test_empty_body_returns_200_no_op(self, client, photographer, library):
         token = make_token(photographer)
         res = client.patch(f"{BASE}/{library.id}", json={}, headers=auth_header(token))
+        assert res.status_code == 200
+
+    def test_empty_name_returns_400(self, client, photographer, library):
+        token = make_token(photographer)
+        res = client.patch(f"{BASE}/{library.id}", json={"name": "  "}, headers=auth_header(token))
+        assert res.status_code == 400
+
+    def test_toggle_use_original_as_preview(self, client, photographer, library):
+        token = make_token(photographer)
+        res = client.patch(
+            f"{BASE}/{library.id}",
+            json={"use_original_as_preview": True},
+            headers=auth_header(token),
+        )
+        assert res.status_code == 200
+        assert res.get_json()["use_original_as_preview"] is True
+
+    def test_invalid_use_original_as_preview_returns_400(self, client, photographer, library):
+        token = make_token(photographer)
+        res = client.patch(
+            f"{BASE}/{library.id}",
+            json={"use_original_as_preview": "yes"},
+            headers=auth_header(token),
+        )
         assert res.status_code == 400
 
     def test_other_photographers_library_returns_404(

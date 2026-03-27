@@ -35,6 +35,7 @@ def get_public_library(library_uuid: str):
         .all()
     )
 
+    preview_variant = "originals" if library.use_original_as_preview else "previews"
     image_dicts = [
         {
             "uuid": img.uuid,
@@ -42,7 +43,7 @@ def get_public_library(library_uuid: str):
             "width": img.width,
             "height": img.height,
             "customer_state": img.customer_state.value,
-            "preview_url": storage.get_presigned_url(img.storage_path("previews")),
+            "preview_url": storage.get_presigned_url(img.storage_path(preview_variant)),
             "thumb_url": storage.get_presigned_url(img.storage_path("thumbs")),
         }
         for img in images
@@ -56,6 +57,7 @@ def get_public_library(library_uuid: str):
                 "finished_at": (
                     library.finished_at.isoformat() if library.finished_at else None
                 ),
+                "use_original_as_preview": library.use_original_as_preview,
             },
             "images": image_dicts,
             "count": len(image_dicts),
