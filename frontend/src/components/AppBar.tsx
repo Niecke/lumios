@@ -26,6 +26,9 @@ function notificationMessage(n: Notification): string {
   if (n.type === "library_marked") {
     return `Library "${n.library_name ?? "Unknown"}" was marked as finished by the customer`;
   }
+  if (n.type === "library_viewed") {
+    return `Library "${n.library_name ?? "Unknown"}" was viewed by a customer`;
+  }
   if (n.type === "ticket_comment_added") {
     return `New reply on your ticket "${n.ticket_subject ?? "support ticket"}"`;
   }
@@ -78,7 +81,7 @@ export function AppBar({ name, picture }: AppBarProps) {
       markSeen.mutate(n.id);
     }
     setShowDropdown(false);
-    if (n.type === "library_marked" && n.related_object) {
+    if ((n.type === "library_marked" || n.type === "library_viewed") && n.related_object) {
       navigate({ to: "/library/$libraryUuid", params: { libraryUuid: n.related_object } });
     } else if (n.type === "ticket_comment_added") {
       navigate({ to: "/support" });
@@ -123,7 +126,7 @@ export function AppBar({ name, picture }: AppBarProps) {
                     onClick={() => handleNotificationClick(n)}
                   >
                     <span className="material-icons notification-item__icon">
-                      {n.type === "library_marked" ? "check_circle" : n.type === "ticket_comment_added" ? "chat" : "info"}
+                      {n.type === "library_marked" ? "check_circle" : n.type === "library_viewed" ? "visibility" : n.type === "ticket_comment_added" ? "chat" : "info"}
                     </span>
                     <div className="notification-item__body">
                       <span className="notification-item__text">
