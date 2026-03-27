@@ -7,6 +7,7 @@ from services.mail import notify_gallery_finished, add_to_brevo_waitlist
 from config import MAX_USERS, BREVO_WAITLIST_LIST_ID
 from datetime import datetime, timezone
 import re
+import json
 
 public_api = Blueprint("public_api", __name__, url_prefix="/public")
 
@@ -196,3 +197,46 @@ def join_waitlist():
         "Waitlist signup: %s", email, extra={"log_type": "audit"}
     )
     return jsonify({"ok": True})
+
+
+@public_api.route("/client-errors", methods=["POST"])
+@limiter.limit("5 per minute")
+def report_client_error():
+    """Receive a JavaScript error report from the browser and forward it to
+    Cloud Error Reporting via a structured Cloud Logging entry.
+
+    The entry format matches the ReportedErrorEvent schema so that Cloud
+    Logging automatically ingests it into Cloud Error Reporting without
+    requiring the google-cloud-error-reporting library.
+    """
+    data = request.get_json(silent=True) or {}
+
+    message = str(data.get("message") or "Unknown error")[:2000]
+    stack = str(data.get("stack") or "")[:5000]
+    url = str(data.get("url") or "")[:500]
+    line_number = int(data.get("line_number") or 0)
+    col_number = int(data.get("col_number") or 0)
+    user_agent = request.headers.get("User-Agent", "")[:500]
+
+    # Emit a structured log entry that Cloud Error Reporting ingests from
+    # Cloud Logging automatically when running on Cloud Run / GKE.
+    # See: https://cloud.google.com/error-reporting/docs/formatting-error-messages
+    current_app.logger.error(
+        json.dumps({
+            "@type": "type.googleapis.com/google.devtools.clouderrorreporting.v1beta1.ReportedErrorEvent",
+            "message": f"{message}\n{stack}".strip(),
+            "serviceContext": {"service": "lumios-frontend"},
+            "context": {
+                "httpRequest": {
+                    "url": url,
+                    "userAgent": user_agent,
+                },
+                "reportLocation": {
+                    "filePath": url,
+                    "lineNumber": line_number,
+                    "columnNumber": col_number,
+                },
+            },
+        })
+    )
+    return "", 204

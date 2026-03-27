@@ -8,6 +8,8 @@
 // Add new pages by creating files under src/routes/.
 
 import "./index.css";
+import { initErrorReporting } from "./errorReporting";
+initErrorReporting();
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
