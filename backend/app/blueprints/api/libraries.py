@@ -98,7 +98,7 @@ def get_library_by_uuid(library_uuid: str):
 @libraries_api.route("/<int:library_id>", methods=["PATCH"])
 @require_api_auth
 @require_api_role("photographer")
-def rename_library(library_id: int):
+def update_library(library_id: int):
     user_id = int(g.token_payload["sub"])
     library = db.session.execute(
         select(Library).where(
@@ -111,16 +111,24 @@ def rename_library(library_id: int):
         return jsonify({"error": "Library not found"}), 404
 
     data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()
-    if not name:
-        return jsonify({"error": "name is required"}), 400
-    if len(name) > MAX_NAME_LENGTH:
-        return (
-            jsonify({"error": f"name must be {MAX_NAME_LENGTH} characters or fewer"}),
-            400,
-        )
 
-    library.name = name
+    if "name" in data:
+        name = (data.get("name") or "").strip()
+        if not name:
+            return jsonify({"error": "name must not be empty"}), 400
+        if len(name) > MAX_NAME_LENGTH:
+            return (
+                jsonify({"error": f"name must be {MAX_NAME_LENGTH} characters or fewer"}),
+                400,
+            )
+        library.name = name
+
+    if "use_original_as_preview" in data:
+        value = data["use_original_as_preview"]
+        if not isinstance(value, bool):
+            return jsonify({"error": "use_original_as_preview must be a boolean"}), 400
+        library.use_original_as_preview = value
+
     db.session.commit()
     return jsonify(library.to_dict())
 
