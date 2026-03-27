@@ -225,12 +225,14 @@ def report_client_error():
     col_number = int(data.get("col_number") or 0)
     user_agent = request.headers.get("User-Agent", "")[:500]
 
-    # Emit a structured log entry that Cloud Error Reporting ingests from
-    # Cloud Logging automatically when running on Cloud Run / GKE.
+    # Write structured JSON directly to stdout so Cloud Run's log agent parses
+    # it as jsonPayload rather than textPayload. The @type field must be at the
+    # top level of jsonPayload for Cloud Error Reporting to ingest the entry.
     # See: https://cloud.google.com/error-reporting/docs/formatting-error-messages
-    current_app.logger.error(
+    print(
         json.dumps(
             {
+                "severity": "ERROR",
                 "@type": "type.googleapis.com/google.devtools.clouderrorreporting.v1beta1.ReportedErrorEvent",
                 "message": f"{message}\n{stack}".strip(),
                 "serviceContext": {"service": "lumios-frontend"},
@@ -246,6 +248,7 @@ def report_client_error():
                     },
                 },
             }
-        )
+        ),
+        flush=True,
     )
     return "", 204
