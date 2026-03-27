@@ -1,6 +1,15 @@
 from flask import Blueprint, jsonify, request, current_app
 from main import limiter
-from models import db, Library, Image, CustomerState, Notification, NotificationType, User, Waitlist
+from models import (
+    db,
+    Library,
+    Image,
+    CustomerState,
+    Notification,
+    NotificationType,
+    User,
+    Waitlist,
+)
 from sqlalchemy import select, func, or_
 from services import storage
 from services.mail import notify_gallery_finished, add_to_brevo_waitlist
@@ -193,9 +202,7 @@ def join_waitlist():
         db.session.commit()
 
     add_to_brevo_waitlist(email, BREVO_WAITLIST_LIST_ID)
-    current_app.logger.info(
-        "Waitlist signup: %s", email, extra={"log_type": "audit"}
-    )
+    current_app.logger.info("Waitlist signup: %s", email, extra={"log_type": "audit"})
     return jsonify({"ok": True})
 
 
@@ -222,21 +229,23 @@ def report_client_error():
     # Cloud Logging automatically when running on Cloud Run / GKE.
     # See: https://cloud.google.com/error-reporting/docs/formatting-error-messages
     current_app.logger.error(
-        json.dumps({
-            "@type": "type.googleapis.com/google.devtools.clouderrorreporting.v1beta1.ReportedErrorEvent",
-            "message": f"{message}\n{stack}".strip(),
-            "serviceContext": {"service": "lumios-frontend"},
-            "context": {
-                "httpRequest": {
-                    "url": url,
-                    "userAgent": user_agent,
+        json.dumps(
+            {
+                "@type": "type.googleapis.com/google.devtools.clouderrorreporting.v1beta1.ReportedErrorEvent",
+                "message": f"{message}\n{stack}".strip(),
+                "serviceContext": {"service": "lumios-frontend"},
+                "context": {
+                    "httpRequest": {
+                        "url": url,
+                        "userAgent": user_agent,
+                    },
+                    "reportLocation": {
+                        "filePath": url,
+                        "lineNumber": line_number,
+                        "columnNumber": col_number,
+                    },
                 },
-                "reportLocation": {
-                    "filePath": url,
-                    "lineNumber": line_number,
-                    "columnNumber": col_number,
-                },
-            },
-        })
+            }
+        )
     )
     return "", 204
