@@ -118,7 +118,9 @@ def update_library(library_id: int):
             return jsonify({"error": "name must not be empty"}), 400
         if len(name) > MAX_NAME_LENGTH:
             return (
-                jsonify({"error": f"name must be {MAX_NAME_LENGTH} characters or fewer"}),
+                jsonify(
+                    {"error": f"name must be {MAX_NAME_LENGTH} characters or fewer"}
+                ),
                 400,
             )
         library.name = name
@@ -128,6 +130,12 @@ def update_library(library_id: int):
         if not isinstance(value, bool):
             return jsonify({"error": "use_original_as_preview must be a boolean"}), 400
         library.use_original_as_preview = value
+
+    if "download_enabled" in data:
+        value = data["download_enabled"]
+        if not isinstance(value, bool):
+            return jsonify({"error": "download_enabled must be a boolean"}), 400
+        library.download_enabled = value
 
     db.session.commit()
     return jsonify(library.to_dict())

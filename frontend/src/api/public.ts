@@ -8,6 +8,7 @@ export interface PublicImage {
   customer_state: string;
   preview_url: string;
   thumb_url: string;
+  download_url: string | null;
 }
 
 export interface PublicLibrary {
@@ -15,6 +16,7 @@ export interface PublicLibrary {
     uuid: string;
     name: string;
     finished_at: string | null;
+    download_enabled: boolean;
   };
   images: PublicImage[];
   count: number;
