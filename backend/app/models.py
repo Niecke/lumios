@@ -25,6 +25,7 @@ class CustomerState(enum.Enum):
 
 class NotificationType(enum.Enum):
     library_marked = "library_marked"
+    library_viewed = "library_viewed"
     ticket_comment_added = "ticket_comment_added"
 
 
@@ -136,6 +137,7 @@ class Library(db.Model):
     download_enabled = db.Column(
         db.Boolean, nullable=False, default=False, server_default=db.false()
     )
+    last_viewed_at = db.Column(db.DateTime, nullable=True)
 
     photographer = db.relationship(
         "User", backref=db.backref("libraries", lazy="dynamic")

@@ -13,14 +13,49 @@ from models import (
 from sqlalchemy import select, func, or_
 from services import storage
 from services.mail import notify_gallery_finished, add_to_brevo_waitlist
-from config import MAX_USERS, BREVO_WAITLIST_LIST_ID
-from datetime import datetime, timezone
+from config import MAX_USERS, BREVO_WAITLIST_LIST_ID, REDIS_URL
+from datetime import datetime, timezone, date
 import re
 import json
+import hashlib
+
+if REDIS_URL:
+    import redis as _redis_module
+    _redis = _redis_module.from_url(REDIS_URL, decode_responses=True)
+else:
+    _redis = None
 
 public_api = Blueprint("public_api", __name__, url_prefix="/public")
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _record_library_view(library: Library) -> None:
+    """Update last_viewed_at and fire a notification the first time a given
+    visitor IP sees this library today. Silently skips if Redis is unavailable."""
+    library.last_viewed_at = datetime.now(timezone.utc)
+
+    if _redis is None:
+        return
+
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    ip = forwarded.split(",")[0].strip() if forwarded else (request.remote_addr or "")
+    today = date.today().isoformat()
+    visitor_hash = hashlib.sha256(f"{ip}:{today}".encode()).hexdigest()[:16]
+    redis_key = f"library:viewed:{library.id}:{visitor_hash}"
+
+    try:
+        is_new = _redis.set(redis_key, 1, nx=True, ex=86400)
+    except Exception:
+        return  # Redis unavailable — skip notification, last_viewed_at already set
+
+    if is_new:
+        notification = Notification(
+            type=NotificationType.library_viewed,
+            user_id=library.user_id,
+            related_object=library.uuid,
+        )
+        db.session.add(notification)
 
 
 @public_api.route("/libraries/<library_uuid>", methods=["GET"])
@@ -34,6 +69,8 @@ def get_public_library(library_uuid: str):
     ).scalar_one_or_none()
     if library is None:
         return jsonify({"error": "Library not found"}), 404
+
+    _record_library_view(library)
 
     images = (
         db.session.execute(
@@ -61,6 +98,8 @@ def get_public_library(library_uuid: str):
         }
         for img in images
     ]
+
+    db.session.commit()
 
     return jsonify(
         {
