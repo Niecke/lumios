@@ -281,6 +281,10 @@ resource "google_cloud_run_v2_service" "backend" {
         name  = "LANDINGPAGE_URL"
         value = var.landingpage_url
       }
+      env {
+        name  = "BREVO_WAITLIST_LIST_ID"
+        value = "4"
+      }
 
       resources {
         limits = {
