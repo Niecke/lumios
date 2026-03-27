@@ -1,6 +1,15 @@
 from flask import Blueprint, jsonify, request, current_app
 from main import limiter
-from models import db, Library, Image, CustomerState, Notification, NotificationType, User, Waitlist
+from models import (
+    db,
+    Library,
+    Image,
+    CustomerState,
+    Notification,
+    NotificationType,
+    User,
+    Waitlist,
+)
 from sqlalchemy import select, func, or_
 from services import storage
 from services.mail import notify_gallery_finished, add_to_brevo_waitlist
@@ -193,9 +202,7 @@ def join_waitlist():
         db.session.commit()
 
     add_to_brevo_waitlist(email, BREVO_WAITLIST_LIST_ID)
-    current_app.logger.info(
-        "Waitlist signup: %s", email, extra={"log_type": "audit"}
-    )
+    current_app.logger.info("Waitlist signup: %s", email, extra={"log_type": "audit"})
     return jsonify({"ok": True})
 
 
@@ -218,25 +225,30 @@ def report_client_error():
     col_number = int(data.get("col_number") or 0)
     user_agent = request.headers.get("User-Agent", "")[:500]
 
-    # Emit a structured log entry that Cloud Error Reporting ingests from
-    # Cloud Logging automatically when running on Cloud Run / GKE.
+    # Write structured JSON directly to stdout so Cloud Run's log agent parses
+    # it as jsonPayload rather than textPayload. The @type field must be at the
+    # top level of jsonPayload for Cloud Error Reporting to ingest the entry.
     # See: https://cloud.google.com/error-reporting/docs/formatting-error-messages
-    current_app.logger.error(
-        json.dumps({
-            "@type": "type.googleapis.com/google.devtools.clouderrorreporting.v1beta1.ReportedErrorEvent",
-            "message": f"{message}\n{stack}".strip(),
-            "serviceContext": {"service": "lumios-frontend"},
-            "context": {
-                "httpRequest": {
-                    "url": url,
-                    "userAgent": user_agent,
+    print(
+        json.dumps(
+            {
+                "severity": "ERROR",
+                "@type": "type.googleapis.com/google.devtools.clouderrorreporting.v1beta1.ReportedErrorEvent",
+                "message": f"{message}\n{stack}".strip(),
+                "serviceContext": {"service": "lumios-frontend"},
+                "context": {
+                    "httpRequest": {
+                        "url": url,
+                        "userAgent": user_agent,
+                    },
+                    "reportLocation": {
+                        "filePath": url,
+                        "lineNumber": line_number,
+                        "columnNumber": col_number,
+                    },
                 },
-                "reportLocation": {
-                    "filePath": url,
-                    "lineNumber": line_number,
-                    "columnNumber": col_number,
-                },
-            },
-        })
+            }
+        ),
+        flush=True,
     )
     return "", 204
