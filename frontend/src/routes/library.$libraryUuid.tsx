@@ -343,7 +343,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
   });
 
   const updateLibrary = useMutation({
-    mutationFn: (patch: { name?: string; use_original_as_preview?: boolean }) =>
+    mutationFn: (patch: { name?: string; use_original_as_preview?: boolean; download_enabled?: boolean }) =>
       librariesApi.update(library!.id, patch),
     onSuccess: () => {
       refetchLibrary();
@@ -487,25 +487,51 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
         </div>
 
         {library && (
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.5rem", padding: "0.75rem 1rem", background: "var(--clr-surface)", borderRadius: "var(--radius-sm)", border: "1px solid var(--clr-outline)" }}>
-            <span className="material-icons" style={{ fontSize: 20, color: "var(--clr-on-surface-var)" }}>photo_filter</span>
-            <div>
-              <div style={{ fontWeight: 500, fontSize: "0.9rem" }}>Use originals as preview</div>
-              <div style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)" }}>
-                {library.use_original_as_preview
+          <div style={{ marginBottom: "0.5rem", background: "var(--clr-surface)", borderRadius: "var(--radius-sm)", border: "1px solid var(--clr-outline)", overflow: "hidden" }}>
+            {[
+              {
+                icon: "photo_filter",
+                label: "Use originals as preview",
+                description: library.use_original_as_preview
                   ? "Customers see the original, uncompressed photos"
-                  : "Customers see watermarked preview images"}
+                  : "Customers see watermarked preview images",
+                checked: library.use_original_as_preview,
+                onChange: (v: boolean) => updateLibrary.mutate({ use_original_as_preview: v }),
+              },
+              {
+                icon: "download",
+                label: "Allow download",
+                description: library.download_enabled
+                  ? "Customers see a download button on each photo"
+                  : "No download button shown to customers",
+                checked: library.download_enabled,
+                onChange: (v: boolean) => updateLibrary.mutate({ download_enabled: v }),
+              },
+            ].map(({ icon, label, description, checked, onChange }, i, arr) => (
+              <div
+                key={label}
+                style={{
+                  display: "flex", alignItems: "center", gap: "0.75rem",
+                  padding: "0.75rem 1rem",
+                  borderBottom: i < arr.length - 1 ? "1px solid var(--clr-outline)" : undefined,
+                }}
+              >
+                <span className="material-icons" style={{ fontSize: 20, color: "var(--clr-on-surface-var)" }}>{icon}</span>
+                <div>
+                  <div style={{ fontWeight: 500, fontSize: "0.9rem" }}>{label}</div>
+                  <div style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)" }}>{description}</div>
+                </div>
+                <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => onChange(e.target.checked)}
+                    disabled={updateLibrary.isPending}
+                    style={{ width: 18, height: 18, accentColor: "var(--clr-primary)", cursor: "pointer" }}
+                  />
+                </label>
               </div>
-            </div>
-            <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={library.use_original_as_preview}
-                onChange={(e) => updateLibrary.mutate({ use_original_as_preview: e.target.checked })}
-                disabled={updateLibrary.isPending}
-                style={{ width: 18, height: 18, accentColor: "var(--clr-primary)", cursor: "pointer" }}
-              />
-            </label>
+            ))}
           </div>
         )}
 
@@ -713,6 +739,15 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
                       {img.customer_state === "liked" ? "favorite" : "favorite_border"}
                     </span>
                   </button>
+                  {img.download_url && (
+                    <a
+                      className="photo-tile__download"
+                      href={img.download_url}
+                      title="Download photo"
+                    >
+                      <span className="material-icons">download</span>
+                    </a>
+                  )}
                 </div>
               ))}
             </div>

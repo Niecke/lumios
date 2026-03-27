@@ -55,6 +55,9 @@ def get_public_library(library_uuid: str):
             "customer_state": img.customer_state.value,
             "preview_url": storage.get_presigned_url(img.storage_path(preview_variant)),
             "thumb_url": storage.get_presigned_url(img.storage_path("thumbs")),
+            "download_url": storage.get_presigned_download_url(
+                img.storage_path(preview_variant), img.original_filename
+            ) if library.download_enabled else None,
         }
         for img in images
     ]
@@ -68,6 +71,7 @@ def get_public_library(library_uuid: str):
                     library.finished_at.isoformat() if library.finished_at else None
                 ),
                 "use_original_as_preview": library.use_original_as_preview,
+                "download_enabled": library.download_enabled,
             },
             "images": image_dicts,
             "count": len(image_dicts),
@@ -127,15 +131,18 @@ def finish_library(library_uuid: str):
     if library.finished_at is not None:
         return jsonify({"error": "Library is already marked as finished"}), 409
 
-    liked_count = db.session.execute(
-        select(db.func.count())
-        .select_from(Image)
-        .where(
-            Image.library_id == library.id,
-            Image.deleted_at.is_(None),
-            Image.customer_state == CustomerState.liked,
-        )
-    ).scalar()
+    liked_count = (
+        db.session.execute(
+            select(db.func.count())
+            .select_from(Image)
+            .where(
+                Image.library_id == library.id,
+                Image.deleted_at.is_(None),
+                Image.customer_state == CustomerState.liked,
+            )
+        ).scalar()
+        or 0
+    )
 
     if liked_count == 0:
         return (
@@ -172,12 +179,15 @@ def finish_library(library_uuid: str):
 @limiter.limit("30 per minute")
 def registration_status():
     """Return whether new registrations are currently open."""
-    slot_count = db.session.execute(
-        select(func.count(User.id)).where(
-            or_(User.active.is_(True), User.activation_pending.is_(True)),
-            User.deleted_at.is_(None),
-        )
-    ).scalar()
+    slot_count = (
+        db.session.execute(
+            select(func.count(User.id)).where(
+                or_(User.active.is_(True), User.activation_pending.is_(True)),
+                User.deleted_at.is_(None),
+            )
+        ).scalar()
+        or 0
+    )
     return jsonify({"can_register": slot_count < MAX_USERS})
 
 
