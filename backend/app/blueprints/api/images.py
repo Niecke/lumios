@@ -17,9 +17,11 @@ images_api = Blueprint("images_api", __name__, url_prefix="/libraries")
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 THUMB_SIZE = 600  # longest side in pixels
-PREVIEW_MAX_BYTES = 2 * 1024 * 1024  # 2 MB
+PREVIEW_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 WATERMARK_TEXT = "lumios.niecke-it.de"
 WATERMARK_OPACITY = 80  # 0-255
+WATERMARK_LOGO_MAX_BYTES = 5 * 1024 * 1024  # 5 MB max for logo PNG uploads
+WATERMARK_LOGO_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 # Magic byte signatures for allowed image formats
 MAGIC_BYTES = {
@@ -115,29 +117,118 @@ def _build_watermark_tile() -> PilImage.Image:
 _WATERMARK_TILE = _build_watermark_tile()
 
 
-def _create_watermarked_preview(pil_img: PilImage.Image) -> io.BytesIO:
-    """Create a watermarked preview that fits under PREVIEW_MAX_BYTES."""
-    # Downscale first to save memory
+def _apply_logo_watermark(
+    preview: PilImage.Image,
+    logo: PilImage.Image,
+    logo_scale: float,
+    logo_position: str,
+) -> PilImage.Image:
+    """Alpha-composite a logo onto the preview at the given position and scale.
+
+    Only the logo pixels are affected; surrounding photo colors are unchanged.
+    Returns the modified preview (RGBA).
+    """
+    img_w, img_h = preview.size
+    logo_w = max(1, int(img_w * logo_scale))
+    logo_h = max(1, int(logo.height * logo_w / logo.width))
+    logo_resized = logo.resize((logo_w, logo_h), PilImage.Resampling.LANCZOS)
+
+    margin = max(4, int(min(img_w, img_h) * 0.02))
+    positions = {
+        "bottom_right": (img_w - logo_w - margin, img_h - logo_h - margin),
+        "bottom_left": (margin, img_h - logo_h - margin),
+        "top_right": (img_w - logo_w - margin, margin),
+        "top_left": (margin, margin),
+        "center": ((img_w - logo_w) // 2, (img_h - logo_h) // 2),
+    }
+    x, y = positions.get(logo_position, positions["bottom_right"])
+    # Clamp to image bounds
+    x = max(0, min(x, img_w - logo_w))
+    y = max(0, min(y, img_h - logo_h))
+
+    preview.alpha_composite(logo_resized, dest=(x, y))
+    logo_resized.close()
+    return preview
+
+
+def _create_watermarked_preview(
+    pil_img: PilImage.Image,
+    original_file_size: int,
+    logo: PilImage.Image | None = None,
+    logo_scale: float = 0.2,
+    logo_position: str = "bottom_right",
+) -> io.BytesIO:
+    """Create a preview with watermark that fits under PREVIEW_MAX_BYTES.
+
+    - If the original file is under PREVIEW_MAX_BYTES, the preview keeps its
+      original dimensions (no resize). Quality starts at 95 for near-lossless output.
+    - If the original file is PREVIEW_MAX_BYTES or larger, the image is downscaled
+      progressively (10% steps) until the encoded JPEG fits under PREVIEW_MAX_BYTES.
+    - Custom logo (RGBA PNG): composited cleanly — surrounding photo colors
+      are unchanged. Fallback when logo is None: tiled semi-transparent text.
+    - The ICC color profile is preserved so browsers render colors correctly.
+    """
     w, h = pil_img.size
-    ratio = min(PREVIEW_MAX_PX / w, PREVIEW_MAX_PX / h, 1.0)
-    new_w, new_h = int(w * ratio), int(h * ratio)
-    preview = pil_img.resize((new_w, new_h), PilImage.Resampling.LANCZOS).convert(
-        "RGBA"
-    )
-    w, h = preview.size
+    icc_profile = pil_img.info.get("icc_profile")
 
-    # Tile the pre-built watermark across the image
-    tw, th = _WATERMARK_TILE.size
-    for y in range(-th, h, th):
-        for x in range(-tw, w, tw):
-            preview.alpha_composite(_WATERMARK_TILE, dest=(x, y))
-
-    preview = preview.convert("RGB")
-
-    # Encode as JPEG, reduce quality if still over 2 MB
-    for quality in (85, 70, 55):
+    def _save_jpeg(img: PilImage.Image, quality: int) -> io.BytesIO:
         buf = io.BytesIO()
-        preview.save(buf, format="JPEG", quality=quality)
+        save_kwargs: dict = {"format": "JPEG", "quality": quality}
+        if icc_profile:
+            save_kwargs["icc_profile"] = icc_profile
+        img.save(buf, **save_kwargs)
+        return buf
+
+    if original_file_size < PREVIEW_MAX_BYTES:
+        # Keep original resolution — just convert and apply watermark
+        preview = pil_img.convert("RGBA")
+        if logo is not None:
+            preview = _apply_logo_watermark(preview, logo, logo_scale, logo_position)
+        else:
+            tw, th = _WATERMARK_TILE.size
+            for ty in range(-th, h, th):
+                for tx in range(-tw, w, tw):
+                    preview.alpha_composite(_WATERMARK_TILE, dest=(tx, ty))
+        preview = preview.convert("RGB")
+        start_quality = 99
+    else:
+        # Downscale in 10% steps until the encoded JPEG fits under 5 MB
+        best_buf: io.BytesIO | None = None
+        for scale_pct in range(90, 30, -10):
+            scale = scale_pct / 100.0
+            new_w, new_h = max(1, int(w * scale)), max(1, int(h * scale))
+            candidate = pil_img.resize(
+                (new_w, new_h), PilImage.Resampling.LANCZOS
+            ).convert("RGBA")
+            if logo is not None:
+                candidate = _apply_logo_watermark(
+                    candidate, logo, logo_scale, logo_position
+                )
+            else:
+                tw, th = _WATERMARK_TILE.size
+                for ty in range(-th, new_h, th):
+                    for tx in range(-tw, new_w, tw):
+                        candidate.alpha_composite(_WATERMARK_TILE, dest=(tx, ty))
+            candidate_rgb = candidate.convert("RGB")
+            candidate.close()
+            buf = _save_jpeg(candidate_rgb, quality=90)
+            candidate_rgb.close()
+            if buf.tell() <= PREVIEW_MAX_BYTES:
+                buf.seek(0)
+                return buf
+            best_buf = buf  # keep last attempt as fallback
+        if best_buf is not None:
+            best_buf.seek(0)
+            return best_buf
+        # Extremely large image — fall through with full size at low quality
+        preview = pil_img.convert("RGBA")
+        if logo is not None:
+            preview = _apply_logo_watermark(preview, logo, logo_scale, logo_position)
+        preview = preview.convert("RGB")
+        start_quality = 60
+
+    for quality in (start_quality, 80, 70, 60):
+        buf = _save_jpeg(preview, quality=quality)
         if buf.tell() <= PREVIEW_MAX_BYTES:
             buf.seek(0)
             preview.close()
@@ -146,6 +237,23 @@ def _create_watermarked_preview(pil_img: PilImage.Image) -> io.BytesIO:
     buf.seek(0)
     preview.close()
     return buf
+
+
+def _load_library_logo(library: "Library") -> PilImage.Image | None:
+    """Download the library's watermark logo from GCS and return it as RGBA.
+
+    Returns None if no logo is configured or if loading fails.
+    """
+    if not library.watermark_gcs_key:
+        return None
+    try:
+        data = storage.get_object_bytes(library.watermark_gcs_key)
+        return PilImage.open(io.BytesIO(data)).convert("RGBA")
+    except Exception:
+        current_app.logger.warning(
+            "Failed to load watermark logo for library %s", library.id
+        )
+        return None
 
 
 def _get_library(library_id: int, user_id: int) -> Library | None:
@@ -191,7 +299,9 @@ def list_images(library_id: int):
         {
             "images": image_dicts,
             "count": len(image_dicts),
-            "max_images_per_library": user.effective_limits["max_images_per_library"] if user else None,
+            "max_images_per_library": (
+                user.effective_limits["max_images_per_library"] if user else None
+            ),
         }
     )
 
@@ -240,7 +350,11 @@ def upload_image(library_id: int):
     if storage_used >= limits["max_storage_bytes"]:
         limit_mb = limits["max_storage_bytes"] // (1024 * 1024)
         return (
-            jsonify({"error": f"Storage limit reached ({limit_mb} MB) for your subscription."}),
+            jsonify(
+                {
+                    "error": f"Storage limit reached ({limit_mb} MB) for your subscription."
+                }
+            ),
             422,
         )
 
@@ -276,17 +390,30 @@ def upload_image(library_id: int):
         return jsonify({"error": "File is not a valid image"}), 415
 
     # Generate 300px thumbnail
+    icc_profile = pil_img.info.get("icc_profile")
     thumb_img = pil_img.copy()
     thumb_img.thumbnail((THUMB_SIZE, THUMB_SIZE))
     if thumb_img.mode in ("RGBA", "P", "LA"):
         thumb_img = thumb_img.convert("RGB")
     thumb_buf = io.BytesIO()
-    thumb_img.save(thumb_buf, format="JPEG", quality=85)
+    thumb_save_kwargs: dict = {"format": "JPEG", "quality": 85}
+    if icc_profile:
+        thumb_save_kwargs["icc_profile"] = icc_profile
+    thumb_img.save(thumb_buf, **thumb_save_kwargs)
     thumb_buf.seek(0)
     thumb_img.close()
 
-    # Generate watermarked preview (max 2 MB)
-    preview_buf = _create_watermarked_preview(pil_img)
+    # Generate watermarked preview (max 5 MB)
+    logo = _load_library_logo(library)
+    preview_buf = _create_watermarked_preview(
+        pil_img,
+        original_file_size=len(file_data),
+        logo=logo,
+        logo_scale=library.watermark_scale or 0.2,
+        logo_position=library.watermark_position or "bottom_right",
+    )
+    if logo is not None:
+        logo.close()
     pil_img.close()
 
     if content_type == "image/jpeg":

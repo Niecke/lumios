@@ -11,6 +11,9 @@ export interface Library {
   finished_at: string | null;
   use_original_as_preview: boolean;
   download_enabled: boolean;
+  watermark_gcs_key: string | null;
+  watermark_scale: number | null;
+  watermark_position: string | null;
 }
 
 export interface LibraryList {
@@ -58,7 +61,13 @@ export const librariesApi = {
       body: JSON.stringify({ name }),
     }),
 
-  update: (id: number, patch: { name?: string; use_original_as_preview?: boolean; download_enabled?: boolean }) =>
+  update: (id: number, patch: {
+    name?: string;
+    use_original_as_preview?: boolean;
+    download_enabled?: boolean;
+    watermark_scale?: number;
+    watermark_position?: string;
+  }) =>
     apiFetch<Library>(`/api/v1/libraries/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
@@ -66,4 +75,43 @@ export const librariesApi = {
 
   delete: (id: number) =>
     apiFetch<void>(`/api/v1/libraries/${id}`, { method: "DELETE" }),
+
+  uploadWatermark: (id: number, file: File): Promise<Library> => {
+    const token = tokenStore.get();
+    const formData = new FormData();
+    formData.append("file", file);
+    return fetch(`/api/v1/libraries/${id}/watermark`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    }).then(async (res) => {
+      const data = res.headers.get("content-type")?.includes("application/json")
+        ? await res.json()
+        : null;
+      if (!res.ok) {
+        throw new Error((data as { error?: string } | null)?.error ?? `Request failed (${res.status})`);
+      }
+      return data as Library;
+    });
+  },
+
+  deleteWatermark: (id: number) =>
+    apiFetch<Library>(`/api/v1/libraries/${id}/watermark`, { method: "DELETE" }),
+
+  fetchWatermarkPreview: (id: number, scale: number, position: string): Promise<string> => {
+    const token = tokenStore.get();
+    const params = new URLSearchParams({ scale: String(scale), position });
+    return fetch(`/api/v1/libraries/${id}/watermark/preview?${params}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }).then(async (res) => {
+      if (!res.ok) {
+        const data = res.headers.get("content-type")?.includes("application/json")
+          ? await res.json()
+          : null;
+        throw new Error((data as { error?: string } | null)?.error ?? `Request failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      return URL.createObjectURL(blob);
+    });
+  },
 };
