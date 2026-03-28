@@ -7,6 +7,26 @@ from flask_migrate import Migrate
 import enum
 import uuid as uuid_module
 from tracing import traced
+from sqlalchemy.types import TypeDecorator, LargeBinary
+
+
+class UUIDBinary(TypeDecorator):
+    """Store a UUID as 16 bytes (BYTEA in PostgreSQL) — compact, no integer overflow risk."""
+
+    impl = LargeBinary(16)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, uuid_module.UUID):
+            return value.bytes
+        return uuid_module.UUID(str(value)).bytes
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        return uuid_module.UUID(bytes=bytes(value))
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -322,3 +342,61 @@ class Waitlist(db.Model):
     created_at = db.Column(
         db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
+
+
+class AuditLogType(enum.Enum):
+    # System / user management
+    user_created = "user_created"
+    user_activated = "user_activated"
+    user_deactivated = "user_deactivated"
+    user_reactivated = "user_reactivated"
+    user_deleted = "user_deleted"
+    password_changed = "password_changed"
+    password_set_by_admin = "password_set_by_admin"
+    login_backend = "login_backend"
+    login_frontend = "login_frontend"
+    login_failed = "login_failed"
+    # Photographer actions
+    library_created = "library_created"
+    library_edited = "library_edited"
+    library_deleted = "library_deleted"
+    library_finished = "library_finished"
+    picture_uploaded = "picture_uploaded"
+    picture_deleted = "picture_deleted"
+    picture_downloaded = "picture_downloaded"
+
+
+class AuditLog(db.Model):
+    id = db.Column(
+        UUIDBinary(),
+        primary_key=True,
+        default=uuid_module.uuid4,
+    )
+    audit_type = db.Column(
+        db.Enum(AuditLogType, name="auditlogtype"), nullable=False
+    )
+    ip_address = db.Column(db.String(45), nullable=True)
+    audit_date = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+    creator_id = db.Column(db.Integer(), db.ForeignKey("user.id"), nullable=True)
+    related_object_type = db.Column(db.String(16), nullable=True)
+    related_object_id = db.Column(db.String(255), nullable=True)
+
+    creator = db.relationship(
+        "User", backref=db.backref("audit_logs", lazy="dynamic")
+    )
+
+
+class JobRun(db.Model):
+    id = db.Column(db.Integer(), primary_key=True)
+    job_name = db.Column(db.String(100), nullable=False, index=True)
+    ran_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    status = db.Column(db.String(16), nullable=False)
+    records_affected = db.Column(db.Integer(), nullable=True)
+    error_message = db.Column(db.Text(), nullable=True)

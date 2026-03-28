@@ -176,7 +176,7 @@ resource "google_cloud_run_v2_job" "cleanup" {
 }
 
 # ---------------------------------------------------------------------------
-# Cloud Scheduler — triggers the job at 02:00 UTC every day
+# Cloud Scheduler — triggers the account-cleanup job at 02:00 UTC every day
 # ---------------------------------------------------------------------------
 
 resource "google_cloud_run_v2_job_iam_member" "scheduler_invoker" {
@@ -200,6 +200,123 @@ resource "google_cloud_scheduler_job" "cleanup_daily" {
   http_target {
     http_method = "POST"
     uri         = "https://${var.region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${var.project_id}/jobs/${google_cloud_run_v2_job.cleanup.name}:run"
+
+    oauth_token {
+      service_account_email = google_service_account.cleanup_scheduler.email
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Audit log cleanup — purge audit_log rows older than 90 days at 03:00 UTC
+#
+# Reuses the same service accounts and backend image as the account-cleanup
+# job; only the Flask command and schedule differ.
+# ---------------------------------------------------------------------------
+
+resource "google_cloud_run_v2_job" "audit_cleanup" {
+  name     = "lumios-audit-cleanup"
+  location = var.region
+
+  lifecycle {
+    ignore_changes = [
+      template[0].template[0].containers[0].image,
+    ]
+  }
+
+  template {
+    template {
+      service_account = google_service_account.cleanup_job.email
+      max_retries     = 3
+
+      vpc_access {
+        egress = "PRIVATE_RANGES_ONLY"
+        network_interfaces {
+          network    = var.network_id
+          subnetwork = var.subnet_id
+        }
+      }
+
+      containers {
+        image   = var.image
+        command = ["python", "-m", "flask", "purge-audit-logs"]
+
+        env {
+          name  = "POSTGRES_HOST"
+          value = var.vm_internal_ip
+        }
+        env {
+          name  = "POSTGRES_USER"
+          value = "lumios"
+        }
+        env {
+          name  = "POSTGRES_DB"
+          value = "lumios"
+        }
+        env {
+          name  = "GOOGLE_CLOUD_PROJECT"
+          value = var.project_id
+        }
+        env {
+          name = "POSTGRES_PASSWORD"
+          value_source {
+            secret_key_ref {
+              secret  = var.postgres_password_secret_id
+              version = "latest"
+            }
+          }
+        }
+        env {
+          name = "SECRET_KEY"
+          value_source {
+            secret_key_ref {
+              secret  = var.secret_key_secret_id
+              version = "latest"
+            }
+          }
+        }
+        env {
+          name = "JWT_SECRET"
+          value_source {
+            secret_key_ref {
+              secret  = var.jwt_secret_secret_id
+              version = "latest"
+            }
+          }
+        }
+
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "512Mi"
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "google_cloud_run_v2_job_iam_member" "scheduler_audit_invoker" {
+  name     = google_cloud_run_v2_job.audit_cleanup.name
+  location = google_cloud_run_v2_job.audit_cleanup.location
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.cleanup_scheduler.email}"
+}
+
+resource "google_cloud_scheduler_job" "audit_cleanup_daily" {
+  name             = "lumios-audit-cleanup-daily"
+  description      = "Purge audit log entries older than 90 days at 03:00 UTC"
+  schedule         = "0 3 * * *"
+  time_zone        = "UTC"
+  attempt_deadline = "320s"
+
+  retry_config {
+    retry_count = 3
+  }
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://${var.region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${var.project_id}/jobs/${google_cloud_run_v2_job.audit_cleanup.name}:run"
 
     oauth_token {
       service_account_email = google_service_account.cleanup_scheduler.email

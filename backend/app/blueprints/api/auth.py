@@ -8,8 +8,9 @@ from config import GOOGLE_FRONTEND_CLIENT_ID, REDIS_URL, FRONTEND_URL, MAX_USERS
 from services.auth import login_google, login_password, AuthError
 from services.token import create_token
 from services.mail import notify_activation_email
+from services.audit import write_audit_log
 from security import require_api_auth, require_api_role
-from models import db, User, Role, Library, Image
+from models import db, User, Role, Library, Image, AuditLogType
 from sqlalchemy import select, func, or_
 from datetime import datetime, timezone
 
@@ -95,6 +96,8 @@ def google_verify():
         user = login_google({"email": idinfo.get("email"), "sub": idinfo.get("sub")})
     except AuthError as e:
         current_app.logger.warning("Google login rejected: %s", e.message)
+        write_audit_log(AuditLogType.login_failed)
+        db.session.commit()
         return jsonify({"error": e.message}), e.status
 
     roles = [r.name for r in user.roles]
@@ -105,6 +108,8 @@ def google_verify():
         name=idinfo.get("name"),
         picture=idinfo.get("picture"),
     )
+    write_audit_log(AuditLogType.login_frontend, creator_id=user.id)
+    db.session.commit()
     return jsonify(
         {
             "token": token,
@@ -188,6 +193,8 @@ def google_callback():
         user = login_google({"email": idinfo.get("email"), "sub": idinfo.get("sub")})
     except AuthError as e:
         current_app.logger.warning("Google login rejected: %s", e.message)
+        write_audit_log(AuditLogType.login_failed)
+        db.session.commit()
         return redirect("/login?" + urlencode({"error": e.message}))
 
     roles = [r.name for r in user.roles]
@@ -198,6 +205,8 @@ def google_callback():
         name=idinfo.get("name"),
         picture=idinfo.get("picture"),
     )
+    write_audit_log(AuditLogType.login_frontend, creator_id=user.id)
+    db.session.commit()
     code = _store_login_code(token)
     return redirect("/login?" + urlencode({"code": code}))
 
@@ -215,10 +224,14 @@ def password_login():
     try:
         user = login_password(email, password)
     except AuthError as e:
+        write_audit_log(AuditLogType.login_failed)
+        db.session.commit()
         return jsonify({"error": e.message}), e.status
 
     roles = [r.name for r in user.roles]
     token = create_token(user.id, user.email, roles)
+    write_audit_log(AuditLogType.login_frontend, creator_id=user.id)
+    db.session.commit()
     return jsonify(
         {
             "token": token,
@@ -355,6 +368,11 @@ def register():
         db.session.rollback()
         return jsonify({"error": str(ex)}), 400
 
+    write_audit_log(
+        AuditLogType.user_created,
+        related_object_type="user",
+        related_object_id=str(user.id),
+    )
     db.session.commit()
     notify_activation_email(email, f"{FRONTEND_URL}/activate?token={user.activation_token}")
     current_app.logger.info("User registered: %s (local)", email, extra={"log_type": "audit"})
@@ -414,6 +432,11 @@ def google_register():
         return jsonify({"error": "An account with this email already exists. Please log in instead."}), 409
 
     user = _create_pending_user(email, "google", google_sub)
+    write_audit_log(
+        AuditLogType.user_created,
+        related_object_type="user",
+        related_object_id=str(user.id),
+    )
     db.session.commit()
     notify_activation_email(email, f"{FRONTEND_URL}/activate?token={user.activation_token}")
     current_app.logger.info("User registered: %s (google)", email, extra={"log_type": "audit"})
@@ -439,6 +462,11 @@ def activate_account():
     user.active = True
     user.activation_pending = False
     user.activation_token = None
+    write_audit_log(
+        AuditLogType.user_activated,
+        related_object_type="user",
+        related_object_id=str(user.id),
+    )
     db.session.commit()
 
     current_app.logger.info(

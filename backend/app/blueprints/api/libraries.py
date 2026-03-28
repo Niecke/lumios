@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, g, current_app, Response
 from security import require_api_auth, require_api_role
-from models import db, User, Library, Image
+from models import db, User, Library, Image, AuditLogType
+from services.audit import write_audit_log
 from sqlalchemy import select
 from datetime import datetime, timezone
 import io
@@ -83,6 +84,13 @@ def create_library():
 
     library = Library(user_id=user_id, name=name)
     db.session.add(library)
+    db.session.flush()
+    write_audit_log(
+        AuditLogType.library_created,
+        creator_id=user_id,
+        related_object_type="library",
+        related_object_id=library.uuid,
+    )
     db.session.commit()
     return jsonify(library.to_dict()), 201
 
@@ -149,7 +157,10 @@ def update_library(library_id: int):
     if "watermark_scale" in data:
         scale = data["watermark_scale"]
         if not isinstance(scale, (int, float)) or not (0.05 <= float(scale) <= 0.50):
-            return jsonify({"error": "watermark_scale must be between 0.05 and 0.50"}), 400
+            return (
+                jsonify({"error": "watermark_scale must be between 0.05 and 0.50"}),
+                400,
+            )
         library.watermark_scale = float(scale)
 
     if "watermark_position" in data:
@@ -157,11 +168,23 @@ def update_library(library_id: int):
             return jsonify({"error": "invalid watermark_position"}), 400
         library.watermark_position = data["watermark_position"]
 
+    write_audit_log(
+        AuditLogType.library_edited,
+        creator_id=user_id,
+        related_object_type="library",
+        related_object_id=library.uuid,
+    )
     db.session.commit()
     return jsonify(library.to_dict())
 
 
-VALID_WATERMARK_POSITIONS = {"bottom_right", "bottom_left", "top_right", "top_left", "center"}
+VALID_WATERMARK_POSITIONS = {
+    "bottom_right",
+    "bottom_left",
+    "top_right",
+    "top_left",
+    "center",
+}
 
 
 @libraries_api.route("/<int:library_id>/watermark", methods=["POST"])
@@ -269,15 +292,21 @@ def watermark_preview(library_id: int):
     except (TypeError, ValueError):
         return jsonify({"error": "Invalid scale parameter"}), 400
 
-    position = request.args.get("position", library.watermark_position or "bottom_right")
+    position = request.args.get(
+        "position", library.watermark_position or "bottom_right"
+    )
     if position not in VALID_WATERMARK_POSITIONS:
         return jsonify({"error": "Invalid position parameter"}), 400
 
-    sample_image = db.session.execute(
-        select(Image)
-        .where(Image.library_id == library_id, Image.deleted_at.is_(None))
-        .order_by(Image.created_at.desc())
-    ).scalars().first()
+    sample_image = (
+        db.session.execute(
+            select(Image)
+            .where(Image.library_id == library_id, Image.deleted_at.is_(None))
+            .order_by(Image.created_at.desc())
+        )
+        .scalars()
+        .first()
+    )
     if sample_image is None:
         return jsonify({"error": "No photos in library yet"}), 404
 
@@ -327,5 +356,11 @@ def delete_library(library_id: int):
         return jsonify({"error": "Library not found"}), 404
 
     library.deleted_at = datetime.now(timezone.utc)
+    write_audit_log(
+        AuditLogType.library_deleted,
+        creator_id=user_id,
+        related_object_type="library",
+        related_object_id=library.uuid,
+    )
     db.session.commit()
     return "", 204

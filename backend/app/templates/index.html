@@ -28,4 +28,44 @@
         <div class="stats-label" style="margin-top:0.25rem">{{ beta_slots_max - beta_slots_used }} left</div>
     </div>
 </div>
+
+<h2>Scheduled Jobs</h2>
+<div class="table-container">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Job</th>
+                <th>Last Run</th>
+                <th>Status</th>
+                <th>Records Affected</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job_name, run in job_runs.items() %}
+            <tr>
+                <td class="text-mono">{{ job_name }}</td>
+                {% if run %}
+                <td>{{ run.ran_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+                <td>
+                    <span class="badge {{ 'badge-success' if run.status == 'success' else 'badge-error' }}">
+                        {{ run.status }}
+                    </span>
+                </td>
+                <td>
+                    {% if run.records_affected is not none %}
+                        {{ run.records_affected }}
+                    {% elif run.error_message %}
+                        <span class="text-muted" title="{{ run.error_message }}">See logs</span>
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                {% else %}
+                <td colspan="3"><span class="text-muted">Never run</span></td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
 {% endblock %}

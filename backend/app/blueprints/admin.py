@@ -8,7 +8,7 @@ from flask import (
     current_app,
 )
 from datetime import datetime, timezone
-from sqlalchemy import select, func
+from sqlalchemy import select, func, desc
 from sqlalchemy.orm import selectinload
 from models import (
     db,
@@ -22,9 +22,13 @@ from models import (
     Notification,
     NotificationType,
     SubscriptionType,
+    AuditLog,
+    AuditLogType,
+    JobRun,
 )
 from config import MAX_USERS
 from security import login_required, require_role
+from services.audit import write_audit_log
 from services.mail import (
     notify_agb_change,
     notify_account_cancellation,
@@ -52,6 +56,17 @@ def index():
             User.deleted_at.is_(None),
         )
     )
+    job_names = ["purge-deleted-accounts", "purge-audit-logs"]
+    job_runs = {}
+    for name in job_names:
+        run = db.session.execute(
+            select(JobRun)
+            .where(JobRun.job_name == name)
+            .order_by(desc(JobRun.ran_at))
+            .limit(1)
+        ).scalar_one_or_none()
+        job_runs[name] = run
+
     return render_template(
         "index.html",
         library_count=library_count,
@@ -59,6 +74,7 @@ def index():
         total_size=total_size,
         beta_slots_used=beta_slots_used,
         beta_slots_max=MAX_USERS,
+        job_runs=job_runs,
     )
 
 
@@ -138,6 +154,14 @@ def user_create():
         user.roles = [r for r in all_roles if r.id in selected_role_ids]
 
         db.session.add(user)
+        db.session.flush()  # get user.id before commit
+        from current_user import current_user as _cu
+        write_audit_log(
+            AuditLogType.user_created,
+            creator_id=_cu.id,
+            related_object_type="user",
+            related_object_id=str(user.id),
+        )
         db.session.commit()
 
         current_app.logger.info(
@@ -213,6 +237,28 @@ def user_edit(id):
                     subscription_types=SubscriptionType,
                 )
 
+        from current_user import current_user as _cu
+        if "password" in changes:
+            write_audit_log(
+                AuditLogType.password_set_by_admin,
+                creator_id=_cu.id,
+                related_object_type="user",
+                related_object_id=str(user.id),
+            )
+        if f"active={True}" in changes:
+            write_audit_log(
+                AuditLogType.user_reactivated,
+                creator_id=_cu.id,
+                related_object_type="user",
+                related_object_id=str(user.id),
+            )
+        elif f"active={False}" in changes:
+            write_audit_log(
+                AuditLogType.user_deactivated,
+                creator_id=_cu.id,
+                related_object_type="user",
+                related_object_id=str(user.id),
+            )
         db.session.commit()
 
         current_app.logger.info(
@@ -261,6 +307,12 @@ def change_password():
             flash(str(ex), "error")
             return render_template("change_password.html")
 
+        write_audit_log(
+            AuditLogType.password_changed,
+            creator_id=user.id,
+            related_object_type="user",
+            related_object_id=str(user.id),
+        )
         db.session.commit()
         current_app.logger.info(
             "Password changed: %s (self)", user.email, extra={"log_type": "audit"}
@@ -298,6 +350,13 @@ def set_password(id):
             flash(str(ex), "error")
             return render_template("admin/set_password.html", user=user)
 
+        from current_user import current_user as _cu
+        write_audit_log(
+            AuditLogType.password_set_by_admin,
+            creator_id=_cu.id,
+            related_object_type="user",
+            related_object_id=str(user.id),
+        )
         db.session.commit()
         current_app.logger.info(
             "Password set by admin for: %s", user.email, extra={"log_type": "audit"}
@@ -322,9 +381,17 @@ def user_delete(id):
         flash("System users cannot be deleted.", "error")
         return redirect(url_for("admin.users_view"))
 
+    from current_user import current_user as _cu
     deleted_email = user.email
+    deleted_id = user.id
     user.deleted_at = datetime.now(timezone.utc)
     user.active = False
+    write_audit_log(
+        AuditLogType.user_deleted,
+        creator_id=_cu.id,
+        related_object_type="user",
+        related_object_id=str(deleted_id),
+    )
     db.session.commit()
 
     current_app.logger.info(
@@ -477,3 +544,76 @@ def notify_agb():
         return redirect(url_for("admin.notify_agb"))
 
     return render_template("admin/notify_agb.html")
+
+
+# ---------------------------------------------------------------------------
+# Audit logs viewer
+# ---------------------------------------------------------------------------
+
+AUDIT_LOG_PAGE_SIZE = 50
+
+
+@admin.route("/admin/auditlogs", methods=["GET"])
+@login_required
+@require_role("admin")
+def audit_logs():
+    from_date_str = request.args.get("from_date", "").strip()
+    to_date_str = request.args.get("to_date", "").strip()
+    audit_type_str = request.args.get("audit_type", "").strip()
+    page = max(1, request.args.get("page", 1, type=int))
+
+    filters = [True]
+
+    if from_date_str:
+        try:
+            from_dt = datetime.strptime(from_date_str, "%Y-%m-%d").replace(
+                tzinfo=timezone.utc
+            )
+            filters.append(AuditLog.audit_date >= from_dt)
+        except ValueError:
+            pass
+
+    if to_date_str:
+        try:
+            to_dt = datetime.strptime(to_date_str, "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59, tzinfo=timezone.utc
+            )
+            filters.append(AuditLog.audit_date <= to_dt)
+        except ValueError:
+            pass
+
+    if audit_type_str:
+        try:
+            filters.append(AuditLog.audit_type == AuditLogType(audit_type_str))
+        except ValueError:
+            pass
+
+    total = db.session.scalar(
+        select(func.count(AuditLog.id)).where(*filters)
+    )
+    entries = (
+        db.session.execute(
+            select(AuditLog)
+            .where(*filters)
+            .options(selectinload(AuditLog.creator))
+            .order_by(desc(AuditLog.audit_date))
+            .offset((page - 1) * AUDIT_LOG_PAGE_SIZE)
+            .limit(AUDIT_LOG_PAGE_SIZE)
+        )
+        .scalars()
+        .all()
+    )
+
+    total_pages = max(1, (total + AUDIT_LOG_PAGE_SIZE - 1) // AUDIT_LOG_PAGE_SIZE)
+
+    return render_template(
+        "admin/audit_logs.html",
+        entries=entries,
+        audit_types=AuditLogType,
+        page=page,
+        total_pages=total_pages,
+        total=total,
+        from_date=from_date_str,
+        to_date=to_date_str,
+        audit_type=audit_type_str,
+    )
