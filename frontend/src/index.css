@@ -518,6 +518,28 @@ body {
   flex-wrap: wrap;
 }
 
+.dialog--settings {
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.dialog__header h2 {
+  margin: 0;
+}
+.settings-section-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--clr-on-surface-var);
+}
+
 /* Share dialog */
 .share-dialog__url {
   width: 100%;

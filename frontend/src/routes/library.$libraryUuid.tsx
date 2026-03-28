@@ -552,6 +552,84 @@ function WatermarkSettings({
   );
 }
 
+// ── Library settings overlay ──────────────────────────────────────────────────
+
+function LibrarySettingsOverlay({
+  library,
+  onUpdate,
+  onClose,
+  updateLibrary,
+}: {
+  library: { id: number; use_original_as_preview: boolean; download_enabled: boolean; watermark_gcs_key: string | null; watermark_scale: number | null; watermark_position: string | null };
+  onUpdate: () => void;
+  onClose: () => void;
+  updateLibrary: { mutate: (patch: { use_original_as_preview?: boolean; download_enabled?: boolean }) => void; isPending: boolean };
+}) {
+  return (
+    <div className="dialog-overlay" onClick={onClose}>
+      <div className="dialog dialog--settings" onClick={(e) => e.stopPropagation()}>
+        <div className="dialog__header">
+          <h2>Library Settings</h2>
+          <button className="icon-btn" onClick={onClose} title="Close">
+            <span className="material-icons">close</span>
+          </button>
+        </div>
+
+        <div className="settings-section-label">Sharing</div>
+        <div style={{ background: "var(--clr-background)", borderRadius: "var(--radius-sm)", border: "1px solid var(--clr-outline)", overflow: "hidden" }}>
+          {[
+            {
+              icon: "photo_filter",
+              label: "Use originals as preview",
+              description: library.use_original_as_preview
+                ? "Customers see the original, uncompressed photos"
+                : "Customers see watermarked preview images",
+              checked: library.use_original_as_preview,
+              onChange: (v: boolean) => updateLibrary.mutate({ use_original_as_preview: v }),
+            },
+            {
+              icon: "download",
+              label: "Allow download",
+              description: library.download_enabled
+                ? "Customers see a download button on each photo"
+                : "No download button shown to customers",
+              checked: library.download_enabled,
+              onChange: (v: boolean) => updateLibrary.mutate({ download_enabled: v }),
+            },
+          ].map(({ icon, label, description, checked, onChange }, i, arr) => (
+            <div
+              key={label}
+              style={{
+                display: "flex", alignItems: "center", gap: "0.75rem",
+                padding: "0.75rem 1rem",
+                borderBottom: i < arr.length - 1 ? "1px solid var(--clr-outline)" : undefined,
+              }}
+            >
+              <span className="material-icons" style={{ fontSize: 20, color: "var(--clr-on-surface-var)" }}>{icon}</span>
+              <div>
+                <div style={{ fontWeight: 500, fontSize: "0.9rem" }}>{label}</div>
+                <div style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)" }}>{description}</div>
+              </div>
+              <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => onChange(e.target.checked)}
+                  disabled={updateLibrary.isPending}
+                  style={{ width: 18, height: 18, accentColor: "var(--clr-primary)", cursor: "pointer" }}
+                />
+              </label>
+            </div>
+          ))}
+        </div>
+
+        <div className="settings-section-label">Watermark / Logo</div>
+        <WatermarkSettings library={library} onUpdate={onUpdate} />
+      </div>
+    </div>
+  );
+}
+
 // ── Router component — delegates to authenticated or public view ─────────────
 
 function LibraryPage() {
@@ -576,6 +654,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
   const [queue, setQueue] = useState<UploadItem[]>([]);
   const [viewImage, setViewImage] = useState<Image | null>(null);
   const [showShare, setShowShare] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showLikedOnly, setShowLikedOnly] = useState(false);
   const [renamingLib, setRenamingLib] = useState(false);
   const [editLibName, setEditLibName] = useState("");
@@ -720,6 +799,9 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
               <span className="material-icons">share</span>
               Share
             </button>
+            <button className="btn btn-outlined" onClick={() => setShowSettings(true)} title="Library settings">
+              <span className="material-icons">settings</span>
+            </button>
             {hasImages && (
               <button className="btn btn-contained" onClick={() => fileInputRef.current?.click()}>
                 <span className="material-icons">add_photo_alternate</span>
@@ -729,64 +811,6 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
           </div>
         </div>
 
-        {library && (
-          <div style={{ marginBottom: "0.5rem", background: "var(--clr-surface)", borderRadius: "var(--radius-sm)", border: "1px solid var(--clr-outline)", overflow: "hidden" }}>
-            {[
-              {
-                icon: "photo_filter",
-                label: "Use originals as preview",
-                description: library.use_original_as_preview
-                  ? "Customers see the original, uncompressed photos"
-                  : "Customers see watermarked preview images",
-                checked: library.use_original_as_preview,
-                onChange: (v: boolean) => updateLibrary.mutate({ use_original_as_preview: v }),
-              },
-              {
-                icon: "download",
-                label: "Allow download",
-                description: library.download_enabled
-                  ? "Customers see a download button on each photo"
-                  : "No download button shown to customers",
-                checked: library.download_enabled,
-                onChange: (v: boolean) => updateLibrary.mutate({ download_enabled: v }),
-              },
-            ].map(({ icon, label, description, checked, onChange }, i, arr) => (
-              <div
-                key={label}
-                style={{
-                  display: "flex", alignItems: "center", gap: "0.75rem",
-                  padding: "0.75rem 1rem",
-                  borderBottom: i < arr.length - 1 ? "1px solid var(--clr-outline)" : undefined,
-                }}
-              >
-                <span className="material-icons" style={{ fontSize: 20, color: "var(--clr-on-surface-var)" }}>{icon}</span>
-                <div>
-                  <div style={{ fontWeight: 500, fontSize: "0.9rem" }}>{label}</div>
-                  <div style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)" }}>{description}</div>
-                </div>
-                <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(e) => onChange(e.target.checked)}
-                    disabled={updateLibrary.isPending}
-                    style={{ width: 18, height: 18, accentColor: "var(--clr-primary)", cursor: "pointer" }}
-                  />
-                </label>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {library && (
-          <WatermarkSettings
-            library={library}
-            onUpdate={() => {
-              refetchLibrary();
-              queryClient.invalidateQueries({ queryKey: ["libraries"] });
-            }}
-          />
-        )}
 
         {data && (
           <p className="library-count-hint">
@@ -856,6 +880,17 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
       </main>
 
       {showShare && <ShareDialog onClose={() => setShowShare(false)} />}
+      {showSettings && library && (
+        <LibrarySettingsOverlay
+          library={library}
+          onUpdate={() => {
+            refetchLibrary();
+            queryClient.invalidateQueries({ queryKey: ["libraries"] });
+          }}
+          onClose={() => setShowSettings(false)}
+          updateLibrary={updateLibrary}
+        />
+      )}
     </>
   );
 }
