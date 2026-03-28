@@ -48,6 +48,7 @@
                 <li><a href="#anonyme-clients">Anonymer Clientzugriff auf Fotogalerien</a></li>
                 <li><a href="#zahlungsverfahren">Zahlungsverfahren</a></li>
                 <li><a href="#hosting">Bereitstellung des Onlineangebots und Webhosting</a></li>
+                <li><a href="#fehlerberichte">Frontend-Fehlerberichte</a></li>
                 <li><a href="#cookies">Einsatz von Cookies</a></li>
                 <li><a href="#registrierung">Registrierung, Anmeldung und Nutzerkonto</a></li>
                 <li><a href="#sso">Single-Sign-On-Anmeldung</a></li>
@@ -306,6 +307,29 @@
                     <li><strong>Zwecke:</strong> Systemstabilität, Fehlerdiagnose, Performance-Optimierung.</li>
                     <li><strong>Aufbewahrung:</strong> 30 Tage (Google Cloud Trace Standard-Aufbewahrungsfrist).</li>
                     <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. f DSGVO (berechtigte Interessen an stabilem und performantem Betrieb).</li>
+                    <li><strong>Datentransfer:</strong> Google LLC mit Sitz in den USA; Grundlage: EU-Standardvertragsklauseln (SCC) gemäß Art. 46 Abs. 2 lit. c DSGVO. Weitere Informationen: <a href="https://cloud.google.com/terms/data-processing-addendum">Google Cloud Data Processing Addendum</a>.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Frontend-Fehlerberichte -->
+        <div class="dsg-section" id="fehlerberichte">
+            <h2>Frontend-Fehlerberichte</h2>
+            <p>Um technische Fehler in der Webanwendung zu erkennen und zu beheben, erfassen wir automatisch unbehandelte JavaScript-Fehler und leiten diese an <strong>Google Cloud Error Reporting</strong> (GCP) weiter. Dabei werden folgende Daten übermittelt:</p>
+            <ul>
+                <li>Fehlermeldung und Stack-Trace (Dateiname, Zeilennummer, Spaltennummer),</li>
+                <li>URL der Seite, auf der der Fehler aufgetreten ist,</li>
+                <li>Browser-Typ und -Version (User-Agent).</li>
+            </ul>
+            <p>Es werden keine personenbezogenen Nutzerdaten (z. B. Name, E-Mail-Adresse) in den Fehlerberichten übertragen. Die Berichte werden ausschließlich zur technischen Fehlerdiagnose verwendet. Google Cloud Error Reporting speichert Fehlereinträge standardmäßig für 30 Tage.</p>
+            <div class="dsg-info-block">
+                <ul>
+                    <li><strong>Eingesetzte Dienste:</strong> Google Cloud Error Reporting (Google LLC, 1600 Amphitheatre Parkway, Mountain View, CA 94043, USA).</li>
+                    <li><strong>Verarbeitete Datenarten:</strong> Technische Fehlerdaten (Stack-Traces, URLs, User-Agent).</li>
+                    <li><strong>Betroffene Personen:</strong> Alle Nutzer der Webanwendung.</li>
+                    <li><strong>Zwecke:</strong> Fehlerdiagnose und Qualitätssicherung der Webanwendung.</li>
+                    <li><strong>Aufbewahrung:</strong> 30 Tage.</li>
+                    <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. f DSGVO (berechtigte Interessen an stabilem und fehlerfreiem Betrieb).</li>
                     <li><strong>Datentransfer:</strong> Google LLC mit Sitz in den USA; Grundlage: EU-Standardvertragsklauseln (SCC) gemäß Art. 46 Abs. 2 lit. c DSGVO. Weitere Informationen: <a href="https://cloud.google.com/terms/data-processing-addendum">Google Cloud Data Processing Addendum</a>.</li>
                 </ul>
             </div>
