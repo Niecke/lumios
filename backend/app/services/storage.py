@@ -87,3 +87,9 @@ def get_presigned_download_url(key: str, filename: str, expires_in: int = 3600) 
 
 def delete_object(key: str) -> None:
     _client.delete_object(Bucket=S3_BUCKET, Key=key)
+
+
+def get_object_bytes(key: str) -> bytes:
+    """Download an object from GCS and return its raw bytes."""
+    response = _client.get_object(Bucket=S3_BUCKET, Key=key)
+    return response["Body"].read()

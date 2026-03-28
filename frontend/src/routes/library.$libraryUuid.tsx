@@ -5,7 +5,7 @@
 
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { authApi } from "../api/auth";
 import { librariesApi } from "../api/libraries";
 import { imagesApi, type Image } from "../api/images";
@@ -309,6 +309,249 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ── Watermark settings ────────────────────────────────────────────────────────
+
+const WATERMARK_POSITIONS = [
+  { value: "top_left",     icon: "north_west",  label: "Top left" },
+  { value: "top_right",    icon: "north_east",  label: "Top right" },
+  { value: "center",       icon: "filter_center_focus", label: "Center" },
+  { value: "bottom_left",  icon: "south_west",  label: "Bottom left" },
+  { value: "bottom_right", icon: "south_east",  label: "Bottom right" },
+];
+
+function WatermarkSettings({
+  library,
+  onUpdate,
+}: {
+  library: { id: number; watermark_gcs_key: string | null; watermark_scale: number | null; watermark_position: string | null };
+  onUpdate: () => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const initialScale = Math.round((library.watermark_scale ?? 0.2) * 100);
+  const initialPosition = library.watermark_position ?? "bottom_right";
+  const [pendingScale, setPendingScale] = useState(initialScale);
+  const [pendingPosition, setPendingPosition] = useState(initialPosition);
+  const [saving, setSaving] = useState(false);
+
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const prevObjectUrl = useRef<string | null>(null);
+
+  // Sync local state when library prop changes (e.g. after upload/save)
+  useEffect(() => {
+    setPendingScale(Math.round((library.watermark_scale ?? 0.2) * 100));
+    setPendingPosition(library.watermark_position ?? "bottom_right");
+  }, [library.watermark_scale, library.watermark_position]);
+
+  // Fetch watermark preview whenever logo is set and pending params change (debounced)
+  useEffect(() => {
+    if (!library.watermark_gcs_key) {
+      if (prevObjectUrl.current) {
+        URL.revokeObjectURL(prevObjectUrl.current);
+        prevObjectUrl.current = null;
+      }
+      setPreviewUrl(null);
+      return;
+    }
+    setPreviewLoading(true);
+    setPreviewError(null);
+    const timer = setTimeout(() => {
+      librariesApi
+        .fetchWatermarkPreview(library.id, pendingScale / 100, pendingPosition)
+        .then((url) => {
+          if (prevObjectUrl.current) URL.revokeObjectURL(prevObjectUrl.current);
+          prevObjectUrl.current = url;
+          setPreviewUrl(url);
+          setPreviewLoading(false);
+        })
+        .catch((err) => {
+          setPreviewError(err instanceof Error ? err.message : "Failed to load preview");
+          setPreviewLoading(false);
+        });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [library.id, library.watermark_gcs_key, pendingScale, pendingPosition]);
+
+  // Revoke object URL on unmount
+  useEffect(() => {
+    return () => {
+      if (prevObjectUrl.current) URL.revokeObjectURL(prevObjectUrl.current);
+    };
+  }, []);
+
+  async function handleLogoFile(file: File) {
+    setUploadError(null);
+    setUploading(true);
+    try {
+      await librariesApi.uploadWatermark(library.id, file);
+      onUpdate();
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleRemove() {
+    setDeleting(true);
+    try {
+      await librariesApi.deleteWatermark(library.id);
+      onUpdate();
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await librariesApi.update(library.id, {
+        watermark_scale: pendingScale / 100,
+        watermark_position: pendingPosition,
+      });
+      onUpdate();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const hasLogo = Boolean(library.watermark_gcs_key);
+  const isDirty =
+    pendingScale !== Math.round((library.watermark_scale ?? 0.2) * 100) ||
+    pendingPosition !== (library.watermark_position ?? "bottom_right");
+
+  return (
+    <div style={{ marginBottom: "0.5rem", background: "var(--clr-surface)", borderRadius: "var(--radius-sm)", border: "1px solid var(--clr-outline)", padding: "0.75rem 1rem" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+        <span className="material-icons" style={{ fontSize: 20, color: "var(--clr-on-surface-var)" }}>branding_watermark</span>
+        <span style={{ fontWeight: 500, fontSize: "0.9rem" }}>Watermark / Logo</span>
+      </div>
+
+      {/* Logo upload row */}
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
+        {hasLogo && (
+          <span style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)" }}>Logo set</span>
+        )}
+        <button
+          className="btn btn-outlined"
+          style={{ fontSize: "0.8rem" }}
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+        >
+          <span className="material-icons" style={{ fontSize: 16 }}>upload</span>
+          {uploading ? "Uploading…" : hasLogo ? "Replace PNG" : "Upload PNG"}
+        </button>
+        {hasLogo && (
+          <button
+            className="btn btn-text"
+            style={{ fontSize: "0.8rem", color: "var(--clr-error)" }}
+            onClick={handleRemove}
+            disabled={deleting}
+          >
+            <span className="material-icons" style={{ fontSize: 16 }}>delete</span>
+            {deleting ? "Removing…" : "Remove"}
+          </button>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleLogoFile(file);
+            e.target.value = "";
+          }}
+        />
+      </div>
+      {uploadError && (
+        <div className="alert alert--error" style={{ marginBottom: "0.5rem", fontSize: "0.8rem" }}>{uploadError}</div>
+      )}
+
+      {/* Scale slider */}
+      <div style={{ marginBottom: "0.75rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+          <span style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)" }}>Size</span>
+          <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>{pendingScale}%</span>
+        </div>
+        <input
+          type="range"
+          min={5}
+          max={50}
+          step={1}
+          value={pendingScale}
+          onChange={(e) => setPendingScale(Number(e.target.value))}
+          style={{ width: "100%", accentColor: "var(--clr-primary)" }}
+        />
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.7rem", color: "var(--clr-on-surface-var)" }}>
+          <span>5%</span>
+          <span>50%</span>
+        </div>
+      </div>
+
+      {/* Position picker */}
+      <div style={{ marginBottom: "0.75rem" }}>
+        <div style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)", marginBottom: "0.4rem" }}>Position</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 2rem)", gap: "0.25rem" }}>
+          {WATERMARK_POSITIONS.map(({ value, icon, label }) => (
+            <button
+              key={value}
+              title={label}
+              onClick={() => setPendingPosition(value)}
+              className={`btn ${pendingPosition === value ? "btn-contained" : "btn-outlined"}`}
+              style={{ padding: "0.25rem", minWidth: 0, width: "2rem", height: "2rem" }}
+            >
+              <span className="material-icons" style={{ fontSize: 16 }}>{icon}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Save button */}
+      {(isDirty || hasLogo) && (
+        <button
+          className="btn btn-contained"
+          style={{ fontSize: "0.8rem", marginBottom: hasLogo ? "0.75rem" : 0 }}
+          onClick={handleSave}
+          disabled={saving || !isDirty}
+        >
+          {saving ? "Saving…" : "Save position & size"}
+        </button>
+      )}
+
+      {/* Preview */}
+      {hasLogo && (
+        <div>
+          <div style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)", marginBottom: "0.4rem" }}>Preview</div>
+          <div style={{ position: "relative", background: "var(--clr-surface-var)", borderRadius: "var(--radius-sm)", minHeight: "6rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {previewLoading && (
+              <span className="material-icons" style={{ fontSize: 24, color: "var(--clr-on-surface-var)", animation: "spin 1s linear infinite" }}>hourglass_top</span>
+            )}
+            {!previewLoading && previewError && (
+              <span style={{ fontSize: "0.8rem", color: "var(--clr-error)" }}>{previewError}</span>
+            )}
+            {!previewLoading && !previewError && previewUrl && (
+              <img
+                src={previewUrl}
+                alt="Watermark preview"
+                style={{ maxWidth: "100%", maxHeight: "20rem", borderRadius: "var(--radius-sm)", display: "block" }}
+              />
+            )}
+            {!previewLoading && !previewError && !previewUrl && (
+              <span style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)" }}>Upload a photo to see preview</span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Router component — delegates to authenticated or public view ─────────────
 
 function LibraryPage() {
@@ -343,7 +586,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
   });
 
   const updateLibrary = useMutation({
-    mutationFn: (patch: { name?: string; use_original_as_preview?: boolean; download_enabled?: boolean }) =>
+    mutationFn: (patch: { name?: string; use_original_as_preview?: boolean; download_enabled?: boolean; watermark_scale?: number; watermark_position?: string }) =>
       librariesApi.update(library!.id, patch),
     onSuccess: () => {
       refetchLibrary();
@@ -533,6 +776,16 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
               </div>
             ))}
           </div>
+        )}
+
+        {library && (
+          <WatermarkSettings
+            library={library}
+            onUpdate={() => {
+              refetchLibrary();
+              queryClient.invalidateQueries({ queryKey: ["libraries"] });
+            }}
+          />
         )}
 
         {data && (
