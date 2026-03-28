@@ -9,7 +9,9 @@ from models import (
     NotificationType,
     User,
     Waitlist,
+    AuditLogType,
 )
+from services.audit import write_audit_log
 from sqlalchemy import select, func, or_
 from services import storage
 from services.mail import notify_gallery_finished, add_to_brevo_waitlist
@@ -197,6 +199,11 @@ def finish_library(library_uuid: str):
         related_object=library.uuid,
     )
     db.session.add(notification)
+    write_audit_log(
+        AuditLogType.library_finished,
+        related_object_type="library",
+        related_object_id=library.uuid,
+    )
     db.session.commit()
 
     notify_gallery_finished(
@@ -212,6 +219,53 @@ def finish_library(library_uuid: str):
             "finished_at": library.finished_at.isoformat(),
         }
     )
+
+
+@public_api.route(
+    "/libraries/<library_uuid>/images/<image_uuid>/download", methods=["GET"]
+)
+@limiter.limit("30 per minute")
+def download_image(library_uuid: str, image_uuid: str):
+    """Generate a presigned download URL and record the audit event.
+
+    The frontend should call this endpoint to get a download URL rather than
+    using the pre-embedded URL from the library view, so downloads are tracked.
+    """
+    library = db.session.execute(
+        select(Library).where(
+            Library.uuid == library_uuid,
+            Library.deleted_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if library is None:
+        return jsonify({"error": "Library not found"}), 404
+
+    if not library.download_enabled:
+        return jsonify({"error": "Downloads are not enabled for this library"}), 403
+
+    image = db.session.execute(
+        select(Image).where(
+            Image.uuid == image_uuid,
+            Image.library_id == library.id,
+            Image.deleted_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if image is None:
+        return jsonify({"error": "Image not found"}), 404
+
+    variant = "originals" if library.use_original_as_preview else "previews"
+    download_url = storage.get_presigned_download_url(
+        image.storage_path(variant), image.original_filename
+    )
+
+    write_audit_log(
+        AuditLogType.picture_downloaded,
+        related_object_type="image",
+        related_object_id=image.uuid,
+    )
+    db.session.commit()
+
+    return jsonify({"download_url": download_url})
 
 
 @public_api.route("/registration_status", methods=["GET"])

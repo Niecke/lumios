@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, g, current_app
 from security import require_api_auth, require_api_role
-from models import db, User, Library, Image
+from models import db, User, Library, Image, AuditLogType
+from services.audit import write_audit_log
 from sqlalchemy import select
 from datetime import datetime, timezone
 import uuid as uuid_module
@@ -325,6 +326,13 @@ def upload_image(library_id: int):
         return jsonify({"error": "Storage error. Please try again."}), 502
 
     db.session.add(image)
+    db.session.flush()
+    write_audit_log(
+        AuditLogType.picture_uploaded,
+        creator_id=user_id,
+        related_object_type="image",
+        related_object_id=image.uuid,
+    )
     db.session.commit()
 
     original_url = storage.get_presigned_url(original_path)
@@ -362,5 +370,11 @@ def delete_image(library_id: int, image_id: int):
         return jsonify({"error": "Image not found"}), 404
 
     image.deleted_at = datetime.now(timezone.utc)
+    write_audit_log(
+        AuditLogType.picture_deleted,
+        creator_id=user_id,
+        related_object_type="image",
+        related_object_id=image.uuid,
+    )
     db.session.commit()
     return "", 204

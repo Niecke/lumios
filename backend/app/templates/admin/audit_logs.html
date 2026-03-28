@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h1>Audit Logs</h1>
+
+    <form method="GET" action="{{ url_for('admin.audit_logs') }}" class="filter-form">
+        <div class="filter-row">
+            <div class="filter-group">
+                <label>Date range</label>
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <input type="date" id="from_date" name="from_date" value="{{ from_date }}" class="form-control">
+                    <span class="text-muted">&ndash;</span>
+                    <input type="date" id="to_date" name="to_date" value="{{ to_date }}" class="form-control">
+                </div>
+            </div>
+            <div class="filter-group">
+                <label for="audit_type">Event Type</label>
+                <select id="audit_type" name="audit_type" class="form-control">
+                    <option value="">All types</option>
+                    {% for t in audit_types %}
+                    <option value="{{ t.value }}" {% if audit_type == t.value %}selected{% endif %}>{{ t.value }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group filter-actions">
+                <button type="submit" class="btn">Filter</button>
+                <button type="button" class="btn btn-secondary" onclick="window.location.href='{{ url_for('admin.audit_logs') }}'">Reset</button>
+                <button type="submit" class="btn btn-secondary">Refresh</button>
+            </div>
+        </div>
+    </form>
+
+    <p class="text-muted">{{ total }} record{{ 's' if total != 1 }} found</p>
+
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Date / Time</th>
+                    <th>Event</th>
+                    <th>IP Address</th>
+                    <th>Creator</th>
+                    <th>Related Object</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in entries %}
+                <tr>
+                    <td class="text-mono">{{ entry.audit_date.strftime('%Y-%m-%d %H:%M:%S') }} UTC</td>
+                    <td><span class="badge">{{ entry.audit_type.value }}</span></td>
+                    <td class="text-mono">{{ entry.ip_address or '—' }}</td>
+                    <td>
+                        {% if entry.creator %}
+                            {{ entry.creator.email }}
+                        {% else %}
+                            <span class="text-muted">Unknown</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-mono">
+                        {% if entry.related_object_type and entry.related_object_id %}
+                            <span class="text-muted">{{ entry.related_object_type }}:</span> {{ entry.related_object_id }}
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="text-muted">No audit log entries found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if total_pages > 1 %}
+    <div class="pagination">
+        {% if page > 1 %}
+        <a href="{{ url_for('admin.audit_logs', page=page-1, from_date=from_date, to_date=to_date, audit_type=audit_type) }}" class="btn btn-secondary btn-sm">&laquo; Previous</a>
+        {% endif %}
+        <span class="text-muted">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}
+        <a href="{{ url_for('admin.audit_logs', page=page+1, from_date=from_date, to_date=to_date, audit_type=audit_type) }}" class="btn btn-secondary btn-sm">Next &raquo;</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
