@@ -48,6 +48,7 @@
                 <li><a href="#anonyme-clients">Anonymer Clientzugriff auf Fotogalerien</a></li>
                 <li><a href="#zahlungsverfahren">Zahlungsverfahren</a></li>
                 <li><a href="#hosting">Bereitstellung des Onlineangebots und Webhosting</a></li>
+                <li><a href="#fehlerberichte">Frontend-Fehlerberichte</a></li>
                 <li><a href="#cookies">Einsatz von Cookies</a></li>
                 <li><a href="#registrierung">Registrierung, Anmeldung und Nutzerkonto</a></li>
                 <li><a href="#sso">Single-Sign-On-Anmeldung</a></li>
@@ -214,6 +215,26 @@
             </div>
         </div>
 
+        <!-- Keine KI-Nutzung -->
+        <div class="dsg-section" id="keine-ki-nutzung">
+            <h2>Keine Verwendung für KI-Training</h2>
+            <p>Wir verwenden weder die von Fotografen hochgeladenen Fotos noch sonstige personenbezogene Daten unserer Nutzer oder deren Kunden zum Training von Modellen der Künstlichen Intelligenz (KI) oder des maschinellen Lernens. Dies gilt ausdrücklich für:</p>
+            <ul>
+                <li>Bilddateien (Originale, Vorschauen und Thumbnails),</li>
+                <li>Metadaten zu Fotos und Galerien,</li>
+                <li>Nutzungsdaten (z. B. Fotoauswahl, Galerie-Interaktionen),</li>
+                <li>Kontodaten und Kommunikationsinhalte.</li>
+            </ul>
+            <p>Die Daten werden ausschließlich zur Erbringung der vertraglich vereinbarten Plattformleistungen verarbeitet. Eine Weitergabe an Dritte zum Zweck des KI-Trainings findet nicht statt.</p>
+            <div class="dsg-info-block">
+                <ul>
+                    <li><strong>Betroffene Datenarten:</strong> Alle auf der Plattform verarbeiteten Daten.</li>
+                    <li><strong>Zweck dieser Regelung:</strong> Transparenz und Schutz der Rechte von Fotografen und abgebildeten Personen.</li>
+                    <li><strong>Rechtsgrundlage:</strong> Art. 5 Abs. 1 lit. b DSGVO (Zweckbindung) – eine Verarbeitung für KI-Training wäre mit dem ursprünglichen Erhebungszweck unvereinbar.</li>
+                </ul>
+            </div>
+        </div>
+
         <!-- Anonymer Clientzugriff -->
         <div class="dsg-section" id="anonyme-clients">
             <h2>Anonymer Clientzugriff auf Fotogalerien</h2>
@@ -267,10 +288,57 @@
             </div>
         </div>
 
+        <!-- Monitoring & Tracing -->
+        <div class="dsg-section" id="monitoring">
+            <h2>Performance-Monitoring und Distributed Tracing</h2>
+            <p>Zur Überwachung der Systemstabilität, Fehlerdiagnose und Optimierung der Antwortzeiten setzen wir <strong>OpenTelemetry</strong> in Verbindung mit <strong>Google Cloud Trace</strong> und <strong>Google Cloud Monitoring</strong> (GCP) ein. Dabei werden beim Aufruf von API-Endpunkten automatisch Traces erzeugt, die folgende Daten enthalten können:</p>
+            <ul>
+                <li>Aufgerufener HTTP-Endpunkt (URL-Pfad, Methode, HTTP-Statuscode),</li>
+                <li>Antwortdauer und Latenz einzelner Verarbeitungsschritte,</li>
+                <li>Datenbankabfragen (ohne Inhalte oder personenbezogene Nutzerdaten),</li>
+                <li>IP-Adresse des Anfragenden (als Teil der HTTP-Anfragemetadaten).</li>
+            </ul>
+            <p>Die Traces werden ausschließlich intern zur technischen Betriebsüberwachung verwendet. Eine Auswertung zur Nutzerprofilierung oder Weitergabe an Dritte zu anderen Zwecken findet nicht statt. Google Cloud Trace speichert Trace-Daten standardmäßig für 30 Tage.</p>
+            <div class="dsg-info-block">
+                <ul>
+                    <li><strong>Eingesetzte Dienste:</strong> OpenTelemetry (open-source SDK); Google Cloud Trace und Google Cloud Monitoring (Google LLC, 1600 Amphitheatre Parkway, Mountain View, CA 94043, USA).</li>
+                    <li><strong>Verarbeitete Datenarten:</strong> Meta- und Protokolldaten (IP-Adresse, Endpunkte, Latenzen).</li>
+                    <li><strong>Betroffene Personen:</strong> Alle Nutzer und Besucher des Onlineangebots.</li>
+                    <li><strong>Zwecke:</strong> Systemstabilität, Fehlerdiagnose, Performance-Optimierung.</li>
+                    <li><strong>Aufbewahrung:</strong> 30 Tage (Google Cloud Trace Standard-Aufbewahrungsfrist).</li>
+                    <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. f DSGVO (berechtigte Interessen an stabilem und performantem Betrieb).</li>
+                    <li><strong>Datentransfer:</strong> Google LLC mit Sitz in den USA; Grundlage: EU-Standardvertragsklauseln (SCC) gemäß Art. 46 Abs. 2 lit. c DSGVO. Weitere Informationen: <a href="https://cloud.google.com/terms/data-processing-addendum">Google Cloud Data Processing Addendum</a>.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Frontend-Fehlerberichte -->
+        <div class="dsg-section" id="fehlerberichte">
+            <h2>Frontend-Fehlerberichte</h2>
+            <p>Um technische Fehler in der Webanwendung zu erkennen und zu beheben, erfassen wir automatisch unbehandelte JavaScript-Fehler und leiten diese an <strong>Google Cloud Error Reporting</strong> (GCP) weiter. Dabei werden folgende Daten übermittelt:</p>
+            <ul>
+                <li>Fehlermeldung und Stack-Trace (Dateiname, Zeilennummer, Spaltennummer),</li>
+                <li>URL der Seite, auf der der Fehler aufgetreten ist,</li>
+                <li>Browser-Typ und -Version (User-Agent).</li>
+            </ul>
+            <p>Es werden keine personenbezogenen Nutzerdaten (z. B. Name, E-Mail-Adresse) in den Fehlerberichten übertragen. Die Berichte werden ausschließlich zur technischen Fehlerdiagnose verwendet. Google Cloud Error Reporting speichert Fehlereinträge standardmäßig für 30 Tage.</p>
+            <div class="dsg-info-block">
+                <ul>
+                    <li><strong>Eingesetzte Dienste:</strong> Google Cloud Error Reporting (Google LLC, 1600 Amphitheatre Parkway, Mountain View, CA 94043, USA).</li>
+                    <li><strong>Verarbeitete Datenarten:</strong> Technische Fehlerdaten (Stack-Traces, URLs, User-Agent).</li>
+                    <li><strong>Betroffene Personen:</strong> Alle Nutzer der Webanwendung.</li>
+                    <li><strong>Zwecke:</strong> Fehlerdiagnose und Qualitätssicherung der Webanwendung.</li>
+                    <li><strong>Aufbewahrung:</strong> 30 Tage.</li>
+                    <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. f DSGVO (berechtigte Interessen an stabilem und fehlerfreiem Betrieb).</li>
+                    <li><strong>Datentransfer:</strong> Google LLC mit Sitz in den USA; Grundlage: EU-Standardvertragsklauseln (SCC) gemäß Art. 46 Abs. 2 lit. c DSGVO. Weitere Informationen: <a href="https://cloud.google.com/terms/data-processing-addendum">Google Cloud Data Processing Addendum</a>.</li>
+                </ul>
+            </div>
+        </div>
+
         <!-- Cookies -->
         <div class="dsg-section" id="cookies">
             <h2>Einsatz von Cookies</h2>
-            <p>Wir verwenden Cookies ausschließlich, soweit sie für den Betrieb der Plattform technisch notwendig sind (z. B. Session-Cookies zur Authentifizierung). Tracking- oder Werbe-Cookies werden nicht eingesetzt. Technisch notwendige Cookies erfordern keine Einwilligung und werden auf Basis unserer berechtigten Interessen an einem funktionsfähigen Angebot gesetzt.</p>
+            <p>Wir verwenden Cookies ausschließlich, soweit sie für den Betrieb der Plattform technisch notwendig sind. Tracking- oder Werbe-Cookies werden nicht eingesetzt. Technisch notwendige Cookies erfordern keine Einwilligung und werden auf Basis unserer berechtigten Interessen an einem funktionsfähigen Angebot gesetzt.</p>
             <div class="dsg-info-block">
                 <ul>
                     <li><strong>Verarbeitete Datenarten:</strong> Meta- und Verfahrensdaten (Session-IDs).</li>
@@ -279,6 +347,33 @@
                     <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. f DSGVO (berechtigte Interessen).</li>
                 </ul>
             </div>
+            <div class="dsg-table-wrap">
+                <table class="dsg-table">
+                    <thead>
+                        <tr>
+                            <th>Gruppe</th>
+                            <th>Anbieter</th>
+                            <th>Zweck</th>
+                            <th>Speicherdauer</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Session-Cookie</td>
+                            <td>Lumios (Erstanbieter)</td>
+                            <td>Sitzungsverwaltung für eingeloggte Administratoren</td>
+                            <td>Sitzungsende (Browser schließen)</td>
+                        </tr>
+                        <tr>
+                            <td>Google Identity Services (GIS)</td>
+                            <td>Google (Drittanbieter)</td>
+                            <td>CSRF-Schutz und Zustandsverwaltung beim Google-Login</td>
+                            <td>Sitzungsende</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p>Weitere Informationen zu den von Google gesetzten Cookies finden Sie in der <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Datenschutzerklärung von Google</a>.</p>
         </div>
 
         <!-- Registrierung -->

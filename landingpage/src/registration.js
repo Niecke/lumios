@@ -15,9 +15,9 @@
   var elHeroCta   = document.getElementById("hero-cta");
 
   function showRegister() {
-    elFallback.style.display  = "none";
-    elRegister.style.display  = "block";
-    elWaitlist.style.display  = "none";
+    elFallback.classList.add("hidden");
+    elRegister.classList.remove("hidden");
+    elWaitlist.classList.add("hidden");
     if (elHeroCta) {
       elHeroCta.textContent = "Create account";
       elHeroCta.href = "%%APP_URL%%/register";
@@ -25,9 +25,9 @@
   }
 
   function showWaitlist() {
-    elFallback.style.display  = "none";
-    elRegister.style.display  = "none";
-    elWaitlist.style.display  = "block";
+    elFallback.classList.add("hidden");
+    elRegister.classList.add("hidden");
+    elWaitlist.classList.remove("hidden");
     if (elHeroCta) {
       elHeroCta.textContent = "Join waitlist";
       elHeroCta.href = "#access";
@@ -71,14 +71,14 @@
         .then(function (r) { return r.json(); })
         .then(function (data) {
           if (data.ok) {
-            form.style.display = "none";
-            msgEl.style.display = "block";
+            form.classList.add("hidden");
+            msgEl.classList.remove("hidden");
             msgEl.textContent = "You're on the list! We'll email you when a spot opens up.";
             msgEl.style.color = "#166534";
           } else {
             btnEl.disabled = false;
             btnEl.textContent = "Join waitlist";
-            msgEl.style.display = "block";
+            msgEl.classList.remove("hidden");
             msgEl.textContent = data.error || "Something went wrong. Please try again.";
             msgEl.style.color = "#991b1b";
           }
@@ -86,7 +86,7 @@
         .catch(function () {
           btnEl.disabled = false;
           btnEl.textContent = "Join waitlist";
-          msgEl.style.display = "block";
+          msgEl.classList.remove("hidden");
           msgEl.textContent = "Could not reach the server. Please try again later.";
           msgEl.style.color = "#991b1b";
         });
