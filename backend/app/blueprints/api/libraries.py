@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, g
 from security import require_api_auth, require_api_role
-from models import db, User, Library
+from models import db, User, Library, AuditLogType
+from services.audit import write_audit_log
 from sqlalchemy import select
 from datetime import datetime, timezone
 
@@ -74,6 +75,13 @@ def create_library():
 
     library = Library(user_id=user_id, name=name)
     db.session.add(library)
+    db.session.flush()
+    write_audit_log(
+        AuditLogType.library_created,
+        creator_id=user_id,
+        related_object_type="library",
+        related_object_id=library.uuid,
+    )
     db.session.commit()
     return jsonify(library.to_dict()), 201
 
@@ -137,6 +145,12 @@ def update_library(library_id: int):
             return jsonify({"error": "download_enabled must be a boolean"}), 400
         library.download_enabled = value
 
+    write_audit_log(
+        AuditLogType.library_edited,
+        creator_id=user_id,
+        related_object_type="library",
+        related_object_id=library.uuid,
+    )
     db.session.commit()
     return jsonify(library.to_dict())
 
@@ -157,5 +171,11 @@ def delete_library(library_id: int):
         return jsonify({"error": "Library not found"}), 404
 
     library.deleted_at = datetime.now(timezone.utc)
+    write_audit_log(
+        AuditLogType.library_deleted,
+        creator_id=user_id,
+        related_object_type="library",
+        related_object_id=library.uuid,
+    )
     db.session.commit()
     return "", 204

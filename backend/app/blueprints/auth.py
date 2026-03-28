@@ -10,6 +10,8 @@ from flask import (
 from main import limiter, oauth
 from config import GOOGLE_CLIENT_ID, PUBLIC_BASE_URL
 from services.auth import login_password, login_google, set_session, logout, AuthError
+from services.audit import write_audit_log
+from models import db, AuditLogType
 
 auth = Blueprint("auth", __name__)
 
@@ -23,9 +25,13 @@ def login():
         try:
             user = login_password(email, password)
             set_session(user)
+            write_audit_log(AuditLogType.login_backend, creator_id=user.id)
+            db.session.commit()
             return redirect(url_for("admin.index"))
         except AuthError:
             current_app.logger.warning("Failed login attempt for email=%s", email)
+            write_audit_log(AuditLogType.login_failed)
+            db.session.commit()
             flash("Invalid email or password")
 
     return render_template("login.html", google_enabled=bool(GOOGLE_CLIENT_ID))
@@ -57,8 +63,12 @@ def google_callback():
     try:
         user = login_google(userinfo)
         set_session(user)
+        write_audit_log(AuditLogType.login_backend, creator_id=user.id)
+        db.session.commit()
     except AuthError as e:
         current_app.logger.warning("Google login rejected: %s", e.message)
+        write_audit_log(AuditLogType.login_failed)
+        db.session.commit()
         flash(e.message, "error")
         return redirect(url_for("auth.login"))
 
