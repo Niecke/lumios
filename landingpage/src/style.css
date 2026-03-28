@@ -664,3 +664,8 @@ footer a:hover {
         columns: 1;
     }
 }
+
+
+.hidden {
+    display: none;
+}
