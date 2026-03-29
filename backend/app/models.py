@@ -157,6 +157,9 @@ class Library(db.Model):
     download_enabled = db.Column(
         db.Boolean, nullable=False, default=False, server_default=db.false()
     )
+    is_private = db.Column(
+        db.Boolean, nullable=False, default=False, server_default=db.false()
+    )
     last_viewed_at = db.Column(db.DateTime, nullable=True)
     watermark_gcs_key = db.Column(db.String(512), nullable=True)
     watermark_scale = db.Column(db.Float, nullable=True)
@@ -176,6 +179,7 @@ class Library(db.Model):
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "use_original_as_preview": self.use_original_as_preview,
             "download_enabled": self.download_enabled,
+            "is_private": self.is_private,
             "watermark_gcs_key": self.watermark_gcs_key,
             "watermark_scale": self.watermark_scale,
             "watermark_position": self.watermark_position,
