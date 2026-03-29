@@ -28,6 +28,7 @@ class UUIDBinary(TypeDecorator):
             return None
         return uuid_module.UUID(bytes=bytes(value))
 
+
 db = SQLAlchemy()
 migrate = Migrate()
 
@@ -132,7 +133,7 @@ class User(db.Model):
             return False
         if password_hasher.check_needs_rehash(self.auth_string):
             self.set_password(password)
-            db.session.commit()
+            db.session.flush()
         return True
 
 
@@ -380,9 +381,7 @@ class AuditLog(db.Model):
         primary_key=True,
         default=uuid_module.uuid4,
     )
-    audit_type = db.Column(
-        db.Enum(AuditLogType, name="auditlogtype"), nullable=False
-    )
+    audit_type = db.Column(db.Enum(AuditLogType, name="auditlogtype"), nullable=False)
     ip_address = db.Column(db.String(45), nullable=True)
     audit_date = db.Column(
         db.DateTime,
@@ -394,9 +393,7 @@ class AuditLog(db.Model):
     related_object_type = db.Column(db.String(16), nullable=True)
     related_object_id = db.Column(db.String(255), nullable=True)
 
-    creator = db.relationship(
-        "User", backref=db.backref("audit_logs", lazy="dynamic")
-    )
+    creator = db.relationship("User", backref=db.backref("audit_logs", lazy="dynamic"))
 
 
 class JobRun(db.Model):

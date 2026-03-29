@@ -10,6 +10,7 @@ support_api = Blueprint("support_api", __name__, url_prefix="/support")
 
 MAX_SUBJECT_LENGTH = 255
 MAX_OPEN_TICKETS = 100
+MAX_BODY_LENGTH = 10000
 
 
 @support_api.route("/tickets", methods=["GET"])
@@ -45,7 +46,10 @@ def create_ticket():
     ).scalar()
 
     if open_count >= MAX_OPEN_TICKETS:
-        return jsonify({"error": "Unable to submit ticket. Please try again later."}), 429
+        return (
+            jsonify({"error": "Unable to submit ticket. Please try again later."}),
+            429,
+        )
 
     data = request.get_json(silent=True) or {}
     subject = (data.get("subject") or "").strip()
@@ -54,9 +58,19 @@ def create_ticket():
     if not subject:
         return jsonify({"error": "subject is required"}), 400
     if len(subject) > MAX_SUBJECT_LENGTH:
-        return jsonify({"error": f"subject must be {MAX_SUBJECT_LENGTH} characters or fewer"}), 400
+        return (
+            jsonify(
+                {"error": f"subject must be {MAX_SUBJECT_LENGTH} characters or fewer"}
+            ),
+            400,
+        )
     if not body:
         return jsonify({"error": "body is required"}), 400
+    if len(body) > MAX_BODY_LENGTH:
+        return (
+            jsonify({"error": f"body must be {MAX_BODY_LENGTH} characters or fewer"}),
+            400,
+        )
 
     ticket = SupportTicket(user_id=user_id, subject=subject, body=body)
     db.session.add(ticket)
@@ -64,7 +78,9 @@ def create_ticket():
 
     user = db.session.get(User, user_id)
     current_app.logger.info(
-        "Support ticket created: id=%d user=%s", ticket.id, user.email if user else user_id,
+        "Support ticket created: id=%d user=%s",
+        ticket.id,
+        user.email if user else user_id,
         extra={"log_type": "audit"},
     )
 

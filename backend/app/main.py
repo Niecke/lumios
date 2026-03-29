@@ -84,7 +84,8 @@ def _init_cloud_trace(app: Flask) -> None:
             OTLPSpanExporter,
         )
 
-        exporter = OTLPSpanExporter(endpoint=OTEL_EXPORTER_ENDPOINT, insecure=True)
+        insecure = True if DEBUG else False
+        exporter = OTLPSpanExporter(endpoint=OTEL_EXPORTER_ENDPOINT, insecure=insecure)
     else:
         from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
 
