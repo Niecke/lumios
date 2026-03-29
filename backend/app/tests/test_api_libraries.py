@@ -266,6 +266,44 @@ class TestRenameLibrary:
         res = client.patch(f"{BASE}/{library.id}", json={"name": "X"})
         assert res.status_code == 401
 
+    def test_set_is_private_true_returns_200(self, client, photographer, library):
+        token = make_token(photographer)
+        res = client.patch(
+            f"{BASE}/{library.id}",
+            json={"is_private": True},
+            headers=auth_header(token),
+        )
+        assert res.status_code == 200
+        assert res.get_json()["is_private"] is True
+
+    def test_set_is_private_false_returns_200(self, client, photographer, library):
+        library.is_private = True
+        from models import db
+        db.session.commit()
+        token = make_token(photographer)
+        res = client.patch(
+            f"{BASE}/{library.id}",
+            json={"is_private": False},
+            headers=auth_header(token),
+        )
+        assert res.status_code == 200
+        assert res.get_json()["is_private"] is False
+
+    def test_invalid_is_private_returns_400(self, client, photographer, library):
+        token = make_token(photographer)
+        res = client.patch(
+            f"{BASE}/{library.id}",
+            json={"is_private": "yes"},
+            headers=auth_header(token),
+        )
+        assert res.status_code == 400
+
+    def test_is_private_returned_in_library_list(self, client, photographer, library):
+        token = make_token(photographer)
+        res = client.get(BASE, headers=auth_header(token))
+        data = res.get_json()
+        assert "is_private" in data["libraries"][0]
+
 
 # ---------------------------------------------------------------------------
 # DELETE /api/v1/libraries/<id>
