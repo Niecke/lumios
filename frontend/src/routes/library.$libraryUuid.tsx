@@ -560,10 +560,10 @@ function LibrarySettingsOverlay({
   onClose,
   updateLibrary,
 }: {
-  library: { id: number; use_original_as_preview: boolean; download_enabled: boolean; watermark_gcs_key: string | null; watermark_scale: number | null; watermark_position: string | null };
+  library: { id: number; use_original_as_preview: boolean; download_enabled: boolean; is_private: boolean; watermark_gcs_key: string | null; watermark_scale: number | null; watermark_position: string | null };
   onUpdate: () => void;
   onClose: () => void;
-  updateLibrary: { mutate: (patch: { use_original_as_preview?: boolean; download_enabled?: boolean }) => void; isPending: boolean };
+  updateLibrary: { mutate: (patch: { use_original_as_preview?: boolean; download_enabled?: boolean; is_private?: boolean }) => void; isPending: boolean };
 }) {
   return (
     <div className="dialog-overlay" onClick={onClose}>
@@ -595,6 +595,15 @@ function LibrarySettingsOverlay({
                 : "No download button shown to customers",
               checked: library.download_enabled,
               onChange: (v: boolean) => updateLibrary.mutate({ download_enabled: v }),
+            },
+            {
+              icon: "lock",
+              label: "Private library",
+              description: library.is_private
+                ? "Only you can access this library — share link is disabled"
+                : "Anyone with the link can view this library",
+              checked: library.is_private,
+              onChange: (v: boolean) => updateLibrary.mutate({ is_private: v }),
             },
           ].map(({ icon, label, description, checked, onChange }, i, arr) => (
             <div
@@ -665,7 +674,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
   });
 
   const updateLibrary = useMutation({
-    mutationFn: (patch: { name?: string; use_original_as_preview?: boolean; download_enabled?: boolean; watermark_scale?: number; watermark_position?: string }) =>
+    mutationFn: (patch: { name?: string; use_original_as_preview?: boolean; download_enabled?: boolean; is_private?: boolean; watermark_scale?: number; watermark_position?: string }) =>
       librariesApi.update(library!.id, patch),
     onSuccess: () => {
       refetchLibrary();
