@@ -5,7 +5,7 @@
 // to the backend callback endpoint. The backend verifies it, creates a JWT,
 // and redirects back here with ?token=... which the SPA picks up.
 
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { authApi, tokenStore, isGsiInitialized, markGsiInitialized, resetGsiInitialized } from "../api/auth";
 
@@ -178,6 +178,12 @@ function LoginPage() {
                 {localPending ? "Signing in…" : "Sign in"}
               </button>
             </form>
+            <p style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.875rem" }}>
+              Don't have an account?{" "}
+              <Link to="/register" style={{ color: "var(--clr-primary)" }}>
+                Create one
+              </Link>
+            </p>
           </>
         )}
       </div>

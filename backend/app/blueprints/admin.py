@@ -11,7 +11,7 @@ from flask import (
     url_for,
     current_app,
 )
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, date
 from sqlalchemy import select, func, desc
 from sqlalchemy.orm import selectinload
 from services import storage
@@ -30,8 +30,9 @@ from models import (
     AuditLog,
     AuditLogType,
     JobRun,
+    AgbUpdate,
 )
-from config import MAX_USERS
+from config import MAX_USERS, CURRENT_AGB_VERSION
 from security import login_required, require_role
 from services.audit import write_audit_log
 from services.mail import (
@@ -143,7 +144,13 @@ def user_create():
                 "admin/user_create.html", email=email, all_roles=all_roles
             )
 
-        user = User(email=email, active=active, account_type=account_type)
+        user = User(
+            email=email,
+            active=active,
+            account_type=account_type,
+            agb_accepted_at=datetime.now(timezone.utc),
+            agb_version=CURRENT_AGB_VERSION,
+        )
 
         if account_type == "local":
             password = request.form.get("password", "")
@@ -652,10 +659,30 @@ def notify_agb():
     if request.method == "POST":
         agb_version = (request.form.get("agb_version") or "").strip()
         summary = (request.form.get("summary") or "").strip()
+        effective_date_str = (request.form.get("effective_date") or "").strip()
 
-        if not agb_version or not summary:
-            flash("Bitte Version und Zusammenfassung angeben.", "error")
-            return render_template("admin/notify_agb.html")
+        if not agb_version or not summary or not effective_date_str:
+            flash("Bitte Version, Zusammenfassung und Inkrafttreten-Datum angeben.", "error")
+            updates = (
+                db.session.execute(
+                    select(AgbUpdate).order_by(AgbUpdate.notified_at.desc()).limit(10)
+                )
+                .scalars()
+                .all()
+            )
+            return render_template(
+                "admin/notify_agb.html",
+                updates=updates,
+                default_effective_date=(date.today() + timedelta(days=30)).isoformat(),
+            )
+
+        try:
+            effective_at = datetime.strptime(effective_date_str, "%Y-%m-%d").replace(
+                tzinfo=timezone.utc
+            )
+        except ValueError:
+            flash("Ungültiges Datum. Format: YYYY-MM-DD.", "error")
+            return redirect(url_for("admin.notify_agb"))
 
         users = (
             db.session.execute(
@@ -668,16 +695,40 @@ def notify_agb():
         for user in users:
             notify_agb_change(user.email, agb_version, summary)
 
+        agb_update = AgbUpdate(
+            version=agb_version,
+            summary=summary,
+            effective_at=effective_at,
+        )
+        db.session.add(agb_update)
+        db.session.commit()
+
         current_app.logger.info(
-            "AGB change notification sent to %d users: version=%r",
+            "AGB change notification sent to %d users: version=%r effective_at=%s",
             len(users),
             agb_version,
+            effective_at.date(),
             extra={"log_type": "audit"},
         )
-        flash(f"AGB-Benachrichtigung an {len(users)} Nutzer gesendet.", "success")
+        flash(
+            f"AGB-Benachrichtigung an {len(users)} Nutzer gesendet. "
+            f"Inkrafttreten: {effective_at.date()}.",
+            "success",
+        )
         return redirect(url_for("admin.notify_agb"))
 
-    return render_template("admin/notify_agb.html")
+    updates = (
+        db.session.execute(
+            select(AgbUpdate).order_by(AgbUpdate.notified_at.desc()).limit(10)
+        )
+        .scalars()
+        .all()
+    )
+    return render_template(
+        "admin/notify_agb.html",
+        updates=updates,
+        default_effective_date=(date.today() + timedelta(days=30)).isoformat(),
+    )
 
 
 # ---------------------------------------------------------------------------

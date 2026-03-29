@@ -4,7 +4,7 @@ from jwt import PyJWKClient
 import jwt
 from urllib.parse import urlencode
 from main import limiter
-from config import GOOGLE_FRONTEND_CLIENT_ID, REDIS_URL, FRONTEND_URL, MAX_USERS
+from config import GOOGLE_FRONTEND_CLIENT_ID, REDIS_URL, FRONTEND_URL, MAX_USERS, CURRENT_AGB_VERSION
 from services.auth import login_google, login_password, AuthError
 from services.token import create_token
 from services.mail import notify_activation_email
@@ -327,6 +327,8 @@ def _create_pending_user(email: str, account_type: str, auth_string: str | None)
         activation_token=activation_token,
         account_type=account_type,
         auth_string=auth_string,
+        agb_accepted_at=datetime.now(timezone.utc),
+        agb_version=CURRENT_AGB_VERSION,
     )
     if photographer_role:
         user.roles = [photographer_role]

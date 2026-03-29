@@ -228,10 +228,11 @@ def create_app(test_config=None):
 
     app.register_blueprint(health)
 
-    from commands import purge_deleted_accounts, purge_audit_logs
+    from commands import purge_deleted_accounts, purge_audit_logs, apply_agb_acceptance
 
     app.cli.add_command(purge_deleted_accounts)
     app.cli.add_command(purge_audit_logs)
+    app.cli.add_command(apply_agb_acceptance)
 
     from blueprints.api import api
     from blueprints.api.auth import auth_api
