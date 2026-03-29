@@ -1,0 +1,184 @@
+"""
+Tests for the public API endpoints: /api/v1/public/libraries/*
+
+Coverage targets:
+  GET   /api/v1/public/libraries/<uuid>                          view library
+  PATCH /api/v1/public/libraries/<uuid>/images/<uuid>/state      update customer state
+  POST  /api/v1/public/libraries/<uuid>/finish                   finish selection
+  GET   /api/v1/public/libraries/<uuid>/images/<uuid>/download   download image
+
+Private library enforcement: all four routes must return 404 when
+library.is_private is True.
+"""
+
+import pytest
+from unittest.mock import patch
+
+from models import db, User, Role, Library, Image, CustomerState, SubscriptionType
+from services.token import create_token
+
+BASE = "/api/v1/public"
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def photographer_role():
+    role = Role(name="photographer", description="Photographer")
+    db.session.add(role)
+    db.session.commit()
+    return role
+
+
+@pytest.fixture
+def photographer(photographer_role):
+    user = User(
+        email="photo@test.com",
+        active=True,
+        max_libraries=5,
+        subscription=SubscriptionType.premium,
+    )
+    user.set_password("PhotoPass123!")
+    user.roles.append(photographer_role)
+    db.session.add(user)
+    db.session.commit()
+    return user
+
+
+@pytest.fixture
+def public_library(photographer):
+    lib = Library(user_id=photographer.id, name="Public Gallery", is_private=False)
+    db.session.add(lib)
+    db.session.commit()
+    return lib
+
+
+@pytest.fixture
+def private_library(photographer):
+    lib = Library(user_id=photographer.id, name="Private Gallery", is_private=True)
+    db.session.add(lib)
+    db.session.commit()
+    return lib
+
+
+@pytest.fixture
+def image_in_library(public_library):
+    img = Image(
+        library_id=public_library.id,
+        s3_key="test-uuid.jpg",
+        original_filename="test.jpg",
+        content_type="image/jpeg",
+        size=1024,
+        width=100,
+        height=100,
+        customer_state=CustomerState.none,
+    )
+    db.session.add(img)
+    db.session.commit()
+    return img
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/public/libraries/<uuid>
+# ---------------------------------------------------------------------------
+
+
+class TestGetPublicLibrary:
+    def test_public_library_returns_200(self, client, public_library):
+        with patch("services.storage.get_presigned_url", return_value="http://example.com/img"):
+            res = client.get(f"{BASE}/libraries/{public_library.uuid}")
+        assert res.status_code == 200
+
+    def test_response_contains_library_data(self, client, public_library):
+        with patch("services.storage.get_presigned_url", return_value="http://example.com/img"):
+            res = client.get(f"{BASE}/libraries/{public_library.uuid}")
+        data = res.get_json()
+        assert data["library"]["uuid"] == public_library.uuid
+        assert data["library"]["name"] == "Public Gallery"
+
+    def test_private_library_returns_404(self, client, private_library):
+        res = client.get(f"{BASE}/libraries/{private_library.uuid}")
+        assert res.status_code == 404
+
+    def test_nonexistent_library_returns_404(self, client):
+        res = client.get(f"{BASE}/libraries/00000000-0000-0000-0000-000000000000")
+        assert res.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/public/libraries/<uuid>/images/<uuid>/state
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateCustomerState:
+    def test_valid_state_returns_200(self, client, public_library, image_in_library):
+        res = client.patch(
+            f"{BASE}/libraries/{public_library.uuid}/images/{image_in_library.uuid}/state",
+            json={"customer_state": "liked"},
+        )
+        assert res.status_code == 200
+        assert res.get_json()["customer_state"] == "liked"
+
+    def test_private_library_returns_404(self, client, private_library):
+        res = client.patch(
+            f"{BASE}/libraries/{private_library.uuid}/images/some-uuid/state",
+            json={"customer_state": "liked"},
+        )
+        assert res.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/public/libraries/<uuid>/finish
+# ---------------------------------------------------------------------------
+
+
+class TestFinishLibrary:
+    def test_private_library_returns_404(self, client, private_library):
+        res = client.post(f"{BASE}/libraries/{private_library.uuid}/finish")
+        assert res.status_code == 404
+
+    def test_finish_with_liked_image_returns_200(self, client, public_library, image_in_library):
+        image_in_library.customer_state = CustomerState.liked
+        db.session.commit()
+        with patch("services.mail.notify_gallery_finished"):
+            res = client.post(f"{BASE}/libraries/{public_library.uuid}/finish")
+        assert res.status_code == 200
+
+    def test_finish_without_liked_image_returns_422(self, client, public_library):
+        res = client.post(f"{BASE}/libraries/{public_library.uuid}/finish")
+        assert res.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/public/libraries/<uuid>/images/<uuid>/download
+# ---------------------------------------------------------------------------
+
+
+class TestDownloadImage:
+    def test_private_library_returns_404(self, client, private_library):
+        res = client.get(
+            f"{BASE}/libraries/{private_library.uuid}/images/some-uuid/download"
+        )
+        assert res.status_code == 404
+
+    def test_download_disabled_returns_403(self, client, public_library, image_in_library):
+        res = client.get(
+            f"{BASE}/libraries/{public_library.uuid}/images/{image_in_library.uuid}/download"
+        )
+        assert res.status_code == 403
+
+    def test_download_enabled_returns_200(self, client, public_library, image_in_library):
+        public_library.download_enabled = True
+        db.session.commit()
+        with patch(
+            "services.storage.get_presigned_download_url",
+            return_value="http://example.com/dl",
+        ):
+            res = client.get(
+                f"{BASE}/libraries/{public_library.uuid}/images/{image_in_library.uuid}/download"
+            )
+        assert res.status_code == 200
+        assert res.get_json()["download_url"] == "http://example.com/dl"

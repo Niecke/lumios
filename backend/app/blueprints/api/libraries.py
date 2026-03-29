@@ -154,6 +154,12 @@ def update_library(library_id: int):
             return jsonify({"error": "download_enabled must be a boolean"}), 400
         library.download_enabled = value
 
+    if "is_private" in data:
+        value = data["is_private"]
+        if not isinstance(value, bool):
+            return jsonify({"error": "is_private must be a boolean"}), 400
+        library.is_private = value
+
     if "watermark_scale" in data:
         scale = data["watermark_scale"]
         if not isinstance(scale, (int, float)) or not (0.05 <= float(scale) <= 0.50):

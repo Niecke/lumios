@@ -1,3 +1,7 @@
+import io
+import json
+import zipfile
+
 from flask import (
     Blueprint,
     render_template,
@@ -7,9 +11,10 @@ from flask import (
     url_for,
     current_app,
 )
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, date
 from sqlalchemy import select, func, desc
 from sqlalchemy.orm import selectinload
+from services import storage
 from models import (
     db,
     User,
@@ -25,8 +30,9 @@ from models import (
     AuditLog,
     AuditLogType,
     JobRun,
+    AgbUpdate,
 )
-from config import MAX_USERS
+from config import MAX_USERS, CURRENT_AGB_VERSION
 from security import login_required, require_role
 from services.audit import write_audit_log
 from services.mail import (
@@ -138,7 +144,13 @@ def user_create():
                 "admin/user_create.html", email=email, all_roles=all_roles
             )
 
-        user = User(email=email, active=active, account_type=account_type)
+        user = User(
+            email=email,
+            active=active,
+            account_type=account_type,
+            agb_accepted_at=datetime.now(timezone.utc),
+            agb_version=CURRENT_AGB_VERSION,
+        )
 
         if account_type == "local":
             password = request.form.get("password", "")
@@ -156,6 +168,7 @@ def user_create():
         db.session.add(user)
         db.session.flush()  # get user.id before commit
         from current_user import current_user as _cu
+
         write_audit_log(
             AuditLogType.user_created,
             creator_id=_cu.id,
@@ -238,6 +251,7 @@ def user_edit(id):
                 )
 
         from current_user import current_user as _cu
+
         if "password" in changes:
             write_audit_log(
                 AuditLogType.password_set_by_admin,
@@ -351,6 +365,7 @@ def set_password(id):
             return render_template("admin/set_password.html", user=user)
 
         from current_user import current_user as _cu
+
         write_audit_log(
             AuditLogType.password_set_by_admin,
             creator_id=_cu.id,
@@ -382,6 +397,7 @@ def user_delete(id):
         return redirect(url_for("admin.users_view"))
 
     from current_user import current_user as _cu
+
     deleted_email = user.email
     deleted_id = user.id
     user.deleted_at = datetime.now(timezone.utc)
@@ -399,6 +415,165 @@ def user_delete(id):
     )
     notify_account_cancellation(deleted_email)
     flash(f'User "{deleted_email}" deleted!', "success")
+    return redirect(url_for("admin.users_view"))
+
+
+@admin.route("/admin/user_gdpr_export/<int:user_id>", methods=["POST"])
+@login_required
+@require_role("admin")
+def user_gdpr_export(user_id):
+    from current_user import current_user as _cu
+
+    # db.session.get() returns soft-deleted users — intentional for GDPR
+    user = db.session.get(User, user_id)
+    if not user:
+        flash(f'User ID "{user_id}" not found.', "error")
+        return redirect(url_for("admin.users_view"))
+
+    # --- Collect data ---
+    user_data = {
+        "id": user.id,
+        "email": user.email,
+        "active": user.active,
+        "account_type": user.account_type,
+        "subscription": user.subscription.value,
+        "max_libraries": user.max_libraries,
+        "max_images_per_library": user.max_images_per_library,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "last_login": user.last_login.isoformat() if user.last_login else None,
+        "deleted_at": user.deleted_at.isoformat() if user.deleted_at else None,
+    }
+    # auth_string (password hash / Google sub) intentionally excluded
+
+    libraries = (
+        db.session.execute(select(Library).where(Library.user_id == user_id))
+        .scalars()
+        .all()
+    )
+    libraries_data = [
+        {
+            "id": lib.id,
+            "uuid": lib.uuid,
+            "name": lib.name,
+            "created_at": lib.created_at.isoformat() if lib.created_at else None,
+            "archived_at": lib.archived_at.isoformat() if lib.archived_at else None,
+            "deleted_at": lib.deleted_at.isoformat() if lib.deleted_at else None,
+            "finished_at": lib.finished_at.isoformat() if lib.finished_at else None,
+            "download_enabled": lib.download_enabled,
+        }
+        for lib in libraries
+    ]
+
+    library_ids = [lib.id for lib in libraries]
+    images_data = []
+    photos_to_export = []
+    if library_ids:
+        images = (
+            db.session.execute(select(Image).where(Image.library_id.in_(library_ids)))
+            .scalars()
+            .all()
+        )
+        images_data = [
+            {
+                "id": img.id,
+                "uuid": img.uuid,
+                "library_id": img.library_id,
+                "original_filename": img.original_filename,
+                "content_type": img.content_type,
+                "size": img.size,
+                "width": img.width,
+                "height": img.height,
+                "customer_state": img.customer_state.value,
+                "created_at": img.created_at.isoformat() if img.created_at else None,
+                "deleted_at": img.deleted_at.isoformat() if img.deleted_at else None,
+            }
+            for img in images
+        ]
+        photos_to_export = images
+
+    audit_logs = (
+        db.session.execute(select(AuditLog).where(AuditLog.creator_id == user_id))
+        .scalars()
+        .all()
+    )
+    audit_logs_data = [
+        {
+            "id": str(log.id),
+            "audit_type": log.audit_type.value,
+            "audit_date": log.audit_date.isoformat() if log.audit_date else None,
+            "ip_address": log.ip_address,
+            "related_object_type": log.related_object_type,
+            "related_object_id": log.related_object_id,
+        }
+        for log in audit_logs
+    ]
+
+    tickets = (
+        db.session.execute(
+            select(SupportTicket)
+            .where(SupportTicket.user_id == user_id)
+            .options(selectinload(SupportTicket.comments))
+        )
+        .scalars()
+        .all()
+    )
+    support_tickets_data = [t.to_dict() for t in tickets]
+
+    notifications = (
+        db.session.execute(select(Notification).where(Notification.user_id == user_id))
+        .scalars()
+        .all()
+    )
+    notifications_data = [n.to_dict() for n in notifications]
+
+    # --- Build ZIP in memory ---
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("user.json", json.dumps(user_data, indent=2))
+        zf.writestr("libraries.json", json.dumps(libraries_data, indent=2))
+        zf.writestr("images.json", json.dumps(images_data, indent=2))
+        zf.writestr("audit_logs.json", json.dumps(audit_logs_data, indent=2))
+        zf.writestr("support_tickets.json", json.dumps(support_tickets_data, indent=2))
+        zf.writestr("notifications.json", json.dumps(notifications_data, indent=2))
+
+        for img in photos_to_export:
+            for variant in ("originals", "previews", "thumbs"):
+                try:
+                    data = storage.get_object_bytes(img.storage_path(variant))
+                    zf.writestr(
+                        f"photos/{img.library_id}/{variant}/{img.original_filename}",
+                        data,
+                    )
+                except Exception:
+                    current_app.logger.warning(
+                        "GDPR export: could not fetch S3 object for image %d variant %s",
+                        img.id,
+                        variant,
+                    )
+
+    # --- Upload to S3 ---
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    s3_key = f"gdpr-exports/{user_id}/{timestamp}.zip"
+    storage.upload_fileobj(
+        io.BytesIO(zip_buffer.getvalue()), key=s3_key, content_type="application/zip"
+    )
+
+    # --- Audit log ---
+    write_audit_log(
+        AuditLogType.gdpr_export,
+        creator_id=_cu.id,
+        related_object_type="user",
+        related_object_id=str(user_id),
+    )
+    db.session.commit()
+
+    current_app.logger.info(
+        "GDPR export created for user %d: %s",
+        user_id,
+        s3_key,
+        extra={"log_type": "audit"},
+    )
+    flash(f"GDPR export stored at: {s3_key}", "success")
     return redirect(url_for("admin.users_view"))
 
 
@@ -518,10 +693,33 @@ def notify_agb():
     if request.method == "POST":
         agb_version = (request.form.get("agb_version") or "").strip()
         summary = (request.form.get("summary") or "").strip()
+        effective_date_str = (request.form.get("effective_date") or "").strip()
 
-        if not agb_version or not summary:
-            flash("Bitte Version und Zusammenfassung angeben.", "error")
-            return render_template("admin/notify_agb.html")
+        if not agb_version or not summary or not effective_date_str:
+            flash(
+                "Bitte Version, Zusammenfassung und Inkrafttreten-Datum angeben.",
+                "error",
+            )
+            updates = (
+                db.session.execute(
+                    select(AgbUpdate).order_by(AgbUpdate.notified_at.desc()).limit(10)
+                )
+                .scalars()
+                .all()
+            )
+            return render_template(
+                "admin/notify_agb.html",
+                updates=updates,
+                default_effective_date=(date.today() + timedelta(days=30)).isoformat(),
+            )
+
+        try:
+            effective_at = datetime.strptime(effective_date_str, "%Y-%m-%d").replace(
+                tzinfo=timezone.utc
+            )
+        except ValueError:
+            flash("Ungültiges Datum. Format: YYYY-MM-DD.", "error")
+            return redirect(url_for("admin.notify_agb"))
 
         users = (
             db.session.execute(
@@ -534,16 +732,40 @@ def notify_agb():
         for user in users:
             notify_agb_change(user.email, agb_version, summary)
 
+        agb_update = AgbUpdate(
+            version=agb_version,
+            summary=summary,
+            effective_at=effective_at,
+        )
+        db.session.add(agb_update)
+        db.session.commit()
+
         current_app.logger.info(
-            "AGB change notification sent to %d users: version=%r",
+            "AGB change notification sent to %d users: version=%r effective_at=%s",
             len(users),
             agb_version,
+            effective_at.date(),
             extra={"log_type": "audit"},
         )
-        flash(f"AGB-Benachrichtigung an {len(users)} Nutzer gesendet.", "success")
+        flash(
+            f"AGB-Benachrichtigung an {len(users)} Nutzer gesendet. "
+            f"Inkrafttreten: {effective_at.date()}.",
+            "success",
+        )
         return redirect(url_for("admin.notify_agb"))
 
-    return render_template("admin/notify_agb.html")
+    updates = (
+        db.session.execute(
+            select(AgbUpdate).order_by(AgbUpdate.notified_at.desc()).limit(10)
+        )
+        .scalars()
+        .all()
+    )
+    return render_template(
+        "admin/notify_agb.html",
+        updates=updates,
+        default_effective_date=(date.today() + timedelta(days=30)).isoformat(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -588,9 +810,7 @@ def audit_logs():
         except ValueError:
             pass
 
-    total = db.session.scalar(
-        select(func.count(AuditLog.id)).where(*filters)
-    )
+    total = db.session.scalar(select(func.count(AuditLog.id)).where(*filters))
     entries = (
         db.session.execute(
             select(AuditLog)

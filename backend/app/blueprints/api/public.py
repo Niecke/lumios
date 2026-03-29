@@ -71,6 +71,8 @@ def get_public_library(library_uuid: str):
     ).scalar_one_or_none()
     if library is None:
         return jsonify({"error": "Library not found"}), 404
+    if library.is_private:
+        return jsonify({"error": "Library not found"}), 404
 
     _record_library_view(library)
 
@@ -141,6 +143,8 @@ def update_customer_state(library_uuid: str, image_uuid: str):
     ).scalar_one_or_none()
     if library is None:
         return jsonify({"error": "Library not found"}), 404
+    if library.is_private:
+        return jsonify({"error": "Library not found"}), 404
 
     image = db.session.execute(
         select(Image).where(
@@ -167,6 +171,8 @@ def finish_library(library_uuid: str):
         )
     ).scalar_one_or_none()
     if library is None:
+        return jsonify({"error": "Library not found"}), 404
+    if library.is_private:
         return jsonify({"error": "Library not found"}), 404
 
     if library.finished_at is not None:
@@ -238,6 +244,8 @@ def download_image(library_uuid: str, image_uuid: str):
         )
     ).scalar_one_or_none()
     if library is None:
+        return jsonify({"error": "Library not found"}), 404
+    if library.is_private:
         return jsonify({"error": "Library not found"}), 404
 
     if not library.download_enabled:
