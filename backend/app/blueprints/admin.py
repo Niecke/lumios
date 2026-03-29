@@ -168,6 +168,7 @@ def user_create():
         db.session.add(user)
         db.session.flush()  # get user.id before commit
         from current_user import current_user as _cu
+
         write_audit_log(
             AuditLogType.user_created,
             creator_id=_cu.id,
@@ -250,6 +251,7 @@ def user_edit(id):
                 )
 
         from current_user import current_user as _cu
+
         if "password" in changes:
             write_audit_log(
                 AuditLogType.password_set_by_admin,
@@ -363,6 +365,7 @@ def set_password(id):
             return render_template("admin/set_password.html", user=user)
 
         from current_user import current_user as _cu
+
         write_audit_log(
             AuditLogType.password_set_by_admin,
             creator_id=_cu.id,
@@ -394,6 +397,7 @@ def user_delete(id):
         return redirect(url_for("admin.users_view"))
 
     from current_user import current_user as _cu
+
     deleted_email = user.email
     deleted_id = user.id
     user.deleted_at = datetime.now(timezone.utc)
@@ -441,9 +445,11 @@ def user_gdpr_export(user_id):
     }
     # auth_string (password hash / Google sub) intentionally excluded
 
-    libraries = db.session.execute(
-        select(Library).where(Library.user_id == user_id)
-    ).scalars().all()
+    libraries = (
+        db.session.execute(select(Library).where(Library.user_id == user_id))
+        .scalars()
+        .all()
+    )
     libraries_data = [
         {
             "id": lib.id,
@@ -460,10 +466,13 @@ def user_gdpr_export(user_id):
 
     library_ids = [lib.id for lib in libraries]
     images_data = []
+    photos_to_export = []
     if library_ids:
-        images = db.session.execute(
-            select(Image).where(Image.library_id.in_(library_ids))
-        ).scalars().all()
+        images = (
+            db.session.execute(select(Image).where(Image.library_id.in_(library_ids)))
+            .scalars()
+            .all()
+        )
         images_data = [
             {
                 "id": img.id,
@@ -480,11 +489,13 @@ def user_gdpr_export(user_id):
             }
             for img in images
         ]
-    # s3_key excluded — internal storage path, not personal data
+        photos_to_export = images
 
-    audit_logs = db.session.execute(
-        select(AuditLog).where(AuditLog.creator_id == user_id)
-    ).scalars().all()
+    audit_logs = (
+        db.session.execute(select(AuditLog).where(AuditLog.creator_id == user_id))
+        .scalars()
+        .all()
+    )
     audit_logs_data = [
         {
             "id": str(log.id),
@@ -497,27 +508,48 @@ def user_gdpr_export(user_id):
         for log in audit_logs
     ]
 
-    tickets = db.session.execute(
-        select(SupportTicket)
-        .where(SupportTicket.user_id == user_id)
-        .options(selectinload(SupportTicket.comments))
-    ).scalars().all()
+    tickets = (
+        db.session.execute(
+            select(SupportTicket)
+            .where(SupportTicket.user_id == user_id)
+            .options(selectinload(SupportTicket.comments))
+        )
+        .scalars()
+        .all()
+    )
     support_tickets_data = [t.to_dict() for t in tickets]
 
-    notifications = db.session.execute(
-        select(Notification).where(Notification.user_id == user_id)
-    ).scalars().all()
+    notifications = (
+        db.session.execute(select(Notification).where(Notification.user_id == user_id))
+        .scalars()
+        .all()
+    )
     notifications_data = [n.to_dict() for n in notifications]
 
     # --- Build ZIP in memory ---
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("user.json",            json.dumps(user_data,            indent=2))
-        zf.writestr("libraries.json",       json.dumps(libraries_data,       indent=2))
-        zf.writestr("images.json",          json.dumps(images_data,          indent=2))
-        zf.writestr("audit_logs.json",      json.dumps(audit_logs_data,      indent=2))
+        zf.writestr("user.json", json.dumps(user_data, indent=2))
+        zf.writestr("libraries.json", json.dumps(libraries_data, indent=2))
+        zf.writestr("images.json", json.dumps(images_data, indent=2))
+        zf.writestr("audit_logs.json", json.dumps(audit_logs_data, indent=2))
         zf.writestr("support_tickets.json", json.dumps(support_tickets_data, indent=2))
-        zf.writestr("notifications.json",   json.dumps(notifications_data,   indent=2))
+        zf.writestr("notifications.json", json.dumps(notifications_data, indent=2))
+
+        for img in photos_to_export:
+            for variant in ("originals", "previews", "thumbs"):
+                try:
+                    data = storage.get_object_bytes(img.storage_path(variant))
+                    zf.writestr(
+                        f"photos/{img.library_id}/{variant}/{img.original_filename}",
+                        data,
+                    )
+                except Exception:
+                    current_app.logger.warning(
+                        "GDPR export: could not fetch S3 object for image %d variant %s",
+                        img.id,
+                        variant,
+                    )
 
     # --- Upload to S3 ---
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
@@ -536,7 +568,9 @@ def user_gdpr_export(user_id):
     db.session.commit()
 
     current_app.logger.info(
-        "GDPR export created for user %d: %s", user_id, s3_key,
+        "GDPR export created for user %d: %s",
+        user_id,
+        s3_key,
         extra={"log_type": "audit"},
     )
     flash(f"GDPR export stored at: {s3_key}", "success")
@@ -662,7 +696,10 @@ def notify_agb():
         effective_date_str = (request.form.get("effective_date") or "").strip()
 
         if not agb_version or not summary or not effective_date_str:
-            flash("Bitte Version, Zusammenfassung und Inkrafttreten-Datum angeben.", "error")
+            flash(
+                "Bitte Version, Zusammenfassung und Inkrafttreten-Datum angeben.",
+                "error",
+            )
             updates = (
                 db.session.execute(
                     select(AgbUpdate).order_by(AgbUpdate.notified_at.desc()).limit(10)
@@ -773,9 +810,7 @@ def audit_logs():
         except ValueError:
             pass
 
-    total = db.session.scalar(
-        select(func.count(AuditLog.id)).where(*filters)
-    )
+    total = db.session.scalar(select(func.count(AuditLog.id)).where(*filters))
     entries = (
         db.session.execute(
             select(AuditLog)

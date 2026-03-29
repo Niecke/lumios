@@ -1,7 +1,7 @@
 """add gdpr_export to auditlogtype enum
 
 Revision ID: a1b2c3d4e5f6
-Revises: 350f82113813
+Revises: dc1136b580db
 Create Date: 2026-03-29 00:00:00.000000
 
 """
@@ -11,7 +11,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "a1b2c3d4e5f6"
-down_revision = "350f82113813"
+down_revision = "dc1136b580db"
 branch_labels = None
 depends_on = None
 
