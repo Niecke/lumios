@@ -71,6 +71,10 @@
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-danger btn-sm">Delete</button>
                             </form>
+                            <form method="POST" action="{{ url_for('admin.user_gdpr_export', user_id=user.id) }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-secondary btn-sm">Export GDPR</button>
+                            </form>
                     </td>
                 </tr>
                 {% else %}
