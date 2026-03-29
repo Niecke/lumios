@@ -6,8 +6,11 @@
 <div class="card">
     <h1>AGB / Datenschutz-Benachrichtigung</h1>
     <p>
-        Sendet eine E-Mail an alle aktiven Nutzer über eine Änderung der AGB oder
-        Datenschutzerklärung (gemäß AGB §13).
+        Sendet eine E-Mail an alle aktiven Nutzer über eine Änderung der AGB,
+        Datenschutzerklärung oder des Auftragsverarbeitungsvertrags (AVV)
+        (gemäß AGB §13). Nach Ablauf des Inkrafttreten-Datums aktualisiert
+        <code>flask apply-agb-acceptance</code> automatisch die gespeicherte
+        Version bei allen aktiven Nutzern.
     </p>
 
     <form method="POST">
@@ -37,6 +40,18 @@
             ></textarea>
         </div>
 
+        <div class="form-group">
+            <label for="effective_date">Inkrafttreten am (Standard: +30 Tage)</label>
+            <input
+                type="date"
+                id="effective_date"
+                name="effective_date"
+                class="form-control"
+                value="{{ default_effective_date }}"
+                required
+            >
+        </div>
+
         <button type="submit" class="btn btn-danger"
                 onclick="return confirm('Benachrichtigung wirklich an alle aktiven Nutzer senden?')">
             Benachrichtigung senden
@@ -44,4 +59,38 @@
         <a href="{{ url_for('admin.users_view') }}" class="btn">Abbrechen</a>
     </form>
 </div>
+
+{% if updates %}
+<div class="card" style="margin-top: 1.5rem;">
+    <h2>Letzte AGB-Änderungen</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Version</th>
+                <th>Benachrichtigt am</th>
+                <th>Inkrafttreten</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in updates %}
+            <tr>
+                <td>{{ u.version }}</td>
+                <td>{{ u.notified_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+                <td>{{ u.effective_at.strftime('%Y-%m-%d') }}</td>
+                <td>
+                    {% if u.applied_at %}
+                        <span style="color: var(--clr-success, green);">
+                            Angewendet ({{ u.applied_at.strftime('%Y-%m-%d') }})
+                        </span>
+                    {% else %}
+                        <span style="color: var(--clr-warning, orange);">Ausstehend</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
 {% endblock %}

@@ -124,10 +124,14 @@ function RegisterPage() {
       I accept the{" "}
       <a href={`${LANDING_URL}/agb.html`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--clr-primary)" }}>
         Terms of Service
-      </a>{" "}
-      and{" "}
+      </a>
+      ,{" "}
       <a href={`${LANDING_URL}/datenschutz.html`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--clr-primary)" }}>
         Privacy Policy
+      </a>
+      , and the{" "}
+      <a href={`${LANDING_URL}/avv.html`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--clr-primary)" }}>
+        Data Processing Agreement (AVV)
       </a>
     </span>
   );
