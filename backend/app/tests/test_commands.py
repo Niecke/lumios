@@ -24,6 +24,7 @@ from models import (
     SupportTicketComment,
     Role,
     roles_users,
+    AgbUpdate,
 )
 from sqlalchemy import select
 
@@ -256,3 +257,98 @@ class TestGcsDeletion:
             app.test_cli_runner().invoke(args=["purge-deleted-accounts"])
 
         mock_del.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# apply-agb-acceptance command
+# ---------------------------------------------------------------------------
+
+
+def _agb_update(version: str, effective_days_offset: int) -> AgbUpdate:
+    """Create an AgbUpdate with effective_at = now + offset days."""
+    update = AgbUpdate(
+        version=version,
+        summary=f"Changes for {version}",
+        effective_at=datetime.now(timezone.utc) + timedelta(days=effective_days_offset),
+    )
+    db.session.add(update)
+    db.session.commit()
+    return update
+
+
+def _run_apply_agb(app):
+    runner = app.test_cli_runner()
+    return runner.invoke(args=["apply-agb-acceptance"])
+
+
+class TestApplyAgbAcceptance:
+    def test_applies_past_due_update_to_active_users(self, app):
+        user = _active_user("agb1@test.com")
+        update = _agb_update("2.0", effective_days_offset=-1)
+
+        result = _run_apply_agb(app)
+
+        assert result.exit_code == 0
+        db.session.refresh(user)
+        assert user.agb_version == "2.0"
+        assert user.agb_accepted_at is not None
+
+        db.session.refresh(update)
+        assert update.applied_at is not None
+
+    def test_does_not_apply_future_update(self, app):
+        user = _active_user("agb2@test.com")
+        _agb_update("3.0", effective_days_offset=10)
+
+        result = _run_apply_agb(app)
+
+        assert result.exit_code == 0
+        db.session.refresh(user)
+        assert user.agb_version != "3.0"
+
+    def test_does_not_apply_already_applied_update(self, app):
+        user = _active_user("agb3@test.com")
+        user.agb_version = "1.0"
+        update = _agb_update("2.0", effective_days_offset=-1)
+        update.applied_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        result = _run_apply_agb(app)
+
+        assert result.exit_code == 0
+        db.session.refresh(user)
+        assert user.agb_version == "1.0"
+
+    def test_does_not_update_deleted_users(self, app):
+        user = _soft_deleted_user("agb4@test.com", deleted_days_ago=5)
+        _agb_update("2.0", effective_days_offset=-1)
+
+        result = _run_apply_agb(app)
+
+        assert result.exit_code == 0
+        db.session.refresh(user)
+        assert user.agb_version != "2.0"
+
+    def test_no_pending_updates_exits_cleanly(self, app):
+        result = _run_apply_agb(app)
+        assert result.exit_code == 0
+
+    def test_accepted_at_matches_effective_date(self, app):
+        user = _active_user("agb5@test.com")
+        effective = datetime.now(timezone.utc) - timedelta(hours=6)
+        update = AgbUpdate(
+            version="2.1",
+            summary="Test",
+            effective_at=effective,
+        )
+        db.session.add(update)
+        db.session.commit()
+
+        _run_apply_agb(app)
+
+        db.session.refresh(user)
+        assert user.agb_accepted_at is not None
+        # SQLite returns naive datetimes; strip tz for comparison
+        effective_naive = effective.replace(tzinfo=None)
+        diff = abs((user.agb_accepted_at - effective_naive).total_seconds())
+        assert diff < 2

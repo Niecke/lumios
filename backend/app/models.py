@@ -1,7 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from password_handler import hash_password, password_hasher
 from argon2.exceptions import VerifyMismatchError
-from config import MIN_PASSWORD_LENGTH, SUBSCRIPTION_LIMITS
+from config import MIN_PASSWORD_LENGTH, SUBSCRIPTION_LIMITS, CURRENT_AGB_VERSION
 from datetime import datetime, timezone
 from flask_migrate import Migrate
 import enum
@@ -81,6 +81,8 @@ class User(db.Model):
     )
     last_login = db.Column(db.DateTime, nullable=True)
     deleted_at = db.Column(db.DateTime, nullable=True)
+    agb_accepted_at = db.Column(db.DateTime, nullable=True)
+    agb_version = db.Column(db.String(50), nullable=True)
     is_system = db.Column(
         db.Boolean, nullable=False, default=False, server_default=db.false()
     )
@@ -400,3 +402,26 @@ class JobRun(db.Model):
     status = db.Column(db.String(16), nullable=False)
     records_affected = db.Column(db.Integer(), nullable=True)
     error_message = db.Column(db.Text(), nullable=True)
+
+
+class AgbUpdate(db.Model):
+    """Append-only record of each AGB/AVV change notification sent to users.
+
+    When an admin sends an AGB update notification, a row is created here.
+    The `apply-agb-acceptance` CLI command sets `applied_at` once the
+    effective date has passed and all active users' agb_version has been updated.
+    """
+
+    __tablename__ = "agb_updates"
+
+    id = db.Column(db.Integer(), primary_key=True)
+    version = db.Column(db.String(50), nullable=False)
+    summary = db.Column(db.Text(), nullable=False)
+    notified_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+    effective_at = db.Column(db.DateTime, nullable=False)
+    applied_at = db.Column(db.DateTime, nullable=True)

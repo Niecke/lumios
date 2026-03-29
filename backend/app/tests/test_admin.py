@@ -3,9 +3,12 @@ Tests for the admin blueprint: users, user_create, user_delete, user_edit.
 """
 
 import pytest
+from datetime import datetime, timezone, timedelta
 from html import unescape
+from unittest.mock import patch
 from conftest import do_login, do_logout
-from models import db, User, Role
+from models import db, User, Role, AgbUpdate
+from sqlalchemy import select
 
 
 def html_text(response):
@@ -378,3 +381,130 @@ class TestAdminUserEdit:
         )
         html = html_text(response)
         assert "updated successfully!" in html
+
+    def test_user_edit_shows_agb_acceptance_info(self, client, admin_user, regular_user):
+        regular_user.agb_version = "1.0"
+        regular_user.agb_accepted_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        db.session.commit()
+
+        login_admin(client, admin_user)
+        response = client.get(f"/admin/user_edit/{regular_user.id}")
+        html = response.data.decode()
+        assert "1.0" in html
+        assert "2026-01-01" in html
+
+
+# ---------------------------------------------------------------------------
+# Notify AGB
+# ---------------------------------------------------------------------------
+
+
+class TestNotifyAgb:
+    def test_notify_agb_requires_login(self, client):
+        response = client.get("/admin/notify_agb", follow_redirects=False)
+        assert response.status_code == 302
+        assert "/login" in response.location
+
+    def test_notify_agb_requires_admin_role(self, client, regular_user):
+        login_regular(client, regular_user)
+        response = client.get("/admin/notify_agb", follow_redirects=True)
+        html = html_text(response)
+        assert "Access denied." in html
+
+    def test_notify_agb_get_shows_form(self, client, admin_user):
+        login_admin(client, admin_user)
+        response = client.get("/admin/notify_agb")
+        assert response.status_code == 200
+        html = response.data.decode()
+        assert "agb_version" in html
+        assert "effective_date" in html
+
+    def test_notify_agb_post_creates_agb_update_record(self, client, admin_user):
+        login_admin(client, admin_user)
+        effective = (datetime.now(timezone.utc) + timedelta(days=30)).date().isoformat()
+        with patch("blueprints.admin.notify_agb_change"):
+            response = client.post(
+                "/admin/notify_agb",
+                data={
+                    "agb_version": "2.0",
+                    "summary": "Updated data processing terms.",
+                    "effective_date": effective,
+                },
+                follow_redirects=True,
+            )
+        assert response.status_code == 200
+        html = html_text(response)
+        assert "Benachrichtigung" in html
+
+        update = db.session.execute(
+            select(AgbUpdate).where(AgbUpdate.version == "2.0")
+        ).scalar_one_or_none()
+        assert update is not None
+        assert update.applied_at is None
+        assert update.summary == "Updated data processing terms."
+
+    def test_notify_agb_post_missing_fields_shows_error(self, client, admin_user):
+        login_admin(client, admin_user)
+        response = client.post(
+            "/admin/notify_agb",
+            data={"agb_version": "2.0"},
+            follow_redirects=True,
+        )
+        html = html_text(response)
+        assert "angeben" in html
+
+    def test_notify_agb_post_sends_emails_to_active_users(self, client, admin_user, regular_user):
+        login_admin(client, admin_user)
+        effective = (datetime.now(timezone.utc) + timedelta(days=30)).date().isoformat()
+        with patch("blueprints.admin.notify_agb_change") as mock_mail:
+            client.post(
+                "/admin/notify_agb",
+                data={
+                    "agb_version": "2.0",
+                    "summary": "Test change.",
+                    "effective_date": effective,
+                },
+                follow_redirects=True,
+            )
+        assert mock_mail.called
+        called_emails = {call.args[0] for call in mock_mail.call_args_list}
+        assert regular_user.email in called_emails
+
+    def test_notify_agb_get_shows_existing_updates(self, client, admin_user):
+        agb_update = AgbUpdate(
+            version="1.5",
+            summary="Minor wording change.",
+            effective_at=datetime.now(timezone.utc) + timedelta(days=30),
+        )
+        db.session.add(agb_update)
+        db.session.commit()
+
+        login_admin(client, admin_user)
+        response = client.get("/admin/notify_agb")
+        html = response.data.decode()
+        assert "1.5" in html
+
+
+# ---------------------------------------------------------------------------
+# User create sets AGB fields
+# ---------------------------------------------------------------------------
+
+
+class TestUserCreateAgbFields:
+    def test_admin_created_user_has_agb_fields_set(self, client, admin_user):
+        login_admin(client, admin_user)
+        client.post(
+            "/admin/user_create",
+            data={
+                "email": "agbtest@test.com",
+                "password": "AgbTestPass1!",
+                "active": "on",
+            },
+            follow_redirects=True,
+        )
+        user = db.session.execute(
+            select(User).where(User.email == "agbtest@test.com")
+        ).scalar_one_or_none()
+        assert user is not None
+        assert user.agb_accepted_at is not None
+        assert user.agb_version is not None

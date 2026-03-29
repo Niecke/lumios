@@ -124,6 +124,10 @@ BREVO_WAITLIST_LIST_ID = int(os.getenv("BREVO_WAITLIST_LIST_ID", 0))
 # Maximum number of active users allowed to register
 MAX_USERS = int(os.getenv("MAX_USERS", 100))
 
+# Current AGB (Terms of Service) + AVV (Data Processing Agreement) version.
+# Update this when publishing a new version of the legal documents.
+CURRENT_AGB_VERSION = os.getenv("CURRENT_AGB_VERSION", "1.0")
+
 # Origin of the landing page — allowed to make cross-origin requests to /api/v1/public/*
 LANDINGPAGE_URL = os.getenv("LANDINGPAGE_URL", "lumios.niecke-it.de")
 
