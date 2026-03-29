@@ -129,7 +129,7 @@ MAX_USERS = int(os.getenv("MAX_USERS", 100))
 CURRENT_AGB_VERSION = os.getenv("CURRENT_AGB_VERSION", "1.0")
 
 # Origin of the landing page — allowed to make cross-origin requests to /api/v1/public/*
-LANDINGPAGE_URL = os.getenv("LANDINGPAGE_URL", "lumios.niecke-it.de")
+LANDINGPAGE_URL = os.getenv("LANDINGPAGE_URL", "https://lumios.niecke-it.de")
 
 # FAIL-FAST: Check required vars
 REQUIRED_VARS = ["POSTGRES_PASSWORD", "SECRET_KEY", "JWT_SECRET"]
