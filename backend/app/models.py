@@ -364,6 +364,8 @@ class AuditLogType(enum.Enum):
     picture_uploaded = "picture_uploaded"
     picture_deleted = "picture_deleted"
     picture_downloaded = "picture_downloaded"
+    # Admin / compliance
+    gdpr_export = "gdpr_export"
 
 
 class AuditLog(db.Model):

@@ -2,6 +2,10 @@
 Tests for the admin blueprint: users, user_create, user_delete, user_edit.
 """
 
+import io
+import json
+import zipfile
+
 import pytest
 from html import unescape
 from conftest import do_login, do_logout
@@ -378,3 +382,149 @@ class TestAdminUserEdit:
         )
         html = html_text(response)
         assert "updated successfully!" in html
+
+
+# ---------------------------------------------------------------------------
+# GDPR export
+# ---------------------------------------------------------------------------
+
+
+class TestAdminGdprExport:
+
+    def test_gdpr_export_requires_login(self, client, regular_user):
+        resp = client.post(
+            f"/admin/user_gdpr_export/{regular_user.id}",
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        assert "/login" in resp.location
+
+    def test_gdpr_export_requires_admin_role(self, client, regular_user):
+        login_regular(client, regular_user)
+        resp = client.post(
+            f"/admin/user_gdpr_export/{regular_user.id}",
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+        html = html_text(resp)
+        assert "Access denied." in html
+
+    def test_gdpr_export_unknown_user_shows_error(self, client, admin_user):
+        login_admin(client, admin_user)
+        resp = client.post(
+            "/admin/user_gdpr_export/99999",
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+        html = html_text(resp)
+        assert "not found" in html
+
+    def test_gdpr_export_creates_valid_zip(self, client, admin_user, regular_user, monkeypatch):
+        login_admin(client, admin_user)
+        uploaded = {}
+
+        def mock_upload(file_obj, key, content_type):
+            uploaded["key"] = key
+            uploaded["data"] = file_obj.read()
+
+        monkeypatch.setattr("blueprints.admin.storage.upload_fileobj", mock_upload)
+
+        resp = client.post(
+            f"/admin/user_gdpr_export/{regular_user.id}",
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+        assert "key" in uploaded, "upload_fileobj was not called"
+
+        zf = zipfile.ZipFile(io.BytesIO(uploaded["data"]))
+        names = zf.namelist()
+        assert "user.json" in names
+        assert "libraries.json" in names
+        assert "images.json" in names
+        assert "audit_logs.json" in names
+        assert "support_tickets.json" in names
+        assert "notifications.json" in names
+
+    def test_gdpr_export_user_json_contains_email(self, client, admin_user, regular_user, monkeypatch):
+        login_admin(client, admin_user)
+        uploaded = {}
+
+        def mock_upload(file_obj, key, content_type):
+            uploaded["key"] = key
+            uploaded["data"] = file_obj.read()
+
+        monkeypatch.setattr("blueprints.admin.storage.upload_fileobj", mock_upload)
+
+        client.post(
+            f"/admin/user_gdpr_export/{regular_user.id}",
+            follow_redirects=True,
+        )
+
+        zf = zipfile.ZipFile(io.BytesIO(uploaded["data"]))
+        user_json = json.loads(zf.read("user.json"))
+        assert user_json["email"] == "user@test.com"
+        assert user_json["id"] == regular_user.id
+        assert "auth_string" not in user_json
+
+    def test_gdpr_export_s3_key_format(self, client, admin_user, regular_user, monkeypatch):
+        login_admin(client, admin_user)
+        uploaded = {}
+
+        def mock_upload(file_obj, key, content_type):
+            uploaded["key"] = key
+            uploaded["data"] = file_obj.read()
+
+        monkeypatch.setattr("blueprints.admin.storage.upload_fileobj", mock_upload)
+
+        client.post(
+            f"/admin/user_gdpr_export/{regular_user.id}",
+            follow_redirects=True,
+        )
+
+        assert uploaded["key"].startswith(f"gdpr-exports/{regular_user.id}/")
+        assert uploaded["key"].endswith(".zip")
+
+    def test_gdpr_export_flashes_s3_key(self, client, admin_user, regular_user, monkeypatch):
+        login_admin(client, admin_user)
+
+        def mock_upload(file_obj, key, content_type):
+            pass
+
+        monkeypatch.setattr("blueprints.admin.storage.upload_fileobj", mock_upload)
+
+        resp = client.post(
+            f"/admin/user_gdpr_export/{regular_user.id}",
+            follow_redirects=True,
+        )
+        html = html_text(resp)
+        assert f"gdpr-exports/{regular_user.id}/" in html
+
+    def test_gdpr_export_works_for_soft_deleted_user(self, client, admin_user, regular_user, monkeypatch):
+        from datetime import datetime, timezone
+        regular_user.deleted_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        login_admin(client, admin_user)
+        uploaded = {}
+
+        def mock_upload(file_obj, key, content_type):
+            uploaded["key"] = key
+            uploaded["data"] = file_obj.read()
+
+        monkeypatch.setattr("blueprints.admin.storage.upload_fileobj", mock_upload)
+
+        resp = client.post(
+            f"/admin/user_gdpr_export/{regular_user.id}",
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+        assert "key" in uploaded
+
+        zf = zipfile.ZipFile(io.BytesIO(uploaded["data"]))
+        user_json = json.loads(zf.read("user.json"))
+        assert user_json["deleted_at"] is not None
+
+    def test_gdpr_export_requires_post(self, client, admin_user):
+        login_admin(client, admin_user)
+        resp = client.get(f"/admin/user_gdpr_export/{admin_user.id}")
+        assert resp.status_code == 405
