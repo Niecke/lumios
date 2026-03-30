@@ -31,6 +31,7 @@ from models import (
     AuditLogType,
     JobRun,
     AgbUpdate,
+    Feedback,
 )
 from config import MAX_USERS, CURRENT_AGB_VERSION
 from security import login_required, require_role
@@ -40,6 +41,12 @@ from services.mail import (
     notify_account_cancellation,
     notify_registration,
 )
+
+
+AUDIT_LOG_PAGE_SIZE = 50
+FEEDBACK_PAGE_SIZE = 25
+FEEDBACK_MAX_NOTE_LENGTH = 1000
+
 
 admin = Blueprint("admin", __name__)
 
@@ -526,6 +533,13 @@ def user_gdpr_export(user_id):
     )
     notifications_data = [n.to_dict() for n in notifications]
 
+    feedbacks = (
+        db.session.execute(select(Feedback).where(Feedback.user_id == user_id))
+        .scalars()
+        .all()
+    )
+    feedbacks_data = [f.to_dict() for f in feedbacks]
+
     # --- Build ZIP in memory ---
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -535,6 +549,7 @@ def user_gdpr_export(user_id):
         zf.writestr("audit_logs.json", json.dumps(audit_logs_data, indent=2))
         zf.writestr("support_tickets.json", json.dumps(support_tickets_data, indent=2))
         zf.writestr("notifications.json", json.dumps(notifications_data, indent=2))
+        zf.writestr("feedbacks.json", json.dumps(feedbacks_data, indent=2))
 
         for img in photos_to_export:
             for variant in ("originals", "previews", "thumbs"):
@@ -682,6 +697,58 @@ def support_close(ticket_id: int):
 
 
 # ---------------------------------------------------------------------------
+# Feedback management (admin only)
+# ---------------------------------------------------------------------------
+
+
+@admin.route("/admin/feedback", methods=["GET"])
+@login_required
+@require_role("admin")
+def feedback_list():
+    page = max(1, request.args.get("page", 1, type=int))
+    total = db.session.scalar(select(func.count(Feedback.id)))
+    feedbacks = (
+        db.session.execute(
+            select(Feedback)
+            .options(selectinload(Feedback.user))
+            .order_by(Feedback.created_at.desc())
+            .offset((page - 1) * FEEDBACK_PAGE_SIZE)
+            .limit(FEEDBACK_PAGE_SIZE)
+        )
+        .scalars()
+        .all()
+    )
+    total_pages = max(1, (total + FEEDBACK_PAGE_SIZE - 1) // FEEDBACK_PAGE_SIZE)
+    return render_template(
+        "admin/feedback_list.html",
+        feedbacks=feedbacks,
+        page=page,
+        total_pages=total_pages,
+        total=total,
+    )
+
+
+@admin.route("/admin/feedback/<int:feedback_id>/note", methods=["POST"])
+@login_required
+@require_role("admin")
+def feedback_add_note(feedback_id: int):
+    feedback = db.session.get(Feedback, feedback_id)
+    if feedback is None:
+        flash("Feedback not found.", "error")
+        return redirect(url_for("admin.feedback_list"))
+
+    note = (request.form.get("note") or "").strip() or None
+    if note and len(note) > FEEDBACK_MAX_NOTE_LENGTH:
+        flash("Note must be 1000 characters or fewer.", "error")
+        return redirect(url_for("admin.feedback_list"))
+
+    feedback.admin_note = note
+    db.session.commit()
+    flash("Note saved.", "success")
+    return redirect(url_for("admin.feedback_list"))
+
+
+# ---------------------------------------------------------------------------
 # AGB / Datenschutz change notification (AGB §13)
 # ---------------------------------------------------------------------------
 
@@ -771,8 +838,6 @@ def notify_agb():
 # ---------------------------------------------------------------------------
 # Audit logs viewer
 # ---------------------------------------------------------------------------
-
-AUDIT_LOG_PAGE_SIZE = 50
 
 
 @admin.route("/admin/auditlogs", methods=["GET"])
