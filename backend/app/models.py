@@ -1,7 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from password_handler import hash_password, password_hasher
 from argon2.exceptions import VerifyMismatchError
-from config import MIN_PASSWORD_LENGTH, SUBSCRIPTION_LIMITS, CURRENT_AGB_VERSION
+from config import MIN_PASSWORD_LENGTH, SUBSCRIPTION_LIMITS
 from datetime import datetime, timezone
 from flask_migrate import Migrate
 import enum
@@ -405,6 +405,36 @@ class JobRun(db.Model):
     status = db.Column(db.String(16), nullable=False)
     records_affected = db.Column(db.Integer(), nullable=True)
     error_message = db.Column(db.Text(), nullable=True)
+
+
+class Feedback(db.Model):
+    id = db.Column(db.Integer(), primary_key=True)
+    user_id = db.Column(
+        db.Integer(), db.ForeignKey("user.id"), nullable=False, index=True
+    )
+    rating = db.Column(db.Integer(), nullable=False)
+    body = db.Column(db.Text(), nullable=True)
+    admin_note = db.Column(db.String(1000), nullable=True)
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    user = db.relationship("User", backref=db.backref("feedbacks", lazy="dynamic"))
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "rating": self.rating,
+            "body": self.body,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
 
 
 class AgbUpdate(db.Model):

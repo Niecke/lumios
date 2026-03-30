@@ -242,6 +242,7 @@ def create_app(test_config=None):
     from blueprints.api.public import public_api
     from blueprints.api.notifications import notifications_api
     from blueprints.api.support import support_api
+    from blueprints.api.feedback import feedback_api
 
     # csrf.exempt only covers the named blueprint's own views. Child blueprints
     # registered on a parent have their own blueprint name ("auth_api", not "api"),
@@ -253,6 +254,7 @@ def create_app(test_config=None):
     csrf.exempt(public_api)
     csrf.exempt(notifications_api)
     csrf.exempt(support_api)
+    csrf.exempt(feedback_api)
     app.register_blueprint(api)
 
     # Allow the landing page to call the public API cross-origin.
