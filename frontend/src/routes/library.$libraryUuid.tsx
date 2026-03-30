@@ -528,7 +528,7 @@ function WatermarkSettings({
       {hasLogo && (
         <div>
           <div style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)", marginBottom: "0.4rem" }}>Preview</div>
-          <div style={{ position: "relative", background: "var(--clr-surface-var)", borderRadius: "var(--radius-sm)", minHeight: "6rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ position: "relative", background: "var(--clr-surface-var)", borderRadius: "var(--radius-sm)", minHeight: "6rem", maxHeight: "35vh", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
             {previewLoading && (
               <span className="material-icons" style={{ fontSize: 24, color: "var(--clr-on-surface-var)", animation: "spin 1s linear infinite" }}>hourglass_top</span>
             )}
@@ -539,7 +539,7 @@ function WatermarkSettings({
               <img
                 src={previewUrl}
                 alt="Watermark preview"
-                style={{ maxWidth: "100%", maxHeight: "20rem", borderRadius: "var(--radius-sm)", display: "block" }}
+                style={{ maxWidth: "100%", maxHeight: "35vh", borderRadius: "var(--radius-sm)", display: "block", objectFit: "contain" }}
               />
             )}
             {!previewLoading && !previewError && !previewUrl && (

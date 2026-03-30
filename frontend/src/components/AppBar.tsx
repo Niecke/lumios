@@ -146,7 +146,7 @@ export function AppBar({ name, picture }: AppBarProps) {
 
       <Link to="/support" className="btn btn-text">
         <span className="material-icons">help_outline</span>
-        Support
+        <span className="app-bar__label">Support</span>
       </Link>
 
       <Link to="/account" className="btn btn-text app-bar__account-btn">
@@ -160,15 +160,17 @@ export function AppBar({ name, picture }: AppBarProps) {
         ) : (
           <span className="material-icons">account_circle</span>
         )}
-        {name ?? "Account"}
+        <span className="app-bar__label">{name ?? "Account"}</span>
       </Link>
 
       <button
         className="btn btn-outlined"
         onClick={() => logout.mutate()}
         disabled={logout.isPending}
+        title="Logout"
       >
-        {logout.isPending ? "…" : "Logout"}
+        <span className="material-icons">logout</span>
+        <span className="app-bar__label">{logout.isPending ? "…" : "Logout"}</span>
       </button>
     </header>
   );
