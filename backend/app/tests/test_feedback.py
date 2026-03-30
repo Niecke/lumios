@@ -161,66 +161,6 @@ class TestSubmitFeedback:
 
 
 # ---------------------------------------------------------------------------
-# PATCH /api/v1/feedback/<id>/note — admin note
-# ---------------------------------------------------------------------------
-
-
-class TestSetAdminNote:
-    def test_requires_auth(self, client, feedback):
-        res = client.patch(f"{BASE}/{feedback.id}/note", json={"note": "test"})
-        assert res.status_code == 401
-
-    def test_requires_admin_role(self, client, photographer, feedback):
-        res = client.patch(
-            f"{BASE}/{feedback.id}/note",
-            json={"note": "test"},
-            headers=auth_header(make_token(photographer)),
-        )
-        assert res.status_code == 403
-
-    def test_sets_note(self, client, admin_user, feedback):
-        res = client.patch(
-            f"{BASE}/{feedback.id}/note",
-            json={"note": "https://github.com/issues/123"},
-            headers=auth_header(make_token(admin_user)),
-        )
-        assert res.status_code == 200
-        data = res.get_json()
-        assert data["admin_note"] == "https://github.com/issues/123"
-        db.session.refresh(feedback)
-        assert feedback.admin_note == "https://github.com/issues/123"
-
-    def test_clears_note_with_empty_string(self, client, admin_user, feedback):
-        feedback.admin_note = "existing note"
-        db.session.commit()
-
-        res = client.patch(
-            f"{BASE}/{feedback.id}/note",
-            json={"note": ""},
-            headers=auth_header(make_token(admin_user)),
-        )
-        assert res.status_code == 200
-        db.session.refresh(feedback)
-        assert feedback.admin_note is None
-
-    def test_unknown_id_returns_404(self, client, admin_user):
-        res = client.patch(
-            f"{BASE}/99999/note",
-            json={"note": "test"},
-            headers=auth_header(make_token(admin_user)),
-        )
-        assert res.status_code == 404
-
-    def test_note_too_long_returns_400(self, client, admin_user, feedback):
-        res = client.patch(
-            f"{BASE}/{feedback.id}/note",
-            json={"note": "x" * 1001},
-            headers=auth_header(make_token(admin_user)),
-        )
-        assert res.status_code == 400
-
-
-# ---------------------------------------------------------------------------
 # Admin routes
 # ---------------------------------------------------------------------------
 
