@@ -8,6 +8,7 @@ from .images import images_api  # noqa: E402
 from .public import public_api  # noqa: E402
 from .notifications import notifications_api  # noqa: E402
 from .support import support_api  # noqa: E402
+from .feedback import feedback_api  # noqa: E402
 
 api.register_blueprint(auth_api)
 api.register_blueprint(libraries_api)
@@ -15,3 +16,4 @@ api.register_blueprint(images_api)
 api.register_blueprint(public_api)
 api.register_blueprint(notifications_api)
 api.register_blueprint(support_api)
+api.register_blueprint(feedback_api)

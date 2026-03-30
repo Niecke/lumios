@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Feedback — Lumios Management{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>Feedback</h1>
+
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>User</th>
+                    <th>Rating</th>
+                    <th>Feedback</th>
+                    <th>Note</th>
+                    <th>Submitted</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fb in feedbacks %}
+                <tr>
+                    <td>{{ fb.id }}</td>
+                    <td>{{ fb.user.email }}</td>
+                    <td>
+                        {% if fb.rating == 1 %}😞
+                        {% elif fb.rating == 2 %}😕
+                        {% elif fb.rating == 3 %}😐
+                        {% elif fb.rating == 4 %}🙂
+                        {% elif fb.rating == 5 %}😄
+                        {% else %}{{ fb.rating }}
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if fb.body %}
+                            {{ fb.body[:100] }}{% if fb.body|length > 100 %}…{% endif %}
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if fb.admin_note %}
+                            <span class="badge badge-success">Yes</span>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ fb.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        <details>
+                            <summary class="btn btn-secondary btn-sm" style="cursor:pointer;list-style:none;">Edit note</summary>
+                            <form method="POST" action="{{ url_for('admin.feedback_add_note', feedback_id=fb.id) }}" style="margin-top:0.5rem;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <textarea name="note" rows="3" class="form-control" maxlength="1000" placeholder="Add a note (e.g. GitHub issue link)…">{{ fb.admin_note or '' }}</textarea>
+                                <button type="submit" class="btn btn-sm" style="margin-top:0.4rem;">Save</button>
+                            </form>
+                        </details>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7">No feedback yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if total_pages > 1 %}
+    <div class="pagination">
+        {% if page > 1 %}
+        <a href="{{ url_for('admin.feedback_list', page=page-1) }}" class="btn btn-secondary btn-sm">&laquo; Previous</a>
+        {% endif %}
+        <span class="text-muted">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}
+        <a href="{{ url_for('admin.feedback_list', page=page+1) }}" class="btn btn-secondary btn-sm">Next &raquo;</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
