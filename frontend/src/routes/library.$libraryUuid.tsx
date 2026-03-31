@@ -542,9 +542,6 @@ function WatermarkSettings({
                 style={{ maxWidth: "100%", maxHeight: "35vh", borderRadius: "var(--radius-sm)", display: "block", objectFit: "contain" }}
               />
             )}
-            {!previewLoading && !previewError && !previewUrl && (
-              <span style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)" }}>Upload a photo to see preview</span>
-            )}
           </div>
         </div>
       )}

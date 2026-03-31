@@ -116,6 +116,39 @@ def _build_watermark_tile() -> PilImage.Image:
 
 _WATERMARK_TILE = _build_watermark_tile()
 
+_PLACEHOLDER_W = 1200
+_PLACEHOLDER_H = 800
+
+
+def _build_placeholder_image() -> PilImage.Image:
+    """Return a neutral gradient RGBA image used when no library photo is available.
+
+    The image mimics a simple outdoor scene (sky gradient top-half, ground
+    gradient bottom-half) so the watermark is visible against varied tones.
+    """
+    img = PilImage.new("RGBA", (_PLACEHOLDER_W, _PLACEHOLDER_H))
+    pixels = img.load()
+    assert pixels is not None
+    sky_top = (135, 180, 220)
+    sky_bottom = (195, 218, 235)
+    ground_top = (120, 130, 100)
+    ground_bottom = (80, 90, 65)
+    mid = _PLACEHOLDER_H // 2
+    for y in range(_PLACEHOLDER_H):
+        if y < mid:
+            t = y / max(mid - 1, 1)
+            r = int(sky_top[0] + t * (sky_bottom[0] - sky_top[0]))
+            g = int(sky_top[1] + t * (sky_bottom[1] - sky_top[1]))
+            b = int(sky_top[2] + t * (sky_bottom[2] - sky_top[2]))
+        else:
+            t = (y - mid) / max(_PLACEHOLDER_H - mid - 1, 1)
+            r = int(ground_top[0] + t * (ground_bottom[0] - ground_top[0]))
+            g = int(ground_top[1] + t * (ground_bottom[1] - ground_top[1]))
+            b = int(ground_top[2] + t * (ground_bottom[2] - ground_top[2]))
+        for x in range(_PLACEHOLDER_W):
+            pixels[x, y] = (r, g, b, 255)
+    return img
+
 
 def _apply_logo_watermark(
     preview: PilImage.Image,
