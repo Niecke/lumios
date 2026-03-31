@@ -227,16 +227,20 @@ class TestWatermarkPreview:
         assert res.status_code == 400
         assert "No watermark" in res.get_json()["error"]
 
-    def test_returns_404_when_no_photos(self, client, photographer, library):
+    @patch("blueprints.api.images.storage")
+    def test_returns_jpeg_with_placeholder_when_no_photos(self, mock_img_storage, client, photographer, library):
+        """No photos in library → placeholder image is used; preview is still returned."""
         library.watermark_gcs_key = "watermarks/1/1/watermark.png"
         db.session.commit()
+        mock_img_storage.get_object_bytes.return_value = make_png_bytes()
         token = make_token(photographer)
         res = client.get(
             f"/api/v1/libraries/{library.id}/watermark/preview",
             headers=auth_header(token),
         )
-        assert res.status_code == 404
-        assert "No photos" in res.get_json()["error"]
+        assert res.status_code == 200
+        assert res.content_type == "image/jpeg"
+        assert len(res.data) > 0
 
     @patch("blueprints.api.images.storage")
     @patch("blueprints.api.libraries.storage")

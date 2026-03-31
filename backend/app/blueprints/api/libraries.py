@@ -8,6 +8,7 @@ import io
 from PIL import Image as PilImage
 from services import storage
 from blueprints.api.images import (
+    _build_placeholder_image,
     _create_watermarked_preview,
     _load_library_logo,
     WATERMARK_LOGO_MAX_BYTES,
@@ -313,21 +314,25 @@ def watermark_preview(library_id: int):
         .scalars()
         .first()
     )
-    if sample_image is None:
-        return jsonify({"error": "No photos in library yet"}), 404
 
-    try:
-        original_data = storage.get_object_bytes(sample_image.storage_path("originals"))
-    except Exception:
-        current_app.logger.exception(
-            "Failed to fetch sample image for watermark preview, library=%s", library_id
-        )
-        return jsonify({"error": "Could not load sample photo"}), 502
+    if sample_image is not None:
+        try:
+            original_data = storage.get_object_bytes(sample_image.storage_path("originals"))
+        except Exception:
+            current_app.logger.exception(
+                "Failed to fetch sample image for watermark preview, library=%s", library_id
+            )
+            return jsonify({"error": "Could not load sample photo"}), 502
 
-    try:
-        pil_img = PilImage.open(io.BytesIO(original_data))
-    except Exception:
-        return jsonify({"error": "Could not open sample photo"}), 502
+        try:
+            pil_img = PilImage.open(io.BytesIO(original_data))
+        except Exception:
+            return jsonify({"error": "Could not open sample photo"}), 502
+
+        original_file_size = len(original_data)
+    else:
+        pil_img = _build_placeholder_image()
+        original_file_size = 0
 
     logo = _load_library_logo(library)
     if logo is None:
@@ -335,7 +340,7 @@ def watermark_preview(library_id: int):
 
     preview_buf = _create_watermarked_preview(
         pil_img,
-        original_file_size=len(original_data),
+        original_file_size=original_file_size,
         logo=logo,
         logo_scale=scale,
         logo_position=position,
