@@ -101,6 +101,10 @@ body {
 }
 .app-bar__brand:hover { color: var(--clr-primary-dark); }
 
+@media (max-width: 499px) {
+  .app-bar__label { display: none; }
+}
+
 .app-bar__avatar {
   width: 32px;
   height: 32px;
@@ -160,6 +164,16 @@ body {
   flex-direction: column;
   animation: slide-up 150ms ease;
   overflow: hidden;
+}
+
+@media (max-width: 710px) {
+  .notification-dropdown {
+    position: fixed;
+    top: 64px;
+    left: 0.5rem;
+    right: 0.5rem;
+    width: auto;
+  }
 }
 
 .notification-dropdown__header {
@@ -522,6 +536,9 @@ body {
   max-width: 560px;
   max-height: 90vh;
   overflow-y: auto;
+}
+.dialog--settings > * {
+  flex-shrink: 0;
 }
 .dialog__header {
   display: flex;
