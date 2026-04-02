@@ -124,6 +124,7 @@ def create_app(test_config=None):
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = SQLALCHEMY_ENGINE_OPTIONS
 
     app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
+    app.config["RATELIMIT_ENABLED"] = RATELIMIT_ENABLED
 
     # Allow tests to override any config value before extensions are initialised
     if test_config is not None:
@@ -151,7 +152,6 @@ def create_app(test_config=None):
     server_session.init_app(app)
 
     # enable caching (can be disabled via RATELIMIT_ENABLED=false for integration tests)
-    app.config["RATELIMIT_ENABLED"] = RATELIMIT_ENABLED
     limiter.init_app(app)
 
     # Init extensions
