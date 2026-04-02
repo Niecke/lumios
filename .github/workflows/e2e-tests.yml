@@ -1,0 +1,89 @@
+name: Integration Tests (E2E)
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Create .env for docker compose
+        run: |
+          cat > .env << 'EOF'
+          POSTGRES_USER=lumios
+          POSTGRES_PASSWORD=your_secure_password
+          POSTGRES_DB=lumios
+          SECRET_KEY=test-secret-key-at-least-32-chars-long!
+          JWT_SECRET=test-jwt-secret-key-at-least-32-chars!!
+          MINIO_ROOT_USER=minioadmin
+          MINIO_ROOT_PASSWORD=minioadmin
+          VITE_GOOGLE_CLIENT_ID=
+          EOF
+
+      - name: Build and start backend + dependencies
+        run: |
+          docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.test.yml \
+            up --build -d postgres redis minio backend
+
+      - name: Wait for backend to become healthy
+        run: |
+          echo "Waiting for backend health check..."
+          for i in $(seq 1 30); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' lumios-backend 2>/dev/null || echo "missing")
+            echo "  attempt $i: $STATUS"
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Backend is healthy."
+              break
+            fi
+            if [ "$i" = "30" ]; then
+              echo "Backend did not become healthy in time."
+              docker compose -f docker-compose.yml -f docker-compose.test.yml logs backend
+              exit 1
+            fi
+            sleep 5
+          done
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: e2e/package.json
+
+      - name: Install Playwright and dependencies
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install chromium --with-deps
+
+      - name: Run integration tests
+        working-directory: e2e
+        env:
+          BACKEND_URL: http://localhost:8080
+        run: npx playwright test
+
+      - name: Upload test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          retention-days: 7
+
+      - name: Show backend logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.test.yml logs backend
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.test.yml down -v

@@ -70,6 +70,11 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 SECRET_KEY = os.getenv("SECRET_KEY")
 JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_EXPIRY_SECONDS = int(os.getenv("JWT_EXPIRY_SECONDS", 3600))
+RATELIMIT_ENABLED = os.getenv("RATELIMIT_ENABLED", "true").lower() not in (
+    "false",
+    "0",
+    "no",
+)
 
 # Redis (optional — enables Redis-backed sessions when set, falls back to filesystem)
 REDIS_URL = os.getenv("REDIS_URL", None)

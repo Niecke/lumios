@@ -49,7 +49,7 @@ services:
     restart: unless-stopped
 
   jaeger:
-    image: docker.io/jaegertracing/jaeger:2.16.0
+    image: docker.io/jaegertracing/jaeger:2.17.0
     container_name: lumios-jaeger
     ports:
       - "16686:16686"   # Jaeger UI

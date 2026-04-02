@@ -93,9 +93,12 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const data = contentType.includes("application/json") ? await res.json() : null;
 
   if (!res.ok) {
-    throw new Error(
+    const err = new Error(
       (data as { error?: string } | null)?.error ?? `Request failed (${res.status})`
     );
+    (err as any).code = (data as { code?: string } | null)?.code;
+    (err as any).status = res.status;
+    throw err;
   }
   return data as T;
 }
@@ -121,6 +124,13 @@ export const authApi = {
   // Activate an account using the token from the activation email.
   activate: (token: string) =>
     apiFetch<{ ok: boolean; email: string }>("/api/v1/auth/activate", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
+
+  // Request a fresh activation email (when the original token expired).
+  resendActivation: (token: string) =>
+    apiFetch<{ ok: boolean }>("/api/v1/auth/resend-activation", {
       method: "POST",
       body: JSON.stringify({ token }),
     }),

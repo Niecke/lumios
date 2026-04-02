@@ -4,7 +4,13 @@ from jwt import PyJWKClient
 import jwt
 from urllib.parse import urlencode
 from main import limiter
-from config import GOOGLE_FRONTEND_CLIENT_ID, REDIS_URL, FRONTEND_URL, MAX_USERS, CURRENT_AGB_VERSION
+from config import (
+    GOOGLE_FRONTEND_CLIENT_ID,
+    REDIS_URL,
+    FRONTEND_URL,
+    MAX_USERS,
+    CURRENT_AGB_VERSION,
+)
 from services.auth import login_google, login_password, AuthError
 from services.token import create_token
 from services.mail import notify_activation_email
@@ -12,7 +18,9 @@ from services.audit import write_audit_log
 from security import require_api_auth, require_api_role
 from models import db, User, Role, Library, Image, AuditLogType
 from sqlalchemy import select, func, or_
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+ACTIVATION_TOKEN_LIFETIME = timedelta(hours=72)
 
 auth_api = Blueprint("auth_api", __name__, url_prefix="/auth")
 
@@ -314,7 +322,9 @@ def _check_registration_open() -> tuple[bool, str]:
     return True, ""
 
 
-def _create_pending_user(email: str, account_type: str, auth_string: str | None) -> User:
+def _create_pending_user(
+    email: str, account_type: str, auth_string: str | None
+) -> User:
     """Create an inactive, activation-pending user and return it (not yet committed)."""
     activation_token = secrets.token_urlsafe(32)
     photographer_role = db.session.execute(
@@ -325,6 +335,7 @@ def _create_pending_user(email: str, account_type: str, auth_string: str | None)
         active=False,
         activation_pending=True,
         activation_token=activation_token,
+        activation_token_created_at=datetime.now(timezone.utc),
         account_type=account_type,
         auth_string=auth_string,
         agb_accepted_at=datetime.now(timezone.utc),
@@ -353,7 +364,12 @@ def register():
     password = data.get("password") or ""
 
     if not data.get("agb_accepted"):
-        return jsonify({"error": "You must accept the Terms of Service and Privacy Policy"}), 400
+        return (
+            jsonify(
+                {"error": "You must accept the Terms of Service and Privacy Policy"}
+            ),
+            400,
+        )
 
     if not email or not password:
         return jsonify({"error": "Email and password are required"}), 400
@@ -376,8 +392,12 @@ def register():
         related_object_id=str(user.id),
     )
     db.session.commit()
-    notify_activation_email(email, f"{FRONTEND_URL}/activate?token={user.activation_token}")
-    current_app.logger.info("User registered: %s (local)", email, extra={"log_type": "audit"})
+    notify_activation_email(
+        email, f"{FRONTEND_URL}/activate?token={user.activation_token}"
+    )
+    current_app.logger.info(
+        "User registered: %s (local)", email, extra={"log_type": "audit"}
+    )
     return jsonify({"ok": True}), 201
 
 
@@ -396,7 +416,12 @@ def google_register():
     data = request.get_json(silent=True) or {}
 
     if not data.get("agb_accepted"):
-        return jsonify({"error": "You must accept the Terms of Service and Privacy Policy"}), 400
+        return (
+            jsonify(
+                {"error": "You must accept the Terms of Service and Privacy Policy"}
+            ),
+            400,
+        )
 
     credential = data.get("credential", "")
     if not credential:
@@ -431,7 +456,14 @@ def google_register():
     if db.session.execute(
         select(User).where(User.email == email, User.deleted_at.is_(None))
     ).scalar_one_or_none():
-        return jsonify({"error": "An account with this email already exists. Please log in instead."}), 409
+        return (
+            jsonify(
+                {
+                    "error": "An account with this email already exists. Please log in instead."
+                }
+            ),
+            409,
+        )
 
     user = _create_pending_user(email, "google", google_sub)
     write_audit_log(
@@ -440,8 +472,12 @@ def google_register():
         related_object_id=str(user.id),
     )
     db.session.commit()
-    notify_activation_email(email, f"{FRONTEND_URL}/activate?token={user.activation_token}")
-    current_app.logger.info("User registered: %s (google)", email, extra={"log_type": "audit"})
+    notify_activation_email(
+        email, f"{FRONTEND_URL}/activate?token={user.activation_token}"
+    )
+    current_app.logger.info(
+        "User registered: %s (google)", email, extra={"log_type": "audit"}
+    )
     return jsonify({"ok": True}), 201
 
 
@@ -459,7 +495,18 @@ def activate_account():
     ).scalar_one_or_none()
 
     if not user:
-        return jsonify({"error": "Invalid or expired activation token"}), 404
+        return jsonify({"error": "Invalid activation token"}), 404
+
+    if (
+        user.activation_token_created_at is not None
+        and datetime.now(timezone.utc)
+        - user.activation_token_created_at.replace(tzinfo=timezone.utc)
+        > ACTIVATION_TOKEN_LIFETIME
+    ):
+        return (
+            jsonify({"error": "Activation token has expired", "code": "token_expired"}),
+            410,
+        )
 
     user.active = True
     user.activation_pending = False
@@ -475,3 +522,38 @@ def activate_account():
         "Account activated: %s", user.email, extra={"log_type": "audit"}
     )
     return jsonify({"ok": True, "email": user.email})
+
+
+@auth_api.route("/resend-activation", methods=["POST"])
+@limiter.limit("3 per hour")
+def resend_activation():
+    """Resend the activation email with a fresh token."""
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip()
+    if not token:
+        return jsonify({"error": "Missing token"}), 400
+
+    user = db.session.execute(
+        select(User).where(User.activation_token == token)
+    ).scalar_one_or_none()
+
+    if not user or not user.activation_pending:
+        return jsonify({"error": "Invalid token"}), 404
+
+    user.activation_token = secrets.token_urlsafe(32)
+    user.activation_token_created_at = datetime.now(timezone.utc)
+
+    write_audit_log(
+        AuditLogType.activation_token_resent,
+        related_object_type="user",
+        related_object_id=str(user.id),
+    )
+    db.session.commit()
+
+    notify_activation_email(
+        user.email, f"{FRONTEND_URL}/activate?token={user.activation_token}"
+    )
+    current_app.logger.info(
+        "Activation email resent: %s", user.email, extra={"log_type": "audit"}
+    )
+    return jsonify({"ok": True}), 200
