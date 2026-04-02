@@ -45,7 +45,7 @@
                 </tr>
             </thead>
             <tbody>
-                {% for entry in entries %}
+                {% for entry in audit_logs_paginated.items %}
                 <tr>
                     <td class="text-mono">{{ entry.audit_date.strftime('%Y-%m-%d %H:%M:%S') }} UTC</td>
                     <td><span class="badge">{{ entry.audit_type.value }}</span></td>
@@ -74,16 +74,14 @@
         </table>
     </div>
 
-    {% if total_pages > 1 %}
     <div class="pagination">
-        {% if page > 1 %}
-        <a href="{{ url_for('admin.audit_logs', page=page-1, from_date=from_date, to_date=to_date, audit_type=audit_type) }}" class="btn btn-secondary btn-sm">&laquo; Previous</a>
+        {% if audit_logs_paginated.has_prev %}
+        <a href="{{ url_for('admin.audit_logs', page=audit_logs_paginated.prev_num, from_date=from_date, to_date=to_date, audit_type=audit_type) }}" class="btn btn-secondary btn-sm">&laquo; Previous</a>
         {% endif %}
-        <span class="text-muted">Page {{ page }} of {{ total_pages }}</span>
-        {% if page < total_pages %}
-        <a href="{{ url_for('admin.audit_logs', page=page+1, from_date=from_date, to_date=to_date, audit_type=audit_type) }}" class="btn btn-secondary btn-sm">Next &raquo;</a>
+        <span class="text-muted">Page {{ audit_logs_paginated.page }} of {{ audit_logs_paginated.pages }}</span>
+        {% if audit_logs_paginated.has_next %}
+        <a href="{{ url_for('admin.audit_logs', page=audit_logs_paginated.next_num, from_date=from_date, to_date=to_date, audit_type=audit_type) }}" class="btn btn-secondary btn-sm">Next &raquo;</a>
         {% endif %}
     </div>
-    {% endif %}
 </div>
 {% endblock %}

@@ -20,7 +20,7 @@
                 </tr>
             </thead>
             <tbody>
-                {% for fb in feedbacks %}
+                {% for fb in feedbacks_paginated.items %}
                 <tr>
                     <td>{{ fb.id }}</td>
                     <td>{{ fb.user.email }}</td>
@@ -68,16 +68,14 @@
         </table>
     </div>
 
-    {% if total_pages > 1 %}
     <div class="pagination">
-        {% if page > 1 %}
-        <a href="{{ url_for('admin.feedback_list', page=page-1) }}" class="btn btn-secondary btn-sm">&laquo; Previous</a>
+        {% if feedbacks_paginated.has_prev %}
+        <a href="{{ url_for('admin.feedback_list', page=feedbacks_paginated.prev_num) }}" class="btn btn-secondary btn-sm">&laquo; Previous</a>
         {% endif %}
-        <span class="text-muted">Page {{ page }} of {{ total_pages }}</span>
-        {% if page < total_pages %}
-        <a href="{{ url_for('admin.feedback_list', page=page+1) }}" class="btn btn-secondary btn-sm">Next &raquo;</a>
+        <span class="text-muted">Page {{ feedbacks_paginated.page }} of {{ feedbacks_paginated.pages }}</span>
+        {% if feedbacks_paginated.has_next %}
+        <a href="{{ url_for('admin.feedback_list', page=feedbacks_paginated.next_num) }}" class="btn btn-secondary btn-sm">Next &raquo;</a>
         {% endif %}
     </div>
-    {% endif %}
 </div>
 {% endblock %}

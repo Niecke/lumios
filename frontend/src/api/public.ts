@@ -11,7 +11,7 @@ export interface PublicImage {
   download_url: string | null;
 }
 
-export interface PublicLibrary {
+export interface PublicLibraryPage {
   library: {
     uuid: string;
     name: string;
@@ -19,12 +19,17 @@ export interface PublicLibrary {
     download_enabled: boolean;
   };
   images: PublicImage[];
-  count: number;
+  total: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
 }
 
 export const publicApi = {
-  getLibrary: async (uuid: string): Promise<PublicLibrary> => {
-    const res = await fetch(`/api/v1/public/libraries/${uuid}`);
+  getLibrary: async (uuid: string, page = 1, pageSize = 20): Promise<PublicLibraryPage> => {
+    const res = await fetch(
+      `/api/v1/public/libraries/${uuid}?page=${page}&page_size=${pageSize}`
+    );
     const contentType = res.headers.get("content-type") ?? "";
     const data = contentType.includes("application/json") ? await res.json() : null;
     if (!res.ok) {
@@ -32,7 +37,7 @@ export const publicApi = {
         (data as { error?: string } | null)?.error ?? `Request failed (${res.status})`
       );
     }
-    return data as PublicLibrary;
+    return data as PublicLibraryPage;
   },
 
   setCustomerState: async (
