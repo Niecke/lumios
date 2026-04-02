@@ -409,3 +409,114 @@ class TestApiChangePassword:
             f"{BASE}/login", json={"email": "photo@test.com", "password": "NewPass123!"}
         )
         assert res.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/auth/activate  — token expiry
+# ---------------------------------------------------------------------------
+
+
+class TestActivateTokenExpiry:
+    ENDPOINT = f"{BASE}/activate"
+
+    @pytest.fixture
+    def pending_user(self, photographer_role):
+        user = User(
+            email="pending@test.com",
+            active=False,
+            activation_pending=True,
+            activation_token="valid-token-abc",
+            activation_token_created_at=datetime.now(timezone.utc),
+        )
+        user.set_password("PendingPass123!")
+        user.roles.append(photographer_role)
+        db.session.add(user)
+        db.session.commit()
+        return user
+
+    @pytest.fixture
+    def expired_user(self, photographer_role):
+        user = User(
+            email="expired@test.com",
+            active=False,
+            activation_pending=True,
+            activation_token="expired-token-xyz",
+            activation_token_created_at=datetime.now(timezone.utc)
+            - timedelta(hours=73),
+        )
+        user.set_password("ExpiredPass123!")
+        user.roles.append(photographer_role)
+        db.session.add(user)
+        db.session.commit()
+        return user
+
+    def test_valid_token_activates(self, client, pending_user):
+        res = client.post(self.ENDPOINT, json={"token": "valid-token-abc"})
+        assert res.status_code == 200
+        assert res.get_json()["ok"] is True
+
+    def test_expired_token_returns_410(self, client, expired_user):
+        res = client.post(self.ENDPOINT, json={"token": "expired-token-xyz"})
+        assert res.status_code == 410
+        assert res.get_json()["code"] == "token_expired"
+
+    def test_null_timestamp_treated_as_valid(self, client, photographer_role):
+        """Users created before the feature (no timestamp) can still activate."""
+        user = User(
+            email="legacy@test.com",
+            active=False,
+            activation_pending=True,
+            activation_token="legacy-token",
+            activation_token_created_at=None,
+        )
+        user.roles.append(photographer_role)
+        db.session.add(user)
+        db.session.commit()
+        res = client.post(self.ENDPOINT, json={"token": "legacy-token"})
+        assert res.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/auth/resend-activation
+# ---------------------------------------------------------------------------
+
+
+class TestResendActivation:
+    ENDPOINT = f"{BASE}/resend-activation"
+
+    @pytest.fixture
+    def expired_user(self, photographer_role):
+        user = User(
+            email="expired@test.com",
+            active=False,
+            activation_pending=True,
+            activation_token="expired-token-xyz",
+            activation_token_created_at=datetime.now(timezone.utc)
+            - timedelta(hours=73),
+        )
+        user.set_password("ExpiredPass123!")
+        user.roles.append(photographer_role)
+        db.session.add(user)
+        db.session.commit()
+        return user
+
+    @patch("blueprints.api.auth.notify_activation_email")
+    def test_resend_generates_new_token(self, mock_mail, client, expired_user):
+        res = client.post(self.ENDPOINT, json={"token": "expired-token-xyz"})
+        assert res.status_code == 200
+        from sqlalchemy import select as sa_select
+
+        user = db.session.execute(
+            sa_select(User).where(User.email == "expired@test.com")
+        ).scalar_one()
+        assert user.activation_token != "expired-token-xyz"
+        assert user.activation_token is not None
+        assert mock_mail.called
+
+    def test_invalid_token_returns_404(self, client):
+        res = client.post(self.ENDPOINT, json={"token": "bogus"})
+        assert res.status_code == 404
+
+    def test_missing_token_returns_400(self, client):
+        res = client.post(self.ENDPOINT, json={})
+        assert res.status_code == 400

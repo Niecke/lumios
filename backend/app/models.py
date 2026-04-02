@@ -73,6 +73,9 @@ class User(db.Model):
         db.Boolean, nullable=False, default=False, server_default=db.false()
     )
     activation_token = db.Column(db.String(64), nullable=True, unique=True)
+    activation_token_created_at = db.Column(
+        db.DateTime, nullable=True, server_default=db.false()
+    )
     account_type = db.Column(db.String(16), nullable=False, default="local")
     auth_string = db.Column(db.String(255), nullable=True)
     max_libraries = db.Column(db.Integer(), nullable=False, default=100)
@@ -363,6 +366,7 @@ class AuditLogType(enum.Enum):
     login_backend = "login_backend"
     login_frontend = "login_frontend"
     login_failed = "login_failed"
+    activation_token_resent = "activation_token_resent"
     # Photographer actions
     library_created = "library_created"
     library_edited = "library_edited"
