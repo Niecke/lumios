@@ -182,3 +182,74 @@ class TestDownloadImage:
             )
         assert res.status_code == 200
         assert res.get_json()["download_url"] == "http://example.com/dl"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/public/libraries/<uuid> — pagination
+# ---------------------------------------------------------------------------
+
+
+def make_images_in_library(library, count):
+    for i in range(count):
+        db.session.add(
+            Image(
+                library_id=library.id,
+                s3_key=f"pub-img-{i}.jpg",
+                original_filename=f"img-{i}.jpg",
+                content_type="image/jpeg",
+                size=1024,
+                width=100,
+                height=100,
+                customer_state=CustomerState.none,
+            )
+        )
+    db.session.commit()
+
+
+class TestGetPublicLibraryPagination:
+    def test_response_includes_pagination_fields(self, client, public_library):
+        with patch("services.storage.get_presigned_url", return_value="http://example.com/img"):
+            data = client.get(
+                f"{BASE}/libraries/{public_library.uuid}"
+            ).get_json()
+        assert "total" in data
+        assert "page" in data
+        assert "page_size" in data
+        assert "has_more" in data
+
+    def test_library_metadata_present_on_every_page(self, client, public_library):
+        make_images_in_library(public_library, 5)
+        with patch("services.storage.get_presigned_url", return_value="http://example.com/img"):
+            page1 = client.get(
+                f"{BASE}/libraries/{public_library.uuid}?page=1&page_size=3"
+            ).get_json()
+            page2 = client.get(
+                f"{BASE}/libraries/{public_library.uuid}?page=2&page_size=3"
+            ).get_json()
+        assert page1["library"]["uuid"] == public_library.uuid
+        assert page2["library"]["uuid"] == public_library.uuid
+
+    def test_has_more_true_when_more_pages_exist(self, client, public_library):
+        make_images_in_library(public_library, 5)
+        with patch("services.storage.get_presigned_url", return_value="http://example.com/img"):
+            data = client.get(
+                f"{BASE}/libraries/{public_library.uuid}?page_size=3"
+            ).get_json()
+        assert data["has_more"] is True
+        assert len(data["images"]) == 3
+
+    def test_has_more_false_on_last_page(self, client, public_library):
+        make_images_in_library(public_library, 3)
+        with patch("services.storage.get_presigned_url", return_value="http://example.com/img"):
+            data = client.get(
+                f"{BASE}/libraries/{public_library.uuid}?page_size=10"
+            ).get_json()
+        assert data["has_more"] is False
+
+    def test_view_only_recorded_on_page_1(self, client, public_library):
+        make_images_in_library(public_library, 5)
+        with patch("services.storage.get_presigned_url", return_value="http://example.com/img"), \
+             patch("blueprints.api.public._record_library_view") as mock_record:
+            client.get(f"{BASE}/libraries/{public_library.uuid}?page=1&page_size=3")
+            client.get(f"{BASE}/libraries/{public_library.uuid}?page=2&page_size=3")
+        assert mock_record.call_count == 1

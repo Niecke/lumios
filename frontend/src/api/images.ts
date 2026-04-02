@@ -17,9 +17,12 @@ export interface Image {
   thumb_url: string | null;
 }
 
-export interface ImageList {
+export interface ImagePage {
   images: Image[];
-  count: number;
+  total: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
   max_images_per_library: number | null;
 }
 
@@ -44,8 +47,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const imagesApi = {
-  list: (libraryId: number) =>
-    apiFetch<ImageList>(`/api/v1/libraries/${libraryId}/images`),
+  list: (libraryId: number, page = 1, pageSize = 20) =>
+    apiFetch<ImagePage>(
+      `/api/v1/libraries/${libraryId}/images?page=${page}&page_size=${pageSize}`
+    ),
 
   upload: (libraryId: number, file: File) => {
     const form = new FormData();

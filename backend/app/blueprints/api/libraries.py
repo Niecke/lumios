@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, g, current_app, Response
 from security import require_api_auth, require_api_role
 from models import db, User, Library, Image, AuditLogType
 from services.audit import write_audit_log
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import datetime, timezone
 import io
 from PIL import Image as PilImage
@@ -20,16 +20,34 @@ libraries_api = Blueprint("libraries_api", __name__, url_prefix="/libraries")
 MAX_NAME_LENGTH = 255
 
 
+PAGE_SIZE_DEFAULT = 20
+PAGE_SIZE_MAX = 100
+
+
 @libraries_api.route("", methods=["GET"])
 @require_api_auth
 @require_api_role("photographer")
 def list_libraries():
     user_id = int(g.token_payload["sub"])
+
+    page = max(1, request.args.get("page", 1, type=int))
+    page_size = min(
+        PAGE_SIZE_MAX, max(1, request.args.get("page_size", PAGE_SIZE_DEFAULT, type=int))
+    )
+
+    total = db.session.scalar(
+        select(func.count(Library.id)).where(
+            Library.user_id == user_id, Library.deleted_at.is_(None)
+        )
+    ) or 0
+
     libraries = (
         db.session.execute(
             select(Library)
             .where(Library.user_id == user_id, Library.deleted_at.is_(None))
             .order_by(Library.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
         .scalars()
         .all()
@@ -38,7 +56,10 @@ def list_libraries():
     return jsonify(
         {
             "libraries": [lib.to_dict() for lib in libraries],
-            "count": len(libraries),
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "has_more": page * page_size < total,
             "max_libraries": user.effective_limits["max_libraries"] if user else None,
         }
     )

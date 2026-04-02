@@ -17,9 +17,12 @@ export interface Library {
   watermark_position: string | null;
 }
 
-export interface LibraryList {
+export interface LibraryPage {
   libraries: Library[];
-  count: number;
+  total: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
   max_libraries: number | null;
 }
 
@@ -45,7 +48,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const librariesApi = {
-  list: () => apiFetch<LibraryList>("/api/v1/libraries"),
+  list: (page = 1, pageSize = 20) =>
+    apiFetch<LibraryPage>(`/api/v1/libraries?page=${page}&page_size=${pageSize}`),
 
   getByUuid: (uuid: string) =>
     apiFetch<Library>(`/api/v1/libraries/uuid/${uuid}`),

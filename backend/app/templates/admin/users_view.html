@@ -23,7 +23,7 @@
                 </tr>
             </thead>
             <tbody>
-                {% for user in users %}
+                {% for user in users_paginated.items %}
                 <tr>
                     <td>{{ user.id }}</td>
                     <td>{{ user.email }}</td>
@@ -84,6 +84,16 @@
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+
+    <div class="pagination">
+        {% if users_paginated.has_prev %}
+        <a href="{{ url_for('admin.users_view', page=users_paginated.prev_num) }}" class="btn btn-secondary btn-sm">&laquo; Previous</a>
+        {% endif %}
+        <span class="text-muted">Page {{ users_paginated.page }} of {{ users_paginated.pages }}</span>
+        {% if users_paginated.has_next %}
+        <a href="{{ url_for('admin.users_view', page=users_paginated.next_num) }}" class="btn btn-secondary btn-sm">Next &raquo;</a>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
