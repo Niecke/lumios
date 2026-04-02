@@ -11,12 +11,15 @@ export const Route = createFileRoute("/activate")({
   component: ActivatePage,
 });
 
-type State = "pending" | "success" | "error";
+type State = "pending" | "success" | "error" | "expired";
 
 function ActivatePage() {
   const [state, setState] = useState<State>("pending");
   const [email, setEmail] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
+  const [resendError, setResendError] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -35,10 +38,26 @@ function ActivatePage() {
         setState("success");
       })
       .catch((err) => {
-        setErrorMsg((err as Error).message);
-        setState("error");
+        if ((err as any).code === "token_expired") {
+          setState("expired");
+        } else {
+          setErrorMsg((err as Error).message);
+          setState("error");
+        }
       });
   }, []);
+
+  const handleResend = () => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token") ?? "";
+    setResending(true);
+    setResendError(null);
+    authApi
+      .resendActivation(token)
+      .then(() => setResendSuccess(true))
+      .catch((err) => setResendError((err as Error).message))
+      .finally(() => setResending(false));
+  };
 
   return (
     <main className="login-page">
@@ -65,12 +84,44 @@ function ActivatePage() {
             </Link>
           </>
         )}
+        {state === "expired" && (
+          <>
+            <h2>Link expired</h2>
+            <p style={{ textAlign: "center", lineHeight: 1.6 }}>
+              Your activation link has expired. Click below to receive a new one.
+            </p>
+            {resendSuccess ? (
+              <p style={{ textAlign: "center", marginTop: "0.75rem", color: "var(--color-success, green)" }}>
+                A new activation email has been sent. Please check your inbox.
+              </p>
+            ) : (
+              <button
+                className="btn btn-contained"
+                style={{ width: "100%", justifyContent: "center", marginTop: "1rem" }}
+                onClick={handleResend}
+                disabled={resending}
+              >
+                {resending ? "Sending…" : "Resend activation email"}
+              </button>
+            )}
+            {resendError && (
+              <div className="flash" style={{ marginTop: "0.75rem" }}>{resendError}</div>
+            )}
+            <Link
+              to="/login"
+              className="btn btn-outlined"
+              style={{ width: "100%", justifyContent: "center", marginTop: "1rem" }}
+            >
+              Back to sign in
+            </Link>
+          </>
+        )}
         {state === "error" && (
           <>
             <h2>Activation failed</h2>
             <div className="flash">{errorMsg ?? "Unknown error"}</div>
             <p style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.875rem" }}>
-              The link may have already been used or has expired.
+              The link may have already been used or is invalid.
             </p>
             <Link
               to="/login"
