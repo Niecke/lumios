@@ -24,6 +24,7 @@ from config import (
     CLOUD_TRACE_SERVICE_VERSION,
     OTEL_EXPORTER_ENDPOINT,
     LANDINGPAGE_URL,
+    RATELIMIT_ENABLED,
 )
 from models import User
 from current_user import current_user
@@ -123,6 +124,7 @@ def create_app(test_config=None):
     app.config["SQLALCHEMY_ENGINE_OPTIONS"] = SQLALCHEMY_ENGINE_OPTIONS
 
     app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
+    app.config["RATELIMIT_ENABLED"] = RATELIMIT_ENABLED
 
     # Allow tests to override any config value before extensions are initialised
     if test_config is not None:
@@ -149,7 +151,7 @@ def create_app(test_config=None):
     app.config["SESSION_COOKIE_SECURE"] = not DEBUG
     server_session.init_app(app)
 
-    # enable caching
+    # enable caching (can be disabled via RATELIMIT_ENABLED=false for integration tests)
     limiter.init_app(app)
 
     # Init extensions
@@ -229,11 +231,17 @@ def create_app(test_config=None):
 
     app.register_blueprint(health)
 
-    from commands import purge_deleted_accounts, purge_audit_logs, apply_agb_acceptance
+    from commands import (
+        purge_deleted_accounts,
+        purge_audit_logs,
+        apply_agb_acceptance,
+        seed_test_data,
+    )
 
     app.cli.add_command(purge_deleted_accounts)
     app.cli.add_command(purge_audit_logs)
     app.cli.add_command(apply_agb_acceptance)
+    app.cli.add_command(seed_test_data)
 
     from blueprints.api import api
     from blueprints.api.auth import auth_api
