@@ -1,0 +1,73 @@
+# Test environment overrides for integration tests.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.test.yml up --build -d
+#
+# Changes from base:
+#   - Backend: removes dev volume mounts (uses built image), enables test seeding
+#   - All services: overrides credentials with known test values (no .env dependency)
+#   - Backend: adds healthcheck so the CI wait-loop has a stable signal
+
+services:
+  postgres:
+    env_file: []
+    environment:
+      POSTGRES_USER: lumios
+      POSTGRES_PASSWORD: your_secure_password
+      POSTGRES_DB: lumios
+
+  redis:
+    # No overrides needed — base config is fine for tests
+    {}
+
+  minio:
+    env_file: []
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+
+  backend:
+    # Drop the dev volume mounts so the built image is used as-is
+    volumes: []
+    env_file: []
+    environment:
+      POSTGRES_USER: lumios
+      POSTGRES_PASSWORD: your_secure_password
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: lumios
+      SECRET_KEY: test-secret-key-at-least-32-chars-long!
+      JWT_SECRET: test-jwt-secret-key-at-least-32-chars!!
+      DEBUG: "true"
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_PUBLIC_ENDPOINT_URL: http://localhost:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: lumios
+      SEED_TEST_DATA: "true"
+      RATELIMIT_ENABLED: "false"
+      PASSWORD_HASHER_TIME_COST: "1"
+      PASSWORD_HASHER_MEMORY_COST: "8"
+      PASSWORD_HASHER_PARALLELISM: "1"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # Disable services not needed for backend integration tests
+  frontend:
+    profiles:
+      - frontend
+
+  landingpage:
+    profiles:
+      - frontend
+
+  jaeger:
+    profiles:
+      - observability

@@ -48,6 +48,11 @@ def main() -> None:
     subprocess.run([PYTHON, "-m", "flask", "db", "upgrade"], check=True)
     _log("Migrations complete!")
 
+    if os.environ.get("SEED_TEST_DATA") == "true":
+        _log("Seeding test data (SEED_TEST_DATA=true)...")
+        subprocess.run([PYTHON, "-m", "flask", "seed-test-data"], check=True)
+        _log("Test data seeded.")
+
     _log("Starting Gunicorn...")
     workers = os.environ.get(
         "GUNICORN_WORKERS", str(2 * multiprocessing.cpu_count() + 1)
