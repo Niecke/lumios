@@ -25,7 +25,6 @@ def upgrade():
                 "activation_token_created_at",
                 sa.DateTime(),
                 nullable=True,
-                server_default=sa.false(),
             )
         )
 

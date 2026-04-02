@@ -73,9 +73,7 @@ class User(db.Model):
         db.Boolean, nullable=False, default=False, server_default=db.false()
     )
     activation_token = db.Column(db.String(64), nullable=True, unique=True)
-    activation_token_created_at = db.Column(
-        db.DateTime, nullable=True, server_default=db.false()
-    )
+    activation_token_created_at = db.Column(db.DateTime, nullable=True)
     account_type = db.Column(db.String(16), nullable=False, default="local")
     auth_string = db.Column(db.String(255), nullable=True)
     max_libraries = db.Column(db.Integer(), nullable=False, default=100)
