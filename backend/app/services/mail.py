@@ -244,6 +244,27 @@ def add_to_brevo_waitlist(email: str, list_id: int) -> bool:
         return False
 
 
+def notify_admin_new_account(user_email: str, account_type: str) -> None:
+    """Notify the admin that a new account has been registered."""
+    if not ADMIN_EMAIL:
+        current_app.logger.warning(
+            "MAIL skipped (ADMIN_EMAIL not set): new account %s",
+            user_email,
+            extra={"log_type": "mail"},
+        )
+        return
+    html = _html(
+        f"""
+        <h2>Neues Konto registriert</h2>
+        <p>Ein neues Konto wurde registriert:</p>
+        <p><strong>E-Mail:</strong> {user_email}<br>
+           <strong>Anmeldemethode:</strong> {account_type}</p>
+        <p>Das Konto wartet auf Aktivierung.</p>
+    """
+    )
+    _send(ADMIN_EMAIL, "Lumios – Neues Konto registriert", html)
+
+
 def notify_new_support_ticket(ticket_id: int, subject: str, user_email: str) -> None:
     """Notify the admin that a new support ticket has been submitted."""
     if not ADMIN_EMAIL:
