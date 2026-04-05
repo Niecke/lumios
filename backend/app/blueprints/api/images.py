@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, g, current_app
 from security import require_api_auth, require_api_role
 from models import db, User, Library, Image, AuditLogType
 from services.audit import write_audit_log
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import datetime, timezone
 import uuid as uuid_module
 from PIL import Image as PilImage, ImageDraw, ImageFont, ImageOps
@@ -299,6 +299,10 @@ def _get_library(library_id: int, user_id: int) -> Library | None:
     ).scalar_one_or_none()
 
 
+PAGE_SIZE_DEFAULT = 20
+PAGE_SIZE_MAX = 50
+
+
 @images_api.route("/<int:library_id>/images", methods=["GET"])
 @require_api_auth
 @require_api_role("photographer")
@@ -308,12 +312,25 @@ def list_images(library_id: int):
     if library is None:
         return jsonify({"error": "Library not found"}), 404
 
+    page = max(1, request.args.get("page", 1, type=int))
+    page_size = min(
+        PAGE_SIZE_MAX, max(1, request.args.get("page_size", PAGE_SIZE_DEFAULT, type=int))
+    )
+
     user = db.session.get(User, user_id)
+    total = db.session.scalar(
+        select(func.count(Image.id)).where(
+            Image.library_id == library_id, Image.deleted_at.is_(None)
+        )
+    ) or 0
+
     images = (
         db.session.execute(
             select(Image)
             .where(Image.library_id == library_id, Image.deleted_at.is_(None))
             .order_by(Image.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
         .scalars()
         .all()
@@ -331,7 +348,10 @@ def list_images(library_id: int):
     return jsonify(
         {
             "images": image_dicts,
-            "count": len(image_dicts),
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "has_more": page * page_size < total,
             "max_images_per_library": (
                 user.effective_limits["max_images_per_library"] if user else None
             ),

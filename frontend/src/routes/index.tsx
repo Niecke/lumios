@@ -5,11 +5,12 @@
 // Inline rename and delete are available on each card.
 
 import { createFileRoute, redirect, Link } from "@tanstack/react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { authApi, type UserInfo } from "../api/auth";
 import { librariesApi, type Library } from "../api/libraries";
 import { AppBar } from "../components/AppBar";
+import { InfiniteScrollSentinel } from "../components/InfiniteScrollSentinel";
 
 export const Route = createFileRoute("/")({
   beforeLoad: async () => {
@@ -234,17 +235,27 @@ function LibrariesPage() {
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
 
-  const { data, isLoading, isError } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["libraries"],
-    queryFn: librariesApi.list,
+    queryFn: ({ pageParam = 1 }) => librariesApi.list(pageParam as number),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.page + 1 : undefined),
   });
 
   function invalidate() {
-    queryClient.invalidateQueries({ queryKey: ["libraries"] });
+    queryClient.resetQueries({ queryKey: ["libraries"] });
   }
 
-  const count = data?.count ?? 0;
-  const maxLibraries = data?.max_libraries ?? user.max_libraries;
+  const allLibraries = data?.pages.flatMap((p) => p.libraries) ?? [];
+  const count = data?.pages[0]?.total ?? 0;
+  const maxLibraries = data?.pages[0]?.max_libraries ?? user.max_libraries;
   const atLimit = maxLibraries !== null && count >= maxLibraries;
 
   return (
@@ -280,13 +291,13 @@ function LibrariesPage() {
 
         {!isLoading && !isError && (
           <div className="card-deck">
-            {data!.libraries.length === 0 ? (
+            {allLibraries.length === 0 ? (
               <div className="empty-state">
                 <span className="material-icons">photo_library</span>
                 <p>No libraries yet — create your first one above.</p>
               </div>
             ) : (
-              data!.libraries.map((lib) => (
+              allLibraries.map((lib) => (
                 <LibraryCard
                   key={lib.id}
                   lib={lib}
@@ -297,6 +308,12 @@ function LibrariesPage() {
             )}
           </div>
         )}
+
+        <InfiniteScrollSentinel
+          hasNextPage={hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          fetchNextPage={fetchNextPage}
+        />
       </main>
 
       {showCreate && (

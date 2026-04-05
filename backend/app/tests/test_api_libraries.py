@@ -92,13 +92,13 @@ class TestListLibraries:
         res = client.get(BASE, headers=auth_header(token))
         data = res.get_json()
         assert data["libraries"] == []
-        assert data["count"] == 0
+        assert data["total"] == 0
 
     def test_returns_existing_libraries(self, client, photographer, library):
         token = make_token(photographer)
         res = client.get(BASE, headers=auth_header(token))
         data = res.get_json()
-        assert data["count"] == 1
+        assert data["total"] == 1
         assert data["libraries"][0]["name"] == "Wedding 2025"
 
     def test_returns_max_libraries(self, client, photographer):
@@ -113,7 +113,7 @@ class TestListLibraries:
         db.session.commit()
         token = make_token(photographer)
         res = client.get(BASE, headers=auth_header(token))
-        assert res.get_json()["count"] == 0
+        assert res.get_json()["total"] == 0
 
     def test_does_not_return_other_photographers_libraries(
         self, client, photographer, other_photographer
@@ -123,7 +123,7 @@ class TestListLibraries:
         db.session.commit()
         token = make_token(photographer)
         res = client.get(BASE, headers=auth_header(token))
-        assert res.get_json()["count"] == 0
+        assert res.get_json()["total"] == 0
 
     def test_no_auth_returns_401(self, client):
         res = client.get(BASE)
@@ -320,7 +320,7 @@ class TestDeleteLibrary:
         token = make_token(photographer)
         client.delete(f"{BASE}/{library.id}", headers=auth_header(token))
         res = client.get(BASE, headers=auth_header(token))
-        assert res.get_json()["count"] == 0
+        assert res.get_json()["total"] == 0
 
     def test_deleted_at_is_set_in_db(self, client, photographer, library):
         token = make_token(photographer)
@@ -347,3 +347,55 @@ class TestDeleteLibrary:
     def test_no_auth_returns_401(self, client, library):
         res = client.delete(f"{BASE}/{library.id}")
         assert res.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/libraries — pagination
+# ---------------------------------------------------------------------------
+
+
+class TestListLibrariesPagination:
+    def _make_libraries(self, photographer, count):
+        for i in range(count):
+            db.session.add(Library(user_id=photographer.id, name=f"Library {i}"))
+        db.session.commit()
+
+    def test_response_includes_pagination_fields(self, client, photographer, library):
+        token = make_token(photographer)
+        res = client.get(BASE, headers=auth_header(token))
+        data = res.get_json()
+        assert "total" in data
+        assert "page" in data
+        assert "page_size" in data
+        assert "has_more" in data
+
+    def test_default_page_is_1(self, client, photographer, library):
+        token = make_token(photographer)
+        data = client.get(BASE, headers=auth_header(token)).get_json()
+        assert data["page"] == 1
+
+    def test_total_reflects_all_libraries(self, client, photographer):
+        self._make_libraries(photographer, 5)
+        token = make_token(photographer)
+        data = client.get(BASE, headers=auth_header(token)).get_json()
+        assert data["total"] == 5
+
+    def test_has_more_false_when_all_fit_on_page(self, client, photographer):
+        self._make_libraries(photographer, 3)
+        token = make_token(photographer)
+        data = client.get(f"{BASE}?page_size=10", headers=auth_header(token)).get_json()
+        assert data["has_more"] is False
+
+    def test_has_more_true_when_more_pages_exist(self, client, photographer):
+        self._make_libraries(photographer, 5)
+        token = make_token(photographer)
+        data = client.get(f"{BASE}?page_size=3", headers=auth_header(token)).get_json()
+        assert data["has_more"] is True
+        assert len(data["libraries"]) == 3
+
+    def test_page_2_returns_remaining_items(self, client, photographer):
+        self._make_libraries(photographer, 5)
+        token = make_token(photographer)
+        data = client.get(f"{BASE}?page=2&page_size=3", headers=auth_header(token)).get_json()
+        assert len(data["libraries"]) == 2
+        assert data["has_more"] is False

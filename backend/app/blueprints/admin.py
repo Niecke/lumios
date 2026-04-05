@@ -44,6 +44,8 @@ from services.mail import (
 
 
 AUDIT_LOG_PAGE_SIZE = 50
+USERS_PAGE_SIZE = 25
+SUPPORT_PAGE_SIZE = 25
 FEEDBACK_PAGE_SIZE = 25
 FEEDBACK_MAX_NOTE_LENGTH = 1000
 
@@ -95,14 +97,14 @@ def index():
 @login_required
 @require_role("admin")
 def users_view():
-    users = (
-        db.session.execute(
-            select(User)
-            .where(User.deleted_at.is_(None))
-            .options(selectinload(User.roles))
-        )
-        .scalars()
-        .all()
+    users_paginated = db.paginate(
+        select(User)
+        .where(User.deleted_at.is_(None))
+        .options(selectinload(User.roles))
+        .order_by(User.id.desc()),
+        page=request.args.get("page", 1, type=int),
+        per_page=USERS_PAGE_SIZE,
+        error_out=False,
     )
 
     # Per-user stats: libraries, photos, total size
@@ -122,7 +124,11 @@ def users_view():
         for uid, libs, imgs, size in rows
     }
 
-    return render_template("admin/users_view.html", users=users, user_stats=user_stats)
+    return render_template(
+        "admin/users_view.html",
+        users_paginated=users_paginated,
+        user_stats=user_stats,
+    )
 
 
 @admin.route("/admin/user_create", methods=["GET", "POST"])
@@ -601,22 +607,22 @@ def user_gdpr_export(user_id):
 @login_required
 @require_role("admin")
 def support_list():
-    tickets = (
-        db.session.execute(
-            select(SupportTicket)
-            .options(
-                selectinload(SupportTicket.user), selectinload(SupportTicket.comments)
-            )
-            .order_by(
-                # open tickets first, then by newest
-                SupportTicket.status.asc(),
-                SupportTicket.created_at.desc(),
-            )
-        )
-        .scalars()
-        .all()
+    tickets_paginated = db.paginate(
+        select(SupportTicket)
+        .options(selectinload(SupportTicket.user), selectinload(SupportTicket.comments))
+        .order_by(
+            # open tickets first, then by newest
+            SupportTicket.status.asc(),
+            SupportTicket.created_at.desc(),
+        ),
+        page=request.args.get("page", 1, type=int),
+        per_page=SUPPORT_PAGE_SIZE,
+        error_out=False,
     )
-    return render_template("admin/support_list.html", tickets=tickets)
+    return render_template(
+        "admin/support_list.html",
+        tickets_paginated=tickets_paginated,
+    )
 
 
 @admin.route("/admin/support/<int:ticket_id>", methods=["GET"])
@@ -705,26 +711,17 @@ def support_close(ticket_id: int):
 @login_required
 @require_role("admin")
 def feedback_list():
-    page = max(1, request.args.get("page", 1, type=int))
-    total = db.session.scalar(select(func.count(Feedback.id)))
-    feedbacks = (
-        db.session.execute(
-            select(Feedback)
-            .options(selectinload(Feedback.user))
-            .order_by(Feedback.created_at.desc())
-            .offset((page - 1) * FEEDBACK_PAGE_SIZE)
-            .limit(FEEDBACK_PAGE_SIZE)
-        )
-        .scalars()
-        .all()
+    feedbacks_paginated = db.paginate(
+        select(Feedback)
+        .options(selectinload(Feedback.user))
+        .order_by(Feedback.created_at.desc()),
+        page=request.args.get("page", 1, type=int),
+        per_page=FEEDBACK_PAGE_SIZE,
+        error_out=False,
     )
-    total_pages = max(1, (total + FEEDBACK_PAGE_SIZE - 1) // FEEDBACK_PAGE_SIZE)
     return render_template(
         "admin/feedback_list.html",
-        feedbacks=feedbacks,
-        page=page,
-        total_pages=total_pages,
-        total=total,
+        feedbacks_paginated=feedbacks_paginated,
     )
 
 
@@ -847,7 +844,6 @@ def audit_logs():
     from_date_str = request.args.get("from_date", "").strip()
     to_date_str = request.args.get("to_date", "").strip()
     audit_type_str = request.args.get("audit_type", "").strip()
-    page = max(1, request.args.get("page", 1, type=int))
 
     filters = [True]
 
@@ -875,29 +871,20 @@ def audit_logs():
         except ValueError:
             pass
 
-    total = db.session.scalar(select(func.count(AuditLog.id)).where(*filters))
-    entries = (
-        db.session.execute(
-            select(AuditLog)
-            .where(*filters)
-            .options(selectinload(AuditLog.creator))
-            .order_by(desc(AuditLog.audit_date))
-            .offset((page - 1) * AUDIT_LOG_PAGE_SIZE)
-            .limit(AUDIT_LOG_PAGE_SIZE)
-        )
-        .scalars()
-        .all()
+    audit_logs_paginated = db.paginate(
+        select(AuditLog)
+        .where(*filters)
+        .options(selectinload(AuditLog.creator))
+        .order_by(desc(AuditLog.audit_date)),
+        page=request.args.get("page", 1, type=int),
+        per_page=AUDIT_LOG_PAGE_SIZE,
+        error_out=False,
     )
-
-    total_pages = max(1, (total + AUDIT_LOG_PAGE_SIZE - 1) // AUDIT_LOG_PAGE_SIZE)
 
     return render_template(
         "admin/audit_logs.html",
-        entries=entries,
+        audit_logs_paginated=audit_logs_paginated,
         audit_types=AuditLogType,
-        page=page,
-        total_pages=total_pages,
-        total=total,
         from_date=from_date_str,
         to_date=to_date_str,
         audit_type=audit_type_str,

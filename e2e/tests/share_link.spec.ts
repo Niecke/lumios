@@ -81,7 +81,7 @@ test("GET public library returns library metadata and images", async ({
   expect(body.library.uuid).toBe(libraryUuid);
   expect(body.library.name).toBe("Share-link test library");
   expect(Array.isArray(body.images)).toBe(true);
-  expect(body.count).toBe(1);
+  expect(body.total).toBe(1);
 
   const img = body.images[0];
   expect(img.uuid).toBe(imageUuid);

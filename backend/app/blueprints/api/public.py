@@ -60,6 +60,10 @@ def _record_library_view(library: Library) -> None:
         db.session.add(notification)
 
 
+PUBLIC_PAGE_SIZE_DEFAULT = 20
+PUBLIC_PAGE_SIZE_MAX = 50
+
+
 @public_api.route("/libraries/<library_uuid>", methods=["GET"])
 @limiter.limit("30 per minute")
 def get_public_library(library_uuid: str):
@@ -74,13 +78,29 @@ def get_public_library(library_uuid: str):
     if library.is_private:
         return jsonify({"error": "Library not found"}), 404
 
-    _record_library_view(library)
+    page = max(1, request.args.get("page", 1, type=int))
+    page_size = min(
+        PUBLIC_PAGE_SIZE_MAX,
+        max(1, request.args.get("page_size", PUBLIC_PAGE_SIZE_DEFAULT, type=int)),
+    )
+
+    # Only record a view on the first page to avoid inflating view counts during scroll
+    if page == 1:
+        _record_library_view(library)
+
+    total = db.session.scalar(
+        select(func.count(Image.id)).where(
+            Image.library_id == library.id, Image.deleted_at.is_(None)
+        )
+    ) or 0
 
     images = (
         db.session.execute(
             select(Image)
             .where(Image.library_id == library.id, Image.deleted_at.is_(None))
             .order_by(Image.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
         .scalars()
         .all()
@@ -117,7 +137,10 @@ def get_public_library(library_uuid: str):
                 "download_enabled": library.download_enabled,
             },
             "images": image_dicts,
-            "count": len(image_dicts),
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "has_more": page * page_size < total,
         }
     )
 

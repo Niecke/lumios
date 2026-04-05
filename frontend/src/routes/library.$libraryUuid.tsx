@@ -4,13 +4,14 @@
 // Unauthenticated visitors see a read-only public gallery.
 
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { authApi } from "../api/auth";
 import { librariesApi } from "../api/libraries";
 import { imagesApi, type Image } from "../api/images";
 import { publicApi, type PublicImage } from "../api/public";
 import { AppBar } from "../components/AppBar";
+import { InfiniteScrollSentinel } from "../components/InfiniteScrollSentinel";
 
 export const Route = createFileRoute("/library/$libraryUuid")({
   beforeLoad: async () => {
@@ -693,15 +694,24 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
 
   const libId = library?.id;
 
-  const { data, isLoading, isError } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["images", libId],
-    queryFn: () => imagesApi.list(libId!),
+    queryFn: ({ pageParam = 1 }) => imagesApi.list(libId!, pageParam as number),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.page + 1 : undefined),
     enabled: libId !== undefined,
   });
 
   function invalidate() {
     if (libId !== undefined) {
-      queryClient.invalidateQueries({ queryKey: ["images", libId] });
+      queryClient.resetQueries({ queryKey: ["images", libId] });
     }
   }
 
@@ -735,7 +745,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
     }
   }
 
-  const allImages = data?.images ?? [];
+  const allImages = data?.pages.flatMap((p) => p.images) ?? [];
   const hasImages = allImages.length > 0;
   const likedCount = useMemo(
     () => allImages.filter((img) => img.customer_state === "liked").length,
@@ -744,6 +754,8 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
   const images = showLikedOnly
     ? allImages.filter((img) => img.customer_state === "liked")
     : allImages;
+  const totalImages = data?.pages[0]?.total ?? 0;
+  const maxImagesPerLibrary = data?.pages[0]?.max_images_per_library ?? null;
 
   return (
     <>
@@ -820,7 +832,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
 
         {data && (
           <p className="library-count-hint">
-            {data.count} of {data.max_images_per_library ?? "\u221e"} photos
+            {totalImages} of {maxImagesPerLibrary ?? "\u221e"} photos
           </p>
         )}
 
@@ -873,6 +885,14 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
           </div>
         )}
 
+        {!showLikedOnly && (
+          <InfiniteScrollSentinel
+            hasNextPage={hasNextPage}
+            isFetchingNextPage={isFetchingNextPage}
+            fetchNextPage={fetchNextPage}
+          />
+        )}
+
         {hasImages && showLikedOnly && images.length === 0 && (
           <div className="empty-state">
             <span className="material-icons">favorite_border</span>
@@ -910,17 +930,29 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
   const [finishError, setFinishError] = useState<string | null>(null);
   const [finishing, setFinishing] = useState(false);
 
-  const { data, isLoading, isError } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ["public-library", libraryUuid],
-    queryFn: () => publicApi.getLibrary(libraryUuid),
+    queryFn: ({ pageParam = 1 }) => publicApi.getLibrary(libraryUuid, pageParam as number),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.page + 1 : undefined),
   });
 
+  const allImages = data?.pages.flatMap((p) => p.images) ?? [];
+  const library = data?.pages[0]?.library;
+
   const likedCount = useMemo(
-    () => data?.images.filter((img) => img.customer_state === "liked").length ?? 0,
-    [data]
+    () => allImages.filter((img) => img.customer_state === "liked").length,
+    [allImages]
   );
 
-  const isFinished = data?.library.finished_at != null;
+  const isFinished = library?.finished_at != null;
 
   async function toggleLike(img: PublicImage) {
     const newState = img.customer_state === "liked" ? "none" : "liked";
@@ -946,7 +978,7 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
       <header className="app-bar">
         <span className="app-bar__brand">Lumios</span>
         <div className="app-bar__title">
-          {data?.library.name ?? "Library"}
+          {library?.name ?? "Library"}
         </div>
         {isFinished && (
           <span className="reviewed-chip">
@@ -1001,17 +1033,17 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
           </div>
         )}
 
-        {!isLoading && !isError && data && data.images.length === 0 && (
+        {!isLoading && !isError && allImages.length === 0 && (
           <div className="empty-state">
             <span className="material-icons">photo_library</span>
             <p>No photos in this library yet.</p>
           </div>
         )}
 
-        {!isLoading && !isError && data && data.images.length > 0 && (() => {
+        {!isLoading && !isError && allImages.length > 0 && (() => {
           const visibleImages = showLikedOnly
-            ? data.images.filter((img) => img.customer_state === "liked")
-            : data.images;
+            ? allImages.filter((img) => img.customer_state === "liked")
+            : allImages;
           return visibleImages.length > 0 ? (
             <div className="photo-grid">
               {visibleImages.map((img) => (
@@ -1052,6 +1084,14 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
             </div>
           );
         })()}
+
+        {!showLikedOnly && (
+          <InfiniteScrollSentinel
+            hasNextPage={hasNextPage}
+            isFetchingNextPage={isFetchingNextPage}
+            fetchNextPage={fetchNextPage}
+          />
+        )}
 
         {viewImage && (
           <PublicLightbox image={viewImage} onClose={() => setViewImage(null)} />

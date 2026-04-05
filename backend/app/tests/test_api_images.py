@@ -302,3 +302,96 @@ class TestExifStripping:
         assert piexif.ExifIFD.LensSerialNumber not in exif_ifd
         assert piexif.ExifIFD.CameraOwnerName not in exif_ifd
         assert piexif.ExifIFD.MakerNote not in exif_ifd
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/libraries/<id>/images — pagination
+# ---------------------------------------------------------------------------
+
+
+from models import Image, CustomerState
+
+
+def make_images(library, count):
+    for i in range(count):
+        db.session.add(
+            Image(
+                library_id=library.id,
+                s3_key=f"img-{i}.jpg",
+                original_filename=f"img-{i}.jpg",
+                content_type="image/jpeg",
+                size=1024,
+                width=100,
+                height=100,
+                customer_state=CustomerState.none,
+            )
+        )
+    db.session.commit()
+
+
+class TestListImagesPagination:
+    @patch("blueprints.api.images.storage")
+    def test_response_includes_pagination_fields(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.return_value = "http://example.com/img"
+        make_images(library, 3)
+        token = make_token(photographer)
+        data = client.get(
+            f"/api/v1/libraries/{library.id}/images",
+            headers=auth_header(token),
+        ).get_json()
+        assert "total" in data
+        assert "page" in data
+        assert "page_size" in data
+        assert "has_more" in data
+
+    @patch("blueprints.api.images.storage")
+    def test_total_reflects_all_images(self, mock_storage, client, photographer, library):
+        mock_storage.get_presigned_url.return_value = "http://example.com/img"
+        make_images(library, 5)
+        token = make_token(photographer)
+        data = client.get(
+            f"/api/v1/libraries/{library.id}/images",
+            headers=auth_header(token),
+        ).get_json()
+        assert data["total"] == 5
+
+    @patch("blueprints.api.images.storage")
+    def test_has_more_true_when_more_pages_exist(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.return_value = "http://example.com/img"
+        make_images(library, 5)
+        token = make_token(photographer)
+        data = client.get(
+            f"/api/v1/libraries/{library.id}/images?page_size=3",
+            headers=auth_header(token),
+        ).get_json()
+        assert data["has_more"] is True
+        assert len(data["images"]) == 3
+
+    @patch("blueprints.api.images.storage")
+    def test_has_more_false_when_all_fit(self, mock_storage, client, photographer, library):
+        mock_storage.get_presigned_url.return_value = "http://example.com/img"
+        make_images(library, 3)
+        token = make_token(photographer)
+        data = client.get(
+            f"/api/v1/libraries/{library.id}/images?page_size=10",
+            headers=auth_header(token),
+        ).get_json()
+        assert data["has_more"] is False
+
+    @patch("blueprints.api.images.storage")
+    def test_page_2_returns_remaining_items(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.return_value = "http://example.com/img"
+        make_images(library, 5)
+        token = make_token(photographer)
+        data = client.get(
+            f"/api/v1/libraries/{library.id}/images?page=2&page_size=3",
+            headers=auth_header(token),
+        ).get_json()
+        assert len(data["images"]) == 2
+        assert data["has_more"] is False
