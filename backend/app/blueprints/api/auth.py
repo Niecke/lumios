@@ -13,7 +13,11 @@ from config import (
 )
 from services.auth import login_google, login_password, AuthError
 from services.token import create_token
-from services.mail import notify_activation_email, notify_account_cancellation
+from services.mail import (
+    notify_activation_email,
+    notify_account_cancellation,
+    notify_admin_new_account,
+)
 from services.audit import write_audit_log
 from security import require_api_auth, require_api_role
 from models import db, User, Role, Library, Image, AuditLogType
@@ -395,6 +399,7 @@ def register():
     notify_activation_email(
         email, f"{FRONTEND_URL}/activate?token={user.activation_token}"
     )
+    notify_admin_new_account(email, "E-Mail / Passwort")
     current_app.logger.info(
         "User registered: %s (local)", email, extra={"log_type": "audit"}
     )
@@ -475,6 +480,7 @@ def google_register():
     notify_activation_email(
         email, f"{FRONTEND_URL}/activate?token={user.activation_token}"
     )
+    notify_admin_new_account(email, "Google")
     current_app.logger.info(
         "User registered: %s (google)", email, extra={"log_type": "audit"}
     )
