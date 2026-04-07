@@ -165,12 +165,77 @@ function Lightbox({ image, onClose }: { image: Image; onClose: () => void }) {
 
 // ── Lightbox (public — preview only) ─────────────────────────────────────────
 
-function PublicLightbox({ image, onClose }: { image: PublicImage; onClose: () => void }) {
+interface PublicLightboxProps {
+  images: PublicImage[];
+  currentIndex: number;
+  onClose: () => void;
+  onNavigate: (index: number) => void;
+  onToggleLike: (img: PublicImage) => void;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  fetchNextPage: () => void;
+}
+
+function PublicLightbox({
+  images,
+  currentIndex,
+  onClose,
+  onNavigate,
+  onToggleLike,
+  hasNextPage,
+  isFetchingNextPage,
+  fetchNextPage,
+}: PublicLightboxProps) {
+  const image = images[currentIndex];
+  const hasPrev = currentIndex > 0;
+  const hasNext = currentIndex < images.length - 1;
+
+  const goPrev = useCallback(() => {
+    if (hasPrev) onNavigate(currentIndex - 1);
+  }, [hasPrev, currentIndex, onNavigate]);
+
+  const goNext = useCallback(() => {
+    if (hasNext) onNavigate(currentIndex + 1);
+  }, [hasNext, currentIndex, onNavigate]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowLeft") goPrev();
+      else if (e.key === "ArrowRight") goNext();
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose, goPrev, goNext]);
+
+  // Auto-fetch next page when nearing the end
+  useEffect(() => {
+    if (currentIndex >= images.length - 2 && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [currentIndex, images.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  if (!image) return null;
+
+  const isLiked = image.customer_state === "liked";
+
   return (
     <div className="lightbox" onClick={onClose}>
       <button className="lightbox__close" onClick={onClose} title="Close">
         <span className="material-icons">close</span>
       </button>
+
+      {hasPrev && (
+        <button
+          className="lightbox__nav lightbox__nav--prev"
+          onClick={(e) => { e.stopPropagation(); goPrev(); }}
+          title="Previous"
+        >
+          <span className="material-icons">chevron_left</span>
+        </button>
+      )}
+
       <div className="lightbox__content" onClick={(e) => e.stopPropagation()}>
         <img
           src={image.preview_url}
@@ -178,6 +243,30 @@ function PublicLightbox({ image, onClose }: { image: PublicImage; onClose: () =>
           className="lightbox__img"
         />
       </div>
+
+      {hasNext ? (
+        <button
+          className="lightbox__nav lightbox__nav--next"
+          onClick={(e) => { e.stopPropagation(); goNext(); }}
+          title="Next"
+        >
+          <span className="material-icons">chevron_right</span>
+        </button>
+      ) : isFetchingNextPage ? (
+        <div className="lightbox__nav lightbox__nav--next lightbox__nav--loading">
+          <span className="material-icons lightbox__spinner">refresh</span>
+        </div>
+      ) : null}
+
+      <button
+        className={`lightbox__like ${isLiked ? "lightbox__like--active" : ""}`}
+        onClick={(e) => { e.stopPropagation(); onToggleLike(image); }}
+        title={isLiked ? "Remove like" : "Like this photo"}
+      >
+        <span className="material-icons">
+          {isLiked ? "favorite" : "favorite_border"}
+        </span>
+      </button>
     </div>
   );
 }
@@ -925,7 +1014,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
 
 function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
   const queryClient = useQueryClient();
-  const [viewImage, setViewImage] = useState<PublicImage | null>(null);
+  const [viewImageIndex, setViewImageIndex] = useState<number | null>(null);
   const [showLikedOnly, setShowLikedOnly] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const [finishing, setFinishing] = useState(false);
@@ -953,6 +1042,20 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
   );
 
   const isFinished = library?.finished_at != null;
+
+  const visibleImages = useMemo(
+    () => showLikedOnly
+      ? allImages.filter((img) => img.customer_state === "liked")
+      : allImages,
+    [allImages, showLikedOnly]
+  );
+
+  // Clamp lightbox index when visible images shrink (e.g. un-liking in "liked only" mode)
+  useEffect(() => {
+    if (viewImageIndex !== null && viewImageIndex >= visibleImages.length) {
+      setViewImageIndex(visibleImages.length > 0 ? visibleImages.length - 1 : null);
+    }
+  }, [viewImageIndex, visibleImages.length]);
 
   async function toggleLike(img: PublicImage) {
     const newState = img.customer_state === "liked" ? "none" : "liked";
@@ -1040,20 +1143,17 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
           </div>
         )}
 
-        {!isLoading && !isError && allImages.length > 0 && (() => {
-          const visibleImages = showLikedOnly
-            ? allImages.filter((img) => img.customer_state === "liked")
-            : allImages;
-          return visibleImages.length > 0 ? (
+        {!isLoading && !isError && allImages.length > 0 && (
+          visibleImages.length > 0 ? (
             <div className="photo-grid">
-              {visibleImages.map((img) => (
+              {visibleImages.map((img, idx) => (
                 <div key={img.uuid} className="photo-tile">
                   <img
                     src={img.thumb_url}
                     alt={img.filename}
                     className="photo-tile__img"
                     loading="lazy"
-                    onClick={() => setViewImage(img)}
+                    onClick={() => setViewImageIndex(idx)}
                     style={{ cursor: "pointer" }}
                   />
                   <button
@@ -1082,8 +1182,8 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
               <span className="material-icons">favorite_border</span>
               <p>No liked photos yet.</p>
             </div>
-          );
-        })()}
+          )
+        )}
 
         {!showLikedOnly && (
           <InfiniteScrollSentinel
@@ -1093,8 +1193,17 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
           />
         )}
 
-        {viewImage && (
-          <PublicLightbox image={viewImage} onClose={() => setViewImage(null)} />
+        {viewImageIndex !== null && viewImageIndex < visibleImages.length && (
+          <PublicLightbox
+            images={visibleImages}
+            currentIndex={viewImageIndex}
+            onClose={() => setViewImageIndex(null)}
+            onNavigate={setViewImageIndex}
+            onToggleLike={toggleLike}
+            hasNextPage={hasNextPage}
+            isFetchingNextPage={isFetchingNextPage}
+            fetchNextPage={fetchNextPage}
+          />
         )}
       </main>
     </>
