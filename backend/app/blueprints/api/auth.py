@@ -13,7 +13,7 @@ from config import (
 )
 from services.auth import login_google, login_password, AuthError
 from services.token import create_token
-from services.mail import notify_activation_email
+from services.mail import notify_activation_email, notify_account_cancellation
 from services.audit import write_audit_log
 from security import require_api_auth, require_api_role
 from models import db, User, Role, Library, Image, AuditLogType
@@ -557,3 +557,45 @@ def resend_activation():
         "Activation email resent: %s", user.email, extra={"log_type": "audit"}
     )
     return jsonify({"ok": True}), 200
+
+
+@auth_api.route("/account", methods=["DELETE"])
+@require_api_auth
+def deactivate_account():
+    """Self-service account deactivation.
+
+    Sets active=False and deleted_at=now so the purge command will hard-delete
+    the user and all their data after ACCOUNT_RETENTION_DAYS days.
+    """
+    user_id = int(g.token_payload["sub"])
+    user = db.session.get(User, user_id)
+
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    if user.is_system:
+        return jsonify({"error": "System accounts cannot be deactivated"}), 403
+
+    user.active = False
+    user.deleted_at = datetime.now(timezone.utc)
+
+    write_audit_log(
+        AuditLogType.user_deleted,
+        creator_id=user_id,
+        related_object_type="user",
+        related_object_id=str(user_id),
+    )
+    db.session.commit()
+
+    current_app.logger.info(
+        "Account self-deactivated: %s", user.email, extra={"log_type": "audit"}
+    )
+
+    try:
+        notify_account_cancellation(user.email)
+    except Exception:
+        current_app.logger.exception(
+            "Failed to send cancellation email to %s", user.email
+        )
+
+    return jsonify({"ok": True})

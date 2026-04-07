@@ -520,3 +520,63 @@ class TestResendActivation:
     def test_missing_token_returns_400(self, client):
         res = client.post(self.ENDPOINT, json={})
         assert res.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/v1/auth/account
+# ---------------------------------------------------------------------------
+
+
+class TestDeactivateAccount:
+    ENDPOINT = f"{BASE}/account"
+
+    @pytest.fixture
+    def system_user(self, photographer_role):
+        """A system user — must not be able to self-deactivate."""
+        user = User(email="system@test.com", active=True, is_system=True)
+        user.set_password("SystemPass123!")
+        user.roles.append(photographer_role)
+        db.session.add(user)
+        db.session.commit()
+        return user
+
+    def test_unauthenticated_returns_401(self, client):
+        res = client.delete(self.ENDPOINT)
+        assert res.status_code == 401
+
+    def test_happy_path_returns_200(self, client, photographer_user):
+        token = make_token(photographer_user)
+        res = client.delete(self.ENDPOINT, headers=auth_header(token))
+        assert res.status_code == 200
+        assert res.get_json()["ok"] is True
+
+    def test_sets_inactive_and_deleted_at(self, client, photographer_user):
+        token = make_token(photographer_user)
+        client.delete(self.ENDPOINT, headers=auth_header(token))
+        user = db.session.get(User, photographer_user.id)
+        assert user.active is False
+        assert user.deleted_at is not None
+
+    def test_system_user_returns_403(self, client, system_user):
+        token = make_token(system_user)
+        res = client.delete(self.ENDPOINT, headers=auth_header(token))
+        assert res.status_code == 403
+
+    @patch("blueprints.api.auth.notify_account_cancellation")
+    def test_sends_cancellation_email(self, mock_mail, client, photographer_user):
+        token = make_token(photographer_user)
+        client.delete(self.ENDPOINT, headers=auth_header(token))
+        mock_mail.assert_called_once_with(photographer_user.email)
+
+    @patch("blueprints.api.auth.notify_account_cancellation", side_effect=Exception("SMTP down"))
+    def test_email_failure_does_not_fail_request(self, mock_mail, client, photographer_user):
+        token = make_token(photographer_user)
+        res = client.delete(self.ENDPOINT, headers=auth_header(token))
+        assert res.status_code == 200
+
+    def test_token_invalid_after_deactivation(self, client, photographer_user):
+        """The same JWT must be rejected immediately after deactivation."""
+        token = make_token(photographer_user)
+        client.delete(self.ENDPOINT, headers=auth_header(token))
+        res = client.get(f"{BASE}/me", headers=auth_header(token))
+        assert res.status_code == 401
