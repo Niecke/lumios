@@ -520,3 +520,73 @@ class TestResendActivation:
     def test_missing_token_returns_400(self, client):
         res = client.post(self.ENDPOINT, json={})
         assert res.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/auth/register — admin notification
+# ---------------------------------------------------------------------------
+
+
+class TestRegisterAdminNotification:
+    ENDPOINT = f"{BASE}/register"
+
+    @patch("blueprints.api.auth.notify_admin_new_account")
+    @patch("blueprints.api.auth.notify_activation_email")
+    def test_register_sends_admin_notification(
+        self, mock_activation, mock_admin, client, photographer_role
+    ):
+        res = client.post(
+            self.ENDPOINT,
+            json={
+                "email": "newuser@test.com",
+                "password": "SecurePass123!",
+                "agb_accepted": True,
+            },
+        )
+        assert res.status_code == 201
+        mock_admin.assert_called_once_with("newuser@test.com", "E-Mail / Passwort")
+
+    @patch("blueprints.api.auth.notify_admin_new_account")
+    @patch("blueprints.api.auth.notify_activation_email")
+    def test_register_no_admin_notification_on_failure(
+        self, mock_activation, mock_admin, client, photographer_role
+    ):
+        # Missing agb_accepted — registration should fail, no notification sent
+        res = client.post(
+            self.ENDPOINT,
+            json={"email": "newuser@test.com", "password": "SecurePass123!"},
+        )
+        assert res.status_code == 400
+        mock_admin.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/auth/google/register — admin notification
+# ---------------------------------------------------------------------------
+
+
+class TestGoogleRegisterAdminNotification:
+    ENDPOINT = f"{BASE}/google/register"
+
+    @patch("blueprints.api.auth.notify_admin_new_account")
+    @patch("blueprints.api.auth.notify_activation_email")
+    @patch("blueprints.api.auth._google_jwks")
+    def test_google_register_sends_admin_notification(
+        self, mock_jwks, mock_activation, mock_admin, client, photographer_role
+    ):
+        google_email = "googleuser2@test.com"
+        google_sub = "google-sub-12345"
+
+        mock_signing_key = MagicMock()
+        mock_jwks.get_signing_key_from_jwt.return_value = mock_signing_key
+
+        with patch("blueprints.api.auth.jwt.decode") as mock_decode:
+            mock_decode.return_value = {"email": google_email, "sub": google_sub}
+            with patch("blueprints.api.auth.GOOGLE_FRONTEND_CLIENT_ID", "test-client-id"):
+                res = client.post(
+                    self.ENDPOINT,
+                    json={"credential": "fake-credential", "agb_accepted": True},
+                )
+
+        assert res.status_code == 201
+        mock_admin.assert_called_once_with(google_email, "Google")
