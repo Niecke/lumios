@@ -183,6 +183,10 @@ export const authApi = {
       body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
     }),
 
+  // Deactivate the authenticated account. Sets deleted_at; data is purged after 30 days.
+  deactivateAccount: () =>
+    apiFetch<{ ok: boolean }>("/api/v1/auth/account", { method: "DELETE" }),
+
   logout: () => {
     tokenStore.clear();
     googleProfileStore.clear();

@@ -3,7 +3,7 @@
 // Shows Google profile (avatar, name, email), account details (subscription,
 // storage usage), and a progress bar for storage usage.
 
-import { createFileRoute, redirect, Link } from "@tanstack/react-router";
+import { createFileRoute, redirect, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { authApi, type UserInfo } from "../api/auth";
@@ -163,6 +163,85 @@ function ChangePasswordCard() {
   );
 }
 
+// ── Deactivate account card (Danger Zone) ────────────────────────────────────
+
+function DeactivateAccountCard() {
+  const navigate = useNavigate();
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function handleDeactivate() {
+    setError(null);
+    setPending(true);
+    try {
+      await authApi.deactivateAccount();
+      authApi.logout();
+      navigate({ to: "/login" });
+    } catch (err) {
+      setError((err as Error).message);
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="account-card" style={{ borderColor: "#dc2626" }}>
+      <div style={{ padding: "1.25rem 1.5rem" }}>
+        <h2 style={{ fontSize: "1.1rem", fontWeight: 500, marginBottom: "0.5rem", color: "#dc2626" }}>
+          Danger Zone
+        </h2>
+        <p style={{ marginBottom: "1rem", color: "#555", fontSize: "0.9rem" }}>
+          Deactivating your account will <strong>immediately</strong> prevent you
+          from logging in. All your data (libraries, photos) will be{" "}
+          <strong>permanently deleted after 30 days</strong> and cannot be recovered.
+        </p>
+
+        {error && (
+          <div className="alert alert--error" style={{ marginBottom: "1rem" }}>
+            {error}
+          </div>
+        )}
+
+        {!confirming ? (
+          <button
+            type="button"
+            className="btn btn-contained"
+            style={{ background: "#dc2626", borderColor: "#dc2626" }}
+            onClick={() => setConfirming(true)}
+          >
+            Deactivate my account
+          </button>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            <p style={{ fontWeight: 500, color: "#dc2626", margin: 0 }}>
+              Are you sure? This cannot be undone.
+            </p>
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <button
+                type="button"
+                className="btn btn-contained"
+                style={{ background: "#dc2626", borderColor: "#dc2626" }}
+                disabled={pending}
+                onClick={handleDeactivate}
+              >
+                {pending ? "Deactivating…" : "Yes, deactivate my account"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-text"
+                disabled={pending}
+                onClick={() => { setConfirming(false); setError(null); }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Account page ──────────────────────────────────────────────────────────────
 
 function AccountPage() {
@@ -226,6 +305,7 @@ function AccountPage() {
           </div>
 
           {user.account_type === "local" && <ChangePasswordCard />}
+          <DeactivateAccountCard />
         </div>
       </main>
     </>
