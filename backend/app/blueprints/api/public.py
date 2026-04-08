@@ -15,17 +15,12 @@ from services.audit import write_audit_log
 from sqlalchemy import select, func, or_
 from services import storage
 from services.mail import notify_gallery_finished, add_to_brevo_waitlist
-from config import MAX_USERS, BREVO_WAITLIST_LIST_ID, REDIS_URL
+from config import MAX_USERS, BREVO_WAITLIST_LIST_ID
+from services.redis_client import get_redis, cache_get, cache_set, cache_delete_pattern
 from datetime import datetime, timezone, date
 import re
 import json
 import hashlib
-
-if REDIS_URL:
-    import redis as _redis_module
-    _redis = _redis_module.from_url(REDIS_URL, decode_responses=True)
-else:
-    _redis = None
 
 public_api = Blueprint("public_api", __name__, url_prefix="/public")
 
@@ -37,7 +32,8 @@ def _record_library_view(library: Library) -> None:
     visitor IP sees this library today. Silently skips if Redis is unavailable."""
     library.last_viewed_at = datetime.now(timezone.utc)
 
-    if _redis is None:
+    r = get_redis()
+    if r is None:
         return
 
     forwarded = request.headers.get("X-Forwarded-For", "")
@@ -47,7 +43,7 @@ def _record_library_view(library: Library) -> None:
     redis_key = f"library:viewed:{library.id}:{visitor_hash}"
 
     try:
-        is_new = _redis.set(redis_key, 1, nx=True, ex=86400)
+        is_new = r.set(redis_key, 1, nx=True, ex=86400)
     except Exception:
         return  # Redis unavailable — skip notification, last_viewed_at already set
 
@@ -88,6 +84,13 @@ def get_public_library(library_uuid: str):
     if page == 1:
         _record_library_view(library)
 
+    # Try to serve from cache (view recording above still runs)
+    cache_key = f"public:library:{library_uuid}:p{page}:s{page_size}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        db.session.commit()
+        return jsonify(cached)
+
     total = db.session.scalar(
         select(func.count(Image.id)).where(
             Image.library_id == library.id, Image.deleted_at.is_(None)
@@ -125,24 +128,24 @@ def get_public_library(library_uuid: str):
 
     db.session.commit()
 
-    return jsonify(
-        {
-            "library": {
-                "uuid": library.uuid,
-                "name": library.name,
-                "finished_at": (
-                    library.finished_at.isoformat() if library.finished_at else None
-                ),
-                "use_original_as_preview": library.use_original_as_preview,
-                "download_enabled": library.download_enabled,
-            },
-            "images": image_dicts,
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "has_more": page * page_size < total,
-        }
-    )
+    result = {
+        "library": {
+            "uuid": library.uuid,
+            "name": library.name,
+            "finished_at": (
+                library.finished_at.isoformat() if library.finished_at else None
+            ),
+            "use_original_as_preview": library.use_original_as_preview,
+            "download_enabled": library.download_enabled,
+        },
+        "images": image_dicts,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "has_more": page * page_size < total,
+    }
+    cache_set(cache_key, result, ttl=300)
+    return jsonify(result)
 
 
 @public_api.route(
@@ -181,6 +184,7 @@ def update_customer_state(library_uuid: str, image_uuid: str):
 
     image.customer_state = state
     db.session.commit()
+    cache_delete_pattern(f"public:library:{library_uuid}:*")
     return jsonify({"uuid": image.uuid, "customer_state": state.value})
 
 
@@ -234,6 +238,7 @@ def finish_library(library_uuid: str):
         related_object_id=library.uuid,
     )
     db.session.commit()
+    cache_delete_pattern(f"public:library:{library_uuid}:*")
 
     notify_gallery_finished(
         photographer_email=library.photographer.email,
@@ -303,6 +308,10 @@ def download_image(library_uuid: str, image_uuid: str):
 @limiter.limit("30 per minute")
 def registration_status():
     """Return whether new registrations are currently open."""
+    cached = cache_get("registration:status")
+    if cached is not None:
+        return jsonify(cached)
+
     slot_count = (
         db.session.execute(
             select(func.count(User.id)).where(
@@ -312,7 +321,9 @@ def registration_status():
         ).scalar()
         or 0
     )
-    return jsonify({"can_register": slot_count < MAX_USERS})
+    result = {"can_register": slot_count < MAX_USERS}
+    cache_set("registration:status", result, ttl=120)
+    return jsonify(result)
 
 
 @public_api.route("/waitlist", methods=["POST"])
