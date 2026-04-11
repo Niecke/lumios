@@ -11,6 +11,12 @@ import piexif
 import tempfile
 import os
 from services import storage
+from services.redis_client import cache_delete, cache_delete_pattern
+
+_DEJAVU_FONT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "fonts", "DejaVuSans-Bold.ttf",
+)
 
 images_api = Blueprint("images_api", __name__, url_prefix="/libraries")
 
@@ -75,9 +81,7 @@ def _build_watermark_tile() -> PilImage.Image:
     """Build a small RGBA tile with the watermark pattern, created once at import."""
     font_size = 40
     try:
-        font = ImageFont.truetype(
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size
-        )
+        font = ImageFont.truetype(_DEJAVU_FONT, font_size)
     except OSError:
         font = ImageFont.load_default(size=font_size)
 
@@ -514,6 +518,8 @@ def upload_image(library_id: int):
         related_object_id=image.uuid,
     )
     db.session.commit()
+    cache_delete_pattern(f"public:library:{library.uuid}:*")
+    cache_delete(f"user:storage:{user_id}")
 
     original_url = storage.get_presigned_url(original_path)
     preview_url = storage.get_presigned_url(preview_path)
@@ -557,4 +563,6 @@ def delete_image(library_id: int, image_id: int):
         related_object_id=image.uuid,
     )
     db.session.commit()
+    cache_delete_pattern(f"public:library:{library.uuid}:*")
+    cache_delete(f"user:storage:{user_id}")
     return "", 204

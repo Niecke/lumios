@@ -6,11 +6,11 @@ from urllib.parse import urlencode
 from main import limiter
 from config import (
     GOOGLE_FRONTEND_CLIENT_ID,
-    REDIS_URL,
     FRONTEND_URL,
     MAX_USERS,
     CURRENT_AGB_VERSION,
 )
+from services.redis_client import get_redis, cache_get, cache_set, cache_delete
 from services.auth import login_google, login_password, AuthError
 from services.token import create_token
 from services.mail import (
@@ -43,15 +43,19 @@ def me():
     user_id = int(payload["sub"])
     user = db.session.execute(select(User).filter_by(id=user_id)).scalar_one_or_none()
 
-    storage_used = db.session.execute(
-        select(db.func.coalesce(db.func.sum(Image.size), 0))
-        .join(Image.library)
-        .where(
-            Library.user_id == user_id,
-            Image.deleted_at.is_(None),
-            Library.deleted_at.is_(None),
-        )
-    ).scalar()
+    cache_key = f"user:storage:{user_id}"
+    storage_used = cache_get(cache_key)
+    if storage_used is None:
+        storage_used = db.session.execute(
+            select(db.func.coalesce(db.func.sum(Image.size), 0))
+            .join(Image.library)
+            .where(
+                Library.user_id == user_id,
+                Image.deleted_at.is_(None),
+                Library.deleted_at.is_(None),
+            )
+        ).scalar()
+        cache_set(cache_key, storage_used, ttl=300)
 
     limits = user.effective_limits if user else {}
     result = {
@@ -138,10 +142,8 @@ def _store_login_code(token: str) -> str:
     Falls back to an in-memory dict when Redis is unavailable (local dev).
     """
     code = secrets.token_urlsafe(32)
-    if REDIS_URL:
-        import redis as _redis
-
-        r = _redis.from_url(REDIS_URL)
+    r = get_redis()
+    if r is not None:
         r.setex(f"login_code:{code}", 60, token)
     else:
         _login_codes[code] = token
@@ -150,16 +152,14 @@ def _store_login_code(token: str) -> str:
 
 def _consume_login_code(code: str) -> str | None:
     """Retrieve and delete a one-time login code. Returns the JWT or None."""
-    if REDIS_URL:
-        import redis as _redis
-
-        r = _redis.from_url(REDIS_URL)
+    r = get_redis()
+    if r is not None:
         pipe = r.pipeline()
         key = f"login_code:{code}"
         pipe.get(key)
         pipe.delete(key)
-        token_bytes, _ = pipe.execute()
-        return token_bytes.decode() if token_bytes else None
+        token, _ = pipe.execute()
+        return token if token else None
     return _login_codes.pop(code, None)
 
 
@@ -396,6 +396,7 @@ def register():
         related_object_id=str(user.id),
     )
     db.session.commit()
+    cache_delete("registration:status")
     notify_activation_email(
         email, f"{FRONTEND_URL}/activate?token={user.activation_token}"
     )
@@ -477,6 +478,7 @@ def google_register():
         related_object_id=str(user.id),
     )
     db.session.commit()
+    cache_delete("registration:status")
     notify_activation_email(
         email, f"{FRONTEND_URL}/activate?token={user.activation_token}"
     )

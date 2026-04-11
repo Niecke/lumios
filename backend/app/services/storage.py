@@ -3,6 +3,7 @@ S3-compatible object storage service.
 Uses boto3 — works with MinIO locally and any S3-compatible backend in production.
 """
 
+import hashlib
 import logging
 import os
 
@@ -64,17 +65,34 @@ def upload_fileobj(file_obj, key: str, content_type: str) -> None:
 
 
 def get_presigned_url(key: str, expires_in: int = 3600) -> str:
-    return _public_client.generate_presigned_url(
+    from services.redis_client import cache_get, cache_set
+
+    cache_key = f"presigned:{hashlib.sha256(key.encode()).hexdigest()[:16]}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    url = _public_client.generate_presigned_url(
         "get_object",
         Params={"Bucket": S3_BUCKET, "Key": key},
         ExpiresIn=expires_in,
     )
+    cache_set(cache_key, url, ttl=min(expires_in // 2, 1800))
+    return url
 
 
 def get_presigned_download_url(key: str, filename: str, expires_in: int = 3600) -> str:
     """Presigned URL that sets Content-Disposition: attachment so the browser
     saves the file directly instead of opening it in a new tab."""
-    return _public_client.generate_presigned_url(
+    from services.redis_client import cache_get, cache_set
+
+    raw = f"{key}:{filename}"
+    cache_key = f"presigned_dl:{hashlib.sha256(raw.encode()).hexdigest()[:16]}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    url = _public_client.generate_presigned_url(
         "get_object",
         Params={
             "Bucket": S3_BUCKET,
@@ -83,6 +101,8 @@ def get_presigned_download_url(key: str, filename: str, expires_in: int = 3600) 
         },
         ExpiresIn=expires_in,
     )
+    cache_set(cache_key, url, ttl=min(expires_in // 2, 1800))
+    return url
 
 
 def delete_object(key: str) -> None:

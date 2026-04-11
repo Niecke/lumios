@@ -1,7 +1,7 @@
 from flask import Blueprint, current_app
-from config import REDIS_URL
 from models import db
 from sqlalchemy import text
+from services.redis_client import get_redis
 
 health = Blueprint("health", __name__)
 
@@ -16,12 +16,10 @@ def _ping_db() -> bool:
 
 
 def _ping_redis() -> bool:
-    if not REDIS_URL:
+    r = get_redis()
+    if r is None:
         return True
     try:
-        import redis
-
-        r = redis.from_url(REDIS_URL, socket_connect_timeout=2)
         return r.ping()
     except Exception as ex:
         current_app.logger.error("Redis ping failed: %s", ex)
