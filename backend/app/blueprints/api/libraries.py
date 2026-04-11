@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import io
 from PIL import Image as PilImage
 from services import storage
+from services.redis_client import cache_delete_pattern
 from blueprints.api.images import (
     _build_placeholder_image,
     _create_watermarked_preview,
@@ -203,6 +204,7 @@ def update_library(library_id: int):
         related_object_id=library.uuid,
     )
     db.session.commit()
+    cache_delete_pattern(f"public:library:{library.uuid}:*")
     return jsonify(library.to_dict())
 
 
@@ -395,4 +397,5 @@ def delete_library(library_id: int):
         related_object_id=library.uuid,
     )
     db.session.commit()
+    cache_delete_pattern(f"public:library:{library.uuid}:*")
     return "", 204

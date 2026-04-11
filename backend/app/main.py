@@ -135,10 +135,10 @@ def create_app(test_config=None):
 
     # Server-side sessions (Redis if available, filesystem fallback)
     if REDIS_URL:
-        import redis
+        from services.redis_client import get_redis_session
 
         app.config["SESSION_TYPE"] = "redis"
-        app.config["SESSION_REDIS"] = redis.from_url(REDIS_URL)
+        app.config["SESSION_REDIS"] = get_redis_session()
         app.logger.info(f"Sessions: Redis ({REDIS_URL})", extra={"log_type": "startup"})
     else:
         app.config["SESSION_TYPE"] = "filesystem"
