@@ -5,7 +5,7 @@ from services.audit import write_audit_log
 from sqlalchemy import select, func
 from datetime import datetime, timezone
 import io
-from PIL import Image as PilImage
+from PIL import Image as PilImage, ImageOps
 from services import storage
 from services.redis_client import cache_delete_pattern
 from blueprints.api.images import (
@@ -372,6 +372,72 @@ def watermark_preview(library_id: int):
     pil_img.close()
 
     return Response(preview_buf.read(), mimetype="image/jpeg")
+
+
+@libraries_api.route("/<int:library_id>/watermark/apply", methods=["POST"])
+@require_api_auth
+@require_api_role("photographer")
+def apply_watermark(library_id: int):
+    # TODO: This endpoint processes all images synchronously in a single request.
+    # It should be refactored to use an async task queue (e.g. Celery) to avoid
+    # blocking the request for large libraries.
+    user_id = int(g.token_payload["sub"])
+    library = db.session.execute(
+        select(Library).where(
+            Library.id == library_id,
+            Library.user_id == user_id,
+            Library.deleted_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if library is None:
+        return jsonify({"error": "Library not found"}), 404
+
+    images = (
+        db.session.execute(
+            select(Image).where(
+                Image.library_id == library_id, Image.deleted_at.is_(None)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    logo = _load_library_logo(library)
+
+    updated = 0
+    failed = 0
+    for image in images:
+        try:
+            original_data = storage.get_object_bytes(
+                image.storage_path("originals")
+            )
+            pil_img = PilImage.open(io.BytesIO(original_data))
+            pil_img = ImageOps.exif_transpose(pil_img)
+            preview_buf = _create_watermarked_preview(
+                pil_img,
+                len(original_data),
+                logo=logo,
+                logo_scale=library.watermark_scale or 0.2,
+                logo_position=library.watermark_position or "bottom_right",
+            )
+            pil_img.close()
+            storage.upload_fileobj(
+                preview_buf, image.storage_path("previews"), "image/jpeg"
+            )
+            updated += 1
+        except Exception:
+            current_app.logger.warning(
+                "Failed to apply watermark to image id=%s library=%s",
+                image.id,
+                library_id,
+            )
+            failed += 1
+
+    if logo is not None:
+        logo.close()
+
+    cache_delete_pattern(f"public:library:{library.uuid}:*")
+    return jsonify({"updated": updated, "failed": failed, "total": len(images)}), 200
 
 
 @libraries_api.route("/<int:library_id>", methods=["DELETE"])

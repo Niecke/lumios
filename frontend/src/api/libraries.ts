@@ -104,6 +104,12 @@ export const librariesApi = {
   deleteWatermark: (id: number) =>
     apiFetch<Library>(`/api/v1/libraries/${id}/watermark`, { method: "DELETE" }),
 
+  applyWatermark: (id: number) =>
+    apiFetch<{ updated: number; failed: number; total: number }>(
+      `/api/v1/libraries/${id}/watermark/apply`,
+      { method: "POST" }
+    ),
+
   fetchWatermarkPreview: (id: number, scale: number, position: string): Promise<string> => {
     const token = tokenStore.get();
     const params = new URLSearchParams({ scale: String(scale), position });
