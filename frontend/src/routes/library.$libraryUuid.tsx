@@ -420,6 +420,9 @@ function WatermarkSettings({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [watermarkChanged, setWatermarkChanged] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applyResult, setApplyResult] = useState<{ updated: number; failed: number } | null>(null);
 
   const initialScale = Math.round((library.watermark_scale ?? 0.2) * 100);
   const initialPosition = library.watermark_position ?? "bottom_right";
@@ -480,6 +483,7 @@ function WatermarkSettings({
     try {
       await librariesApi.uploadWatermark(library.id, file);
       onUpdate();
+      setWatermarkChanged(true);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -505,8 +509,24 @@ function WatermarkSettings({
         watermark_position: pendingPosition,
       });
       onUpdate();
+      setWatermarkChanged(true);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleApplyWatermark() {
+    setApplying(true);
+    setApplyResult(null);
+    try {
+      const result = await librariesApi.applyWatermark(library.id);
+      setApplyResult(result);
+      setWatermarkChanged(false);
+      onUpdate();
+    } catch {
+      setApplyResult(null);
+    } finally {
+      setApplying(false);
     }
   }
 
@@ -612,6 +632,26 @@ function WatermarkSettings({
         >
           {saving ? "Saving…" : "Save position & size"}
         </button>
+      )}
+
+      {/* Apply watermark to existing images */}
+      {hasLogo && (
+        <div style={{ marginBottom: "0.75rem" }}>
+          <button
+            className={`btn ${watermarkChanged ? "btn-contained" : "btn-outlined"}`}
+            style={{ fontSize: "0.8rem" }}
+            onClick={handleApplyWatermark}
+            disabled={applying}
+          >
+            <span className="material-icons" style={{ fontSize: 16 }}>refresh</span>
+            {applying ? "Updating watermarks…" : "Update existing images"}
+          </button>
+          {applyResult && (
+            <div style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)", marginTop: "0.4rem" }}>
+              Updated {applyResult.updated} of {applyResult.updated + applyResult.failed} images.
+            </div>
+          )}
+        </div>
       )}
 
       {/* Preview */}
