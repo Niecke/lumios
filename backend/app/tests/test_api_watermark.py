@@ -3,6 +3,7 @@ Tests for watermark endpoints:
   POST   /api/v1/libraries/<id>/watermark        upload PNG logo
   DELETE /api/v1/libraries/<id>/watermark        remove logo
   GET    /api/v1/libraries/<id>/watermark/preview live preview JPEG
+  POST   /api/v1/libraries/<id>/watermark/apply  re-render all previews
   PATCH  /api/v1/libraries/<id>                  watermark_scale / watermark_position
 
 Also covers:
@@ -10,6 +11,7 @@ Also covers:
 """
 
 import io
+from datetime import datetime
 from unittest.mock import patch
 
 import pytest
@@ -394,3 +396,127 @@ class TestCreateWatermarkedPreview:
                 pil_img, original_file_size=100, logo=logo, logo_scale=0.1, logo_position=position
             )
             assert buf.read(3) == b"\xff\xd8\xff", f"Failed for position={position}"
+
+
+# ---------------------------------------------------------------------------
+# POST /watermark/apply — re-render all image previews
+# ---------------------------------------------------------------------------
+
+
+class TestApplyWatermark:
+
+    @patch("blueprints.api.images.storage")
+    @patch("blueprints.api.libraries.storage")
+    def test_applies_watermark_to_all_images(
+        self, mock_lib_storage, mock_img_storage, client, photographer, library
+    ):
+        library.watermark_gcs_key = f"watermarks/{photographer.id}/{library.id}/watermark.png"
+        library.watermark_scale = 0.2
+        library.watermark_position = "bottom_right"
+        img1 = Image(
+            library_id=library.id,
+            s3_key="img1.jpg",
+            original_filename="photo1.jpg",
+            content_type="image/jpeg",
+            size=1000,
+            width=8,
+            height=6,
+        )
+        img2 = Image(
+            library_id=library.id,
+            s3_key="img2.jpg",
+            original_filename="photo2.jpg",
+            content_type="image/jpeg",
+            size=1000,
+            width=8,
+            height=6,
+        )
+        db.session.add_all([img1, img2])
+        db.session.commit()
+
+        mock_img_storage.get_object_bytes.return_value = make_png_bytes()
+        mock_lib_storage.get_object_bytes.return_value = make_jpeg_bytes()
+        token = make_token(photographer)
+        res = client.post(
+            f"/api/v1/libraries/{library.id}/watermark/apply",
+            headers=auth_header(token),
+        )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["updated"] == 2
+        assert data["failed"] == 0
+        assert data["total"] == 2
+        assert mock_lib_storage.upload_fileobj.call_count == 2
+
+    def test_requires_auth(self, client, library):
+        res = client.post(
+            f"/api/v1/libraries/{library.id}/watermark/apply",
+            headers=auth_header("badtoken"),
+        )
+        assert res.status_code == 401
+
+    def test_returns_404_for_wrong_library(self, client, photographer):
+        token = make_token(photographer)
+        res = client.post(
+            "/api/v1/libraries/9999/watermark/apply",
+            headers=auth_header(token),
+        )
+        assert res.status_code == 404
+
+    @patch("blueprints.api.libraries.storage")
+    def test_returns_zero_for_empty_library(
+        self, mock_storage, client, photographer, library
+    ):
+        library.watermark_gcs_key = f"watermarks/{photographer.id}/{library.id}/watermark.png"
+        db.session.commit()
+        token = make_token(photographer)
+        res = client.post(
+            f"/api/v1/libraries/{library.id}/watermark/apply",
+            headers=auth_header(token),
+        )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["updated"] == 0
+        assert data["failed"] == 0
+        assert data["total"] == 0
+
+    @patch("blueprints.api.images.storage")
+    @patch("blueprints.api.libraries.storage")
+    def test_skips_deleted_images(
+        self, mock_lib_storage, mock_img_storage, client, photographer, library
+    ):
+        library.watermark_gcs_key = f"watermarks/{photographer.id}/{library.id}/watermark.png"
+        active_img = Image(
+            library_id=library.id,
+            s3_key="active.jpg",
+            original_filename="active.jpg",
+            content_type="image/jpeg",
+            size=1000,
+            width=8,
+            height=6,
+        )
+        deleted_img = Image(
+            library_id=library.id,
+            s3_key="deleted.jpg",
+            original_filename="deleted.jpg",
+            content_type="image/jpeg",
+            size=1000,
+            width=8,
+            height=6,
+            deleted_at=datetime(2025, 1, 1),
+        )
+        db.session.add_all([active_img, deleted_img])
+        db.session.commit()
+
+        mock_img_storage.get_object_bytes.return_value = make_png_bytes()
+        mock_lib_storage.get_object_bytes.return_value = make_jpeg_bytes()
+        token = make_token(photographer)
+        res = client.post(
+            f"/api/v1/libraries/{library.id}/watermark/apply",
+            headers=auth_header(token),
+        )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["updated"] == 1
+        assert data["failed"] == 0
+        assert data["total"] == 1
