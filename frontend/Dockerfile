@@ -15,7 +15,7 @@ RUN npm run build
 
 
 # ---- Stage 2: Runtime ----
-FROM docker.io/library/nginx:1.29-alpine
+FROM docker.io/library/nginx:1.30-alpine
 
 ENV NGINX_ENVSUBST_FILTER=^(BACKEND_URL|BACKEND_HOST|S3_ENDPOINT_URL)$
 
