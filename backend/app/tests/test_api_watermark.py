@@ -229,7 +229,7 @@ class TestWatermarkPreview:
         assert res.status_code == 400
         assert "No watermark" in res.get_json()["error"]
 
-    @patch("blueprints.api.images.storage")
+    @patch("services.images.storage")
     def test_returns_jpeg_with_placeholder_when_no_photos(self, mock_img_storage, client, photographer, library):
         """No photos in library → placeholder image is used; preview is still returned."""
         library.watermark_gcs_key = "watermarks/1/1/watermark.png"
@@ -244,7 +244,7 @@ class TestWatermarkPreview:
         assert res.content_type == "image/jpeg"
         assert len(res.data) > 0
 
-    @patch("blueprints.api.images.storage")
+    @patch("services.images.storage")
     @patch("blueprints.api.libraries.storage")
     def test_returns_jpeg(self, mock_lib_storage, mock_img_storage, client, photographer, library_with_image):
         library_with_image.watermark_gcs_key = f"watermarks/{photographer.id}/{library_with_image.id}/watermark.png"
@@ -360,14 +360,14 @@ class TestPatchWatermarkConfig:
 class TestCreateWatermarkedPreview:
 
     def test_fallback_text_watermark_produces_valid_jpeg(self):
-        from blueprints.api.images import _create_watermarked_preview
+        from services.images import _create_watermarked_preview
 
         pil_img = PilImage.new("RGB", (100, 80), color=(50, 100, 150))
         buf = _create_watermarked_preview(pil_img, original_file_size=100)
         assert buf.read(3) == b"\xff\xd8\xff"  # JPEG magic bytes
 
     def test_logo_watermark_produces_valid_jpeg(self):
-        from blueprints.api.images import _create_watermarked_preview
+        from services.images import _create_watermarked_preview
 
         pil_img = PilImage.new("RGB", (200, 150), color=(50, 100, 150))
         logo = PilImage.new("RGBA", (20, 20), color=(255, 0, 0, 200))
@@ -377,7 +377,7 @@ class TestCreateWatermarkedPreview:
         assert buf.read(3) == b"\xff\xd8\xff"
 
     def test_large_file_stays_under_5mb(self):
-        from blueprints.api.images import _create_watermarked_preview, PREVIEW_MAX_BYTES
+        from services.images import _create_watermarked_preview, PREVIEW_MAX_BYTES
 
         # Create a large image (500x400) and report a large file size to trigger resize
         pil_img = PilImage.new("RGB", (500, 400), color=(120, 80, 60))
@@ -387,7 +387,7 @@ class TestCreateWatermarkedPreview:
         assert buf.tell() <= PREVIEW_MAX_BYTES
 
     def test_logo_composited_at_all_positions(self):
-        from blueprints.api.images import _create_watermarked_preview
+        from services.images import _create_watermarked_preview
 
         pil_img = PilImage.new("RGB", (200, 150))
         logo = PilImage.new("RGBA", (10, 10), color=(0, 255, 0, 255))
@@ -405,7 +405,7 @@ class TestCreateWatermarkedPreview:
 
 class TestApplyWatermark:
 
-    @patch("blueprints.api.images.storage")
+    @patch("services.images.storage")
     @patch("blueprints.api.libraries.storage")
     def test_applies_watermark_to_all_images(
         self, mock_lib_storage, mock_img_storage, client, photographer, library
@@ -480,7 +480,7 @@ class TestApplyWatermark:
         assert data["failed"] == 0
         assert data["total"] == 0
 
-    @patch("blueprints.api.images.storage")
+    @patch("services.images.storage")
     @patch("blueprints.api.libraries.storage")
     def test_skips_deleted_images(
         self, mock_lib_storage, mock_img_storage, client, photographer, library

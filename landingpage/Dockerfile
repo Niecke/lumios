@@ -1,4 +1,4 @@
-FROM docker.io/library/nginx:1.29-alpine
+FROM docker.io/library/nginx:1.30-alpine
 
 ARG APP_URL=https://lumios-app.niecke-it.de
 ARG BACKEND_URL=https://lumios-api.niecke-it.de
