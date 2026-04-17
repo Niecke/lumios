@@ -12,6 +12,7 @@ export interface Library {
   use_original_as_preview: boolean;
   download_enabled: boolean;
   is_private: boolean;
+  public_upload_enabled: boolean;
   watermark_gcs_key: string | null;
   watermark_scale: number | null;
   watermark_position: string | null;
@@ -71,6 +72,7 @@ export const librariesApi = {
     use_original_as_preview?: boolean;
     download_enabled?: boolean;
     is_private?: boolean;
+    public_upload_enabled?: boolean;
     watermark_scale?: number;
     watermark_position?: string;
   }) =>

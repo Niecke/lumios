@@ -8,7 +8,7 @@ import io
 from PIL import Image as PilImage, ImageOps
 from services import storage
 from services.redis_client import cache_delete_pattern
-from blueprints.api.images import (
+from services.images import (
     _build_placeholder_image,
     _create_watermarked_preview,
     _load_library_logo,
@@ -182,6 +182,12 @@ def update_library(library_id: int):
         if not isinstance(value, bool):
             return jsonify({"error": "is_private must be a boolean"}), 400
         library.is_private = value
+
+    if "public_upload_enabled" in data:
+        value = data["public_upload_enabled"]
+        if not isinstance(value, bool):
+            return jsonify({"error": "public_upload_enabled must be a boolean"}), 400
+        library.public_upload_enabled = value
 
     if "watermark_scale" in data:
         scale = data["watermark_scale"]

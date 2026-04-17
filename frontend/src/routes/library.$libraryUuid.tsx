@@ -85,6 +85,11 @@ function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
           <span className="material-icons">favorite</span>
         </div>
       )}
+      {image.is_external && (
+        <div className="photo-tile__external-badge">
+          <span className="material-icons">cloud_upload</span>
+        </div>
+      )}
       <img
         src={image.thumb_url ?? image.original_url ?? undefined}
         alt={image.filename}
@@ -687,10 +692,10 @@ function LibrarySettingsOverlay({
   onClose,
   updateLibrary,
 }: {
-  library: { id: number; use_original_as_preview: boolean; download_enabled: boolean; is_private: boolean; watermark_gcs_key: string | null; watermark_scale: number | null; watermark_position: string | null };
+  library: { id: number; use_original_as_preview: boolean; download_enabled: boolean; is_private: boolean; public_upload_enabled: boolean; watermark_gcs_key: string | null; watermark_scale: number | null; watermark_position: string | null };
   onUpdate: () => void;
   onClose: () => void;
-  updateLibrary: { mutate: (patch: { use_original_as_preview?: boolean; download_enabled?: boolean; is_private?: boolean }) => void; isPending: boolean };
+  updateLibrary: { mutate: (patch: { use_original_as_preview?: boolean; download_enabled?: boolean; is_private?: boolean; public_upload_enabled?: boolean }) => void; isPending: boolean };
 }) {
   return (
     <div className="dialog-overlay" onClick={onClose}>
@@ -731,6 +736,15 @@ function LibrarySettingsOverlay({
                 : "Anyone with the link can view this library",
               checked: library.is_private,
               onChange: (v: boolean) => updateLibrary.mutate({ is_private: v }),
+            },
+            {
+              icon: "cloud_upload",
+              label: "Allow visitor uploads",
+              description: library.public_upload_enabled
+                ? "Visitors can upload photos to this library"
+                : "Only you can upload photos",
+              checked: library.public_upload_enabled,
+              onChange: (v: boolean) => updateLibrary.mutate({ public_upload_enabled: v }),
             },
           ].map(({ icon, label, description, checked, onChange }, i, arr) => (
             <div
@@ -1058,6 +1072,7 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
   const [showLikedOnly, setShowLikedOnly] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const [finishing, setFinishing] = useState(false);
+  const [publicQueue, setPublicQueue] = useState<UploadItem[]>([]);
 
   const {
     data,
@@ -1116,6 +1131,35 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
     }
   }
 
+  async function handlePublicFiles(files: File[]) {
+    const newItems: UploadItem[] = files.map((f) => ({
+      id: crypto.randomUUID(),
+      file: f,
+      status: "pending",
+    }));
+    setPublicQueue((q) => [...q, ...newItems]);
+
+    for (const item of newItems) {
+      setPublicQueue((q) =>
+        q.map((i) => (i.id === item.id ? { ...i, status: "uploading" } : i))
+      );
+      try {
+        await publicApi.uploadImage(libraryUuid, item.file);
+        setPublicQueue((q) =>
+          q.map((i) => (i.id === item.id ? { ...i, status: "done" } : i))
+        );
+        queryClient.invalidateQueries({ queryKey: ["public-library", libraryUuid] });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Upload failed";
+        setPublicQueue((q) =>
+          q.map((i) =>
+            i.id === item.id ? { ...i, status: "error", error: message } : i
+          )
+        );
+      }
+    }
+  }
+
   return (
     <>
       <header className="app-bar">
@@ -1161,6 +1205,13 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
       )}
 
       <main className="page-content">
+        {library?.public_upload_enabled && !isFinished && (
+          <>
+            <DropZone onFiles={handlePublicFiles} compact={allImages.length > 0} />
+            <UploadQueue items={publicQueue} />
+          </>
+        )}
+
         {isLoading && (
           <div className="photo-grid">
             {[0, 1, 2, 3, 4, 5].map((i) => (
@@ -1176,12 +1227,14 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
           </div>
         )}
 
-        {!isLoading && !isError && allImages.length === 0 && (
+        {!isLoading && !isError && allImages.length === 0 && !library?.public_upload_enabled && (
           <div className="empty-state">
             <span className="material-icons">photo_library</span>
             <p>No photos in this library yet.</p>
           </div>
         )}
+
+        {!isLoading && !isError && allImages.length === 0 && library?.public_upload_enabled && !isFinished && null}
 
         {!isLoading && !isError && allImages.length > 0 && (
           visibleImages.length > 0 ? (
