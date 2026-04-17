@@ -17,6 +17,7 @@ export interface PublicLibraryPage {
     name: string;
     finished_at: string | null;
     download_enabled: boolean;
+    public_upload_enabled: boolean;
   };
   images: PublicImage[];
   total: number;
@@ -81,5 +82,25 @@ export const publicApi = {
       );
     }
     return data as { uuid: string; finished_at: string };
+  },
+
+  uploadImage: async (
+    libraryUuid: string,
+    file: File
+  ): Promise<{ uuid: string }> => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`/api/v1/public/libraries/${libraryUuid}/images`, {
+      method: "POST",
+      body: form,
+    });
+    const contentType = res.headers.get("content-type") ?? "";
+    const data = contentType.includes("application/json") ? await res.json() : null;
+    if (!res.ok) {
+      throw new Error(
+        (data as { error?: string } | null)?.error ?? `Request failed (${res.status})`
+      );
+    }
+    return data as { uuid: string };
   },
 };

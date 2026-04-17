@@ -11,6 +11,7 @@ export interface Image {
   width: number | null;
   height: number | null;
   customer_state: string;
+  is_external: boolean;
   created_at: string;
   original_url: string | null;
   preview_url: string | null;

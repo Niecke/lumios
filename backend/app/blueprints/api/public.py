@@ -17,6 +17,7 @@ from services import storage
 from services.mail import notify_gallery_finished, add_to_brevo_waitlist
 from config import MAX_USERS, BREVO_WAITLIST_LIST_ID
 from services.redis_client import get_redis, cache_get, cache_set, cache_delete_pattern
+from services.images import validate_upload, process_and_store_image
 from datetime import datetime, timezone, date
 import re
 import json
@@ -137,6 +138,7 @@ def get_public_library(library_uuid: str):
             ),
             "use_original_as_preview": library.use_original_as_preview,
             "download_enabled": library.download_enabled,
+            "public_upload_enabled": library.public_upload_enabled,
         },
         "images": image_dicts,
         "total": total,
@@ -302,6 +304,97 @@ def download_image(library_uuid: str, image_uuid: str):
     db.session.commit()
 
     return jsonify({"download_url": download_url})
+
+
+@public_api.route("/libraries/<library_uuid>/images", methods=["POST"])
+@limiter.limit("10 per minute")
+def public_upload_image(library_uuid: str):
+    library = db.session.execute(
+        select(Library).where(
+            Library.uuid == library_uuid,
+            Library.deleted_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if library is None:
+        return jsonify({"error": "Library not found"}), 404
+    if library.is_private:
+        return jsonify({"error": "Library not found"}), 404
+    if not library.public_upload_enabled:
+        return jsonify({"error": "Public uploads are not enabled for this library"}), 403
+
+    owner = db.session.get(User, library.user_id)
+    if owner is None:
+        return jsonify({"error": "Library owner not found"}), 404
+
+    limits = owner.effective_limits
+
+    current_count = db.session.execute(
+        select(db.func.count())
+        .select_from(Image)
+        .where(Image.library_id == library.id, Image.deleted_at.is_(None))
+    ).scalar()
+
+    if current_count >= limits["max_images_per_library"]:
+        return (
+            jsonify(
+                {
+                    "error": f"Image limit reached ({limits['max_images_per_library']}) for this library."
+                }
+            ),
+            422,
+        )
+
+    storage_used = db.session.execute(
+        select(db.func.coalesce(db.func.sum(Image.size), 0))
+        .join(Image.library)
+        .where(
+            Library.user_id == owner.id,
+            Image.deleted_at.is_(None),
+            Library.deleted_at.is_(None),
+        )
+    ).scalar()
+
+    if storage_used >= limits["max_storage_bytes"]:
+        limit_mb = limits["max_storage_bytes"] // (1024 * 1024)
+        return (
+            jsonify(
+                {
+                    "error": f"Storage limit reached ({limit_mb} MB) for this library."
+                }
+            ),
+            422,
+        )
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    file = request.files["file"]
+    if not file.filename:
+        return jsonify({"error": "No file selected"}), 400
+
+    content_type = file.content_type or ""
+    file_data = file.read()
+
+    try:
+        validate_upload(file_data, content_type, file.filename)
+    except ValueError as exc:
+        msg = str(exc)
+        if "Only JPEG" in msg:
+            return jsonify({"error": msg}), 415
+        if "too large" in msg:
+            return jsonify({"error": msg}), 413
+        return jsonify({"error": msg}), 415
+
+    try:
+        image = process_and_store_image(
+            library, owner, file_data, file.filename, content_type, is_external=True
+        )
+    except Exception:
+        current_app.logger.exception(
+            "GCS upload failed for public upload library=%s", library_uuid
+        )
+        return jsonify({"error": "Storage error. Please try again."}), 502
+
+    return jsonify({"uuid": image.uuid}), 201
 
 
 @public_api.route("/registration_status", methods=["GET"])

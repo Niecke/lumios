@@ -164,6 +164,9 @@ class Library(db.Model):
     is_private = db.Column(
         db.Boolean, nullable=False, default=False, server_default=db.false()
     )
+    public_upload_enabled = db.Column(
+        db.Boolean, nullable=False, default=False, server_default=db.false()
+    )
     last_viewed_at = db.Column(db.DateTime, nullable=True)
     watermark_gcs_key = db.Column(db.String(512), nullable=True)
     watermark_scale = db.Column(db.Float, nullable=True)
@@ -184,6 +187,7 @@ class Library(db.Model):
             "use_original_as_preview": self.use_original_as_preview,
             "download_enabled": self.download_enabled,
             "is_private": self.is_private,
+            "public_upload_enabled": self.public_upload_enabled,
             "watermark_gcs_key": self.watermark_gcs_key,
             "watermark_scale": self.watermark_scale,
             "watermark_position": self.watermark_position,
@@ -216,6 +220,9 @@ class Image(db.Model):
         db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
     deleted_at = db.Column(db.DateTime, nullable=True)
+    is_external = db.Column(
+        db.Boolean, nullable=False, default=False, server_default=db.false()
+    )
 
     library = db.relationship("Library", backref=db.backref("images", lazy="dynamic"))
 
@@ -244,6 +251,7 @@ class Image(db.Model):
             "width": self.width,
             "height": self.height,
             "customer_state": self.customer_state.value,
+            "is_external": self.is_external,
             "created_at": self.created_at.isoformat(),
             "original_url": original_url,
             "preview_url": preview_url,

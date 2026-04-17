@@ -253,3 +253,111 @@ class TestGetPublicLibraryPagination:
             client.get(f"{BASE}/libraries/{public_library.uuid}?page=1&page_size=3")
             client.get(f"{BASE}/libraries/{public_library.uuid}?page=2&page_size=3")
         assert mock_record.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/public/libraries/<uuid>/images  — public upload
+# ---------------------------------------------------------------------------
+
+
+import io as _io
+from PIL import Image as _PilImage
+from unittest.mock import patch as _patch
+
+
+def _make_jpeg_bytes() -> bytes:
+    buf = _io.BytesIO()
+    img = _PilImage.new("RGB", (2, 2), color="blue")
+    img.save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+class TestPublicUpload:
+    @pytest.fixture
+    def upload_library(self, photographer):
+        lib = Library(
+            user_id=photographer.id,
+            name="Upload Gallery",
+            is_private=False,
+            public_upload_enabled=True,
+        )
+        db.session.add(lib)
+        db.session.commit()
+        return lib
+
+    @pytest.fixture
+    def disabled_library(self, photographer):
+        lib = Library(
+            user_id=photographer.id,
+            name="Disabled Gallery",
+            is_private=False,
+            public_upload_enabled=False,
+        )
+        db.session.add(lib)
+        db.session.commit()
+        return lib
+
+    def _post_jpeg(self, client, library_uuid, data=None):
+        jpeg = data or _make_jpeg_bytes()
+        return client.post(
+            f"{BASE}/libraries/{library_uuid}/images",
+            data={"file": (_io.BytesIO(jpeg), "photo.jpg", "image/jpeg")},
+            content_type="multipart/form-data",
+        )
+
+    def test_upload_disabled_returns_403(self, client, disabled_library):
+        with _patch("services.images.storage"):
+            res = self._post_jpeg(client, disabled_library.uuid)
+        assert res.status_code == 403
+
+    def test_upload_enabled_accepts_jpeg(self, client, upload_library):
+        with _patch("services.images.storage"):
+            res = self._post_jpeg(client, upload_library.uuid)
+        assert res.status_code == 201
+        assert "uuid" in res.get_json()
+
+    def test_upload_marks_image_as_external(self, client, upload_library):
+        from models import Image as _Image
+        from sqlalchemy import select as _select
+        with _patch("services.images.storage"):
+            self._post_jpeg(client, upload_library.uuid)
+        img = db.session.execute(
+            _select(_Image).where(_Image.library_id == upload_library.id)
+        ).scalar_one_or_none()
+        assert img is not None
+        assert img.is_external is True
+
+    def test_private_library_returns_404(self, client, private_library):
+        private_library.public_upload_enabled = True
+        db.session.commit()
+        with _patch("services.images.storage"):
+            res = self._post_jpeg(client, private_library.uuid)
+        assert res.status_code == 404
+
+    def test_upload_rejects_wrong_content_type(self, client, upload_library):
+        res = client.post(
+            f"{BASE}/libraries/{upload_library.uuid}/images",
+            data={"file": (_io.BytesIO(b"hello"), "text.txt", "text/plain")},
+            content_type="multipart/form-data",
+        )
+        assert res.status_code == 415
+
+    def test_public_upload_enforces_quota(self, client, upload_library, photographer):
+        photographer.max_images_per_library = 0
+        db.session.commit()
+        with _patch("services.images.storage"):
+            res = self._post_jpeg(client, upload_library.uuid)
+        assert res.status_code == 422
+
+    def test_response_contains_public_upload_enabled(self, client, upload_library):
+        with _patch("services.storage.get_presigned_url", return_value="http://example.com/img"):
+            res = client.get(f"{BASE}/libraries/{upload_library.uuid}")
+        data = res.get_json()
+        assert "public_upload_enabled" in data["library"]
+        assert data["library"]["public_upload_enabled"] is True
+
+    def test_response_public_upload_enabled_defaults_false(self, client, public_library):
+        with _patch("services.storage.get_presigned_url", return_value="http://example.com/img"):
+            res = client.get(f"{BASE}/libraries/{public_library.uuid}")
+        data = res.get_json()
+        assert data["library"]["public_upload_enabled"] is False

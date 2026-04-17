@@ -399,3 +399,36 @@ class TestListLibrariesPagination:
         data = client.get(f"{BASE}?page=2&page_size=3", headers=auth_header(token)).get_json()
         assert len(data["libraries"]) == 2
         assert data["has_more"] is False
+
+
+# ---------------------------------------------------------------------------
+# PATCH public_upload_enabled
+# ---------------------------------------------------------------------------
+
+
+class TestPatchPublicUploadEnabled:
+    @pytest.fixture
+    def library(self, photographer):
+        lib = Library(user_id=photographer.id, name="Test Library")
+        db.session.add(lib)
+        db.session.commit()
+        return lib
+
+    def test_patch_public_upload_enabled_true(self, client, photographer, library):
+        token = make_token(photographer)
+        res = client.patch(
+            f"{BASE}/{library.id}",
+            json={"public_upload_enabled": True},
+            headers=auth_header(token),
+        )
+        assert res.status_code == 200
+        assert res.get_json()["public_upload_enabled"] is True
+
+    def test_patch_public_upload_enabled_invalid_type(self, client, photographer, library):
+        token = make_token(photographer)
+        res = client.patch(
+            f"{BASE}/{library.id}",
+            json={"public_upload_enabled": "yes"},
+            headers=auth_header(token),
+        )
+        assert res.status_code == 400

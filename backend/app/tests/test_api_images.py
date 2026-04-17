@@ -215,7 +215,7 @@ class TestUploadMagicByteValidation:
 class TestUploadValidImages:
     """Valid images with correct content types must be accepted (storage mocked)."""
 
-    @patch("blueprints.api.images.storage")
+    @patch("services.images.storage")
     def test_accepts_valid_jpeg(self, mock_storage, client, photographer, library):
         mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
         token = make_token(photographer)
@@ -245,7 +245,7 @@ class TestUploadValidImages:
         assert thumb_key.startswith(f"photos/{photographer.id}/{library.id}/thumbs/")
         assert thumb_key.endswith(".jpg")
 
-    @patch("blueprints.api.images.storage")
+    @patch("services.images.storage")
     def test_accepts_valid_png(self, mock_storage, client, photographer, library):
         mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
         token = make_token(photographer)
@@ -276,7 +276,7 @@ class TestUploadValidImages:
 class TestExifStripping:
     """GPS and device-identifying EXIF tags must be removed from JPEG originals."""
 
-    @patch("blueprints.api.images.storage")
+    @patch("services.images.storage")
     def test_gps_and_serial_stripped_from_original(
         self, mock_storage, client, photographer, library
     ):
@@ -330,7 +330,7 @@ def make_images(library, count):
 
 
 class TestListImagesPagination:
-    @patch("blueprints.api.images.storage")
+    @patch("services.images.storage")
     def test_response_includes_pagination_fields(
         self, mock_storage, client, photographer, library
     ):
@@ -346,7 +346,7 @@ class TestListImagesPagination:
         assert "page_size" in data
         assert "has_more" in data
 
-    @patch("blueprints.api.images.storage")
+    @patch("services.images.storage")
     def test_total_reflects_all_images(self, mock_storage, client, photographer, library):
         mock_storage.get_presigned_url.return_value = "http://example.com/img"
         make_images(library, 5)
@@ -357,7 +357,7 @@ class TestListImagesPagination:
         ).get_json()
         assert data["total"] == 5
 
-    @patch("blueprints.api.images.storage")
+    @patch("services.images.storage")
     def test_has_more_true_when_more_pages_exist(
         self, mock_storage, client, photographer, library
     ):
@@ -371,7 +371,7 @@ class TestListImagesPagination:
         assert data["has_more"] is True
         assert len(data["images"]) == 3
 
-    @patch("blueprints.api.images.storage")
+    @patch("services.images.storage")
     def test_has_more_false_when_all_fit(self, mock_storage, client, photographer, library):
         mock_storage.get_presigned_url.return_value = "http://example.com/img"
         make_images(library, 3)
@@ -382,7 +382,7 @@ class TestListImagesPagination:
         ).get_json()
         assert data["has_more"] is False
 
-    @patch("blueprints.api.images.storage")
+    @patch("services.images.storage")
     def test_page_2_returns_remaining_items(
         self, mock_storage, client, photographer, library
     ):
