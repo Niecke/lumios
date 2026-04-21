@@ -1,6 +1,6 @@
 # ---- Stage 1: Build ----
 # Installs all dependencies (including C/Rust extensions) into a virtualenv.
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /build
 
