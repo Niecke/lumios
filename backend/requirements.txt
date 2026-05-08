@@ -5,7 +5,7 @@ psycopg[binary]==3.3.4
 authlib==1.7.2
 requests==2.33.1
 python-dotenv==1.2.2
-cryptography==46.0.7
+cryptography==48.0.0
 Flask-Migrate==4.1.0
 argon2-cffi==25.1.0
 flask-talisman==1.1.0
