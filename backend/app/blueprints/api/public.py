@@ -1,4 +1,11 @@
-from flask import Blueprint, jsonify, request, current_app
+from flask import (
+    Blueprint,
+    jsonify,
+    request,
+    current_app,
+    Response,
+    stream_with_context,
+)
 from main import limiter
 from models import (
     db,
@@ -14,6 +21,7 @@ from models import (
 from services.audit import write_audit_log
 from sqlalchemy import select, func, or_
 from services import storage
+from services.zip_stream import stream_zip
 from services.mail import notify_gallery_finished, add_to_brevo_waitlist
 from config import MAX_USERS, BREVO_WAITLIST_LIST_ID
 from services.redis_client import get_redis, cache_get, cache_set, cache_delete_pattern
@@ -92,11 +100,14 @@ def get_public_library(library_uuid: str):
         db.session.commit()
         return jsonify(cached)
 
-    total = db.session.scalar(
-        select(func.count(Image.id)).where(
-            Image.library_id == library.id, Image.deleted_at.is_(None)
+    total = (
+        db.session.scalar(
+            select(func.count(Image.id)).where(
+                Image.library_id == library.id, Image.deleted_at.is_(None)
+            )
         )
-    ) or 0
+        or 0
+    )
 
     images = (
         db.session.execute(
@@ -120,9 +131,13 @@ def get_public_library(library_uuid: str):
             "customer_state": img.customer_state.value,
             "preview_url": storage.get_presigned_url(img.storage_path(preview_variant)),
             "thumb_url": storage.get_presigned_url(img.storage_path("thumbs")),
-            "download_url": storage.get_presigned_download_url(
-                img.storage_path(preview_variant), img.original_filename
-            ) if library.download_enabled else None,
+            "download_url": (
+                storage.get_presigned_download_url(
+                    img.storage_path(preview_variant), img.original_filename
+                )
+                if library.download_enabled
+                else None
+            ),
         }
         for img in images
     ]
@@ -306,6 +321,70 @@ def download_image(library_uuid: str, image_uuid: str):
     return jsonify({"download_url": download_url})
 
 
+@public_api.route("/libraries/<library_uuid>/download", methods=["GET"])
+@limiter.limit("3 per minute")
+def download_library_zip(library_uuid: str):
+    """Stream a ZIP archive of every image in the library to the customer.
+
+    The archive is built on the fly: each image is fetched from S3 in chunks
+    and forwarded into the ZIP entry with no compression (JPEG/PNG are already
+    compressed). Memory use is bounded regardless of library size.
+    """
+    library = db.session.execute(
+        select(Library).where(
+            Library.uuid == library_uuid,
+            Library.deleted_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if library is None:
+        return jsonify({"error": "Library not found"}), 404
+    if library.is_private:
+        return jsonify({"error": "Library not found"}), 404
+    if not library.download_enabled:
+        return jsonify({"error": "Downloads are not enabled for this library"}), 403
+
+    images = (
+        db.session.execute(
+            select(Image)
+            .where(Image.library_id == library.id, Image.deleted_at.is_(None))
+            .order_by(Image.created_at.asc())
+        )
+        .scalars()
+        .all()
+    )
+    if not images:
+        return jsonify({"error": "Library has no images"}), 404
+
+    variant = "originals" if library.use_original_as_preview else "previews"
+    snapshots = [
+        (img.uuid, img.original_filename, img.storage_path(variant)) for img in images
+    ]
+
+    for img in images:
+        write_audit_log(
+            AuditLogType.picture_downloaded,
+            related_object_type="image",
+            related_object_id=img.uuid,
+        )
+    db.session.commit()
+
+    # replace everything except for A-Za-z0-9._-
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", library.name).strip("_") or "library"
+    zip_filename = f"{safe_name}.zip"
+
+    def entries():
+        for _uuid, filename, key in snapshots:
+            yield filename, lambda k=key: storage.iter_object_chunks(k)
+
+    response = Response(
+        stream_with_context(stream_zip(entries())),
+        mimetype="application/zip",
+    )
+    response.headers["Content-Disposition"] = f'attachment; filename="{zip_filename}"'
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @public_api.route("/libraries/<library_uuid>/images", methods=["POST"])
 @limiter.limit("10 per minute")
 def public_upload_image(library_uuid: str):
@@ -320,7 +399,10 @@ def public_upload_image(library_uuid: str):
     if library.is_private:
         return jsonify({"error": "Library not found"}), 404
     if not library.public_upload_enabled:
-        return jsonify({"error": "Public uploads are not enabled for this library"}), 403
+        return (
+            jsonify({"error": "Public uploads are not enabled for this library"}),
+            403,
+        )
 
     owner = db.session.get(User, library.user_id)
     if owner is None:
@@ -358,9 +440,7 @@ def public_upload_image(library_uuid: str):
         limit_mb = limits["max_storage_bytes"] // (1024 * 1024)
         return (
             jsonify(
-                {
-                    "error": f"Storage limit reached ({limit_mb} MB) for this library."
-                }
+                {"error": f"Storage limit reached ({limit_mb} MB) for this library."}
             ),
             422,
         )
