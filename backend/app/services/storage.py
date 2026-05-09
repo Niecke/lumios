@@ -113,3 +113,15 @@ def get_object_bytes(key: str) -> bytes:
     """Download an object from GCS and return its raw bytes."""
     response = _client.get_object(Bucket=S3_BUCKET, Key=key)
     return response["Body"].read()
+
+
+def iter_object_chunks(key: str, chunk_size: int = 65536):
+    """Yield successive byte chunks of an object body without buffering it whole."""
+    response = _client.get_object(Bucket=S3_BUCKET, Key=key)
+    body = response["Body"]
+    try:
+        for chunk in body.iter_chunks(chunk_size):
+            if chunk:
+                yield chunk
+    finally:
+        body.close()

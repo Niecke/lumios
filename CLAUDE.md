@@ -383,6 +383,7 @@ GET  /api/v1/public/libraries/<uuid>                # Get library + image metada
 POST /api/v1/public/libraries/<uuid>/images/<id>/toggle  # Toggle favourite
 POST /api/v1/public/libraries/<uuid>/finish          # Mark selection complete
 GET  /api/v1/public/libraries/<uuid>/images/<id>/download  # Download original (if enabled)
+GET  /api/v1/public/libraries/<uuid>/download        # Stream all images as ZIP (if enabled)
 GET  /api/v1/public/registration_status              # Check if registration is open
 POST /api/v1/public/waitlist                         # Join waitlist
 POST /api/v1/public/client-errors                    # Report frontend errors

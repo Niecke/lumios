@@ -361,3 +361,123 @@ class TestPublicUpload:
             res = client.get(f"{BASE}/libraries/{public_library.uuid}")
         data = res.get_json()
         assert data["library"]["public_upload_enabled"] is False
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/public/libraries/<uuid>/download — bulk zip download
+# ---------------------------------------------------------------------------
+
+
+import zipfile as _zipfile
+
+
+class TestDownloadLibraryZip:
+    def test_private_library_returns_404(self, client, private_library):
+        res = client.get(f"{BASE}/libraries/{private_library.uuid}/download")
+        assert res.status_code == 404
+
+    def test_nonexistent_library_returns_404(self, client):
+        res = client.get(f"{BASE}/libraries/00000000-0000-0000-0000-000000000000/download")
+        assert res.status_code == 404
+
+    def test_download_disabled_returns_403(self, client, public_library, image_in_library):
+        res = client.get(f"{BASE}/libraries/{public_library.uuid}/download")
+        assert res.status_code == 403
+
+    def test_empty_library_returns_404(self, client, public_library):
+        public_library.download_enabled = True
+        db.session.commit()
+        res = client.get(f"{BASE}/libraries/{public_library.uuid}/download")
+        assert res.status_code == 404
+
+    def test_streams_zip_with_all_images(self, client, public_library):
+        public_library.download_enabled = True
+        make_images_in_library(public_library, 3)
+        db.session.commit()
+
+        def fake_chunks(key):
+            yield f"DATA-{key}".encode()
+
+        with _patch("services.storage.iter_object_chunks", side_effect=fake_chunks):
+            res = client.get(f"{BASE}/libraries/{public_library.uuid}/download")
+            body = b"".join(res.response)
+
+        assert res.status_code == 200
+        assert res.mimetype == "application/zip"
+        assert "attachment" in res.headers["Content-Disposition"]
+
+        zf = _zipfile.ZipFile(_io.BytesIO(body))
+        names = sorted(zf.namelist())
+        assert names == ["img-0.jpg", "img-1.jpg", "img-2.jpg"]
+        contents = zf.read("img-0.jpg")
+        assert contents.startswith(b"DATA-photos/")
+
+    def test_duplicate_filenames_are_disambiguated(self, client, public_library):
+        public_library.download_enabled = True
+        for i in range(3):
+            db.session.add(
+                Image(
+                    library_id=public_library.id,
+                    s3_key=f"dup-{i}.jpg",
+                    original_filename="same.jpg",
+                    content_type="image/jpeg",
+                    size=10,
+                    width=1,
+                    height=1,
+                )
+            )
+        db.session.commit()
+
+        with _patch("services.storage.iter_object_chunks", side_effect=lambda k: [b"x"]):
+            res = client.get(f"{BASE}/libraries/{public_library.uuid}/download")
+            body = b"".join(res.response)
+
+        zf = _zipfile.ZipFile(_io.BytesIO(body))
+        assert sorted(zf.namelist()) == ["same (1).jpg", "same (2).jpg", "same.jpg"]
+
+    def test_uses_originals_variant_when_configured(self, client, public_library, image_in_library):
+        public_library.download_enabled = True
+        public_library.use_original_as_preview = True
+        db.session.commit()
+
+        seen_keys = []
+
+        def capture(key):
+            seen_keys.append(key)
+            yield b"x"
+
+        with _patch("services.storage.iter_object_chunks", side_effect=capture):
+            client.get(f"{BASE}/libraries/{public_library.uuid}/download").response
+
+        assert any("/originals/" in k for k in seen_keys)
+
+    def test_uses_previews_variant_by_default(self, client, public_library, image_in_library):
+        public_library.download_enabled = True
+        db.session.commit()
+
+        seen_keys = []
+
+        def capture(key):
+            seen_keys.append(key)
+            yield b"x"
+
+        with _patch("services.storage.iter_object_chunks", side_effect=capture):
+            client.get(f"{BASE}/libraries/{public_library.uuid}/download").response
+
+        assert any("/previews/" in k for k in seen_keys)
+
+    def test_writes_audit_log_per_image(self, client, public_library):
+        public_library.download_enabled = True
+        make_images_in_library(public_library, 2)
+        db.session.commit()
+
+        from models import AuditLog, AuditLogType
+        from sqlalchemy import select as _select
+
+        with _patch("services.storage.iter_object_chunks", side_effect=lambda k: [b"x"]):
+            client.get(f"{BASE}/libraries/{public_library.uuid}/download").response
+
+        logs = db.session.execute(
+            _select(AuditLog).where(AuditLog.audit_type == AuditLogType.picture_downloaded)
+        ).scalars().all()
+        assert len(logs) == 2

@@ -1193,6 +1193,16 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
             {finishing ? "Submitting…" : "Done selecting"}
           </button>
         )}
+        {library?.download_enabled && allImages.length > 0 && (
+          <a
+            className="btn btn-outlined"
+            href={`/api/v1/public/libraries/${libraryUuid}/download`}
+            title="Download all photos as ZIP"
+          >
+            <span className="material-icons">download</span>
+            Download all
+          </a>
+        )}
         <a className="btn btn-text" href="/login" target="_blank" rel="noopener noreferrer">
           <span className="material-icons">login</span>
           Login
