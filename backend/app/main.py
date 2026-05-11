@@ -247,6 +247,8 @@ def create_app(test_config=None):
     from blueprints.api.auth import auth_api
     from blueprints.api.libraries import libraries_api
     from blueprints.api.images import images_api
+    from blueprints.api.videos import videos_api
+    from blueprints.api.videos import internal_bp
     from blueprints.api.public import public_api
     from blueprints.api.notifications import notifications_api
     from blueprints.api.support import support_api
@@ -259,11 +261,14 @@ def create_app(test_config=None):
     csrf.exempt(auth_api)
     csrf.exempt(libraries_api)
     csrf.exempt(images_api)
+    csrf.exempt(videos_api)
     csrf.exempt(public_api)
     csrf.exempt(notifications_api)
     csrf.exempt(support_api)
     csrf.exempt(feedback_api)
+    csrf.exempt(internal_bp)
     app.register_blueprint(api)
+    app.register_blueprint(internal_bp)
 
     # Allow the landing page to call the public API cross-origin.
     # Only /api/v1/public/* is exposed; all other routes stay same-origin only.

@@ -10,6 +10,7 @@ import { authApi } from "../api/auth";
 import { librariesApi } from "../api/libraries";
 import { imagesApi, type Image } from "../api/images";
 import { publicApi, type PublicImage } from "../api/public";
+import { uploadVideo, pollVideoStatus } from "../api/videos";
 import { AppBar } from "../components/AppBar";
 import { InfiniteScrollSentinel } from "../components/InfiniteScrollSentinel";
 
@@ -27,8 +28,13 @@ export const Route = createFileRoute("/library/$libraryUuid")({
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/jpg", "image/x-png"]);
-const ACCEPTED_EXTS = new Set(["jpg", "jpeg", "png"]);
+const ACCEPTED_TYPES = new Set([
+  "image/jpeg", "image/png", "image/jpg", "image/x-png",
+  "video/mp4", "video/quicktime", "video/webm", "video/x-m4v",
+]);
+const ACCEPTED_EXTS = new Set(["jpg", "jpeg", "png", "mp4", "mov", "webm", "m4v"]);
+const VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm", "video/x-m4v"]);
+const VIDEO_EXTS = new Set(["mp4", "mov", "webm", "m4v"]);
 
 function filterFiles(files: FileList | File[]): File[] {
   return Array.from(files).filter((f) => {
@@ -49,7 +55,8 @@ function formatBytes(bytes: number) {
 interface UploadItem {
   id: string;
   file: File;
-  status: "pending" | "uploading" | "done" | "error";
+  status: "pending" | "uploading" | "processing" | "done" | "error";
+  progress?: number;
   error?: string;
 }
 
@@ -77,6 +84,8 @@ function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
   }
 
   const isLiked = image.customer_state === "liked";
+  const isVideo = image.media_type === "video";
+  const isProcessing = isVideo && image.processing_status !== "ready";
 
   return (
     <div className="photo-tile">
@@ -90,14 +99,36 @@ function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
           <span className="material-icons">cloud_upload</span>
         </div>
       )}
-      <img
-        src={image.thumb_url ?? image.original_url ?? undefined}
-        alt={image.filename}
-        className="photo-tile__img"
-        loading="lazy"
-        onClick={onView}
-        style={{ cursor: "pointer" }}
-      />
+      {isVideo && !isProcessing && (
+        <div className="photo-tile__play-badge">
+          <span className="material-icons">play_circle</span>
+        </div>
+      )}
+      {isVideo && image.hevc_warning && (
+        <div className="photo-tile__hevc-badge" title="HEVC/H.265 — may not play in all browsers">
+          <span className="material-icons">warning</span>
+        </div>
+      )}
+      {isProcessing ? (
+        <div
+          className="photo-tile__img photo-tile__img--processing"
+          onClick={onView}
+          style={{ cursor: "default", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--clr-surface-var)" }}
+        >
+          <span className="material-icons" style={{ fontSize: 36, color: "var(--clr-on-surface-var)", animation: image.processing_status === "failed" ? undefined : "spin 1.5s linear infinite" }}>
+            {image.processing_status === "failed" ? "error_outline" : "hourglass_top"}
+          </span>
+        </div>
+      ) : (
+        <img
+          src={image.thumb_url ?? image.original_url ?? undefined}
+          alt={image.filename}
+          className="photo-tile__img"
+          loading="lazy"
+          onClick={onView}
+          style={{ cursor: "pointer" }}
+        />
+      )}
       <div className="photo-tile__overlay">
         {confirming ? (
           <div className="photo-tile__confirm">
@@ -141,28 +172,49 @@ function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
 // ── Lightbox (authenticated — original + preview) ────────────────────────────
 
 function Lightbox({ image, onClose }: { image: Image; onClose: () => void }) {
+  const isVideo = image.media_type === "video";
   return (
     <div className="lightbox" onClick={onClose}>
       <button className="lightbox__close" onClick={onClose} title="Close">
         <span className="material-icons">close</span>
       </button>
       <div className="lightbox__pair" onClick={(e) => e.stopPropagation()}>
-        <div className="lightbox__side">
-          <p className="lightbox__label">Original</p>
-          <img
-            src={image.original_url ?? undefined}
-            alt={`${image.filename} — original`}
-            className="lightbox__img"
-          />
-        </div>
-        <div className="lightbox__side">
-          <p className="lightbox__label">Preview</p>
-          <img
-            src={image.preview_url ?? undefined}
-            alt={`${image.filename} — preview`}
-            className="lightbox__img"
-          />
-        </div>
+        {isVideo ? (
+          <div className="lightbox__side" style={{ flex: 1 }}>
+            {image.hevc_warning && (
+              <p className="lightbox__label" style={{ color: "var(--clr-warning, #f59e0b)" }}>
+                ⚠ HEVC/H.265 — may not play in Chrome/Firefox without hardware decoder
+              </p>
+            )}
+            <video
+              src={image.original_url ?? undefined}
+              controls
+              playsInline
+              preload="metadata"
+              className="lightbox__img"
+              style={{ maxHeight: "80vh" }}
+            />
+          </div>
+        ) : (
+          <>
+            <div className="lightbox__side">
+              <p className="lightbox__label">Original</p>
+              <img
+                src={image.original_url ?? undefined}
+                alt={`${image.filename} — original`}
+                className="lightbox__img"
+              />
+            </div>
+            <div className="lightbox__side">
+              <p className="lightbox__label">Preview</p>
+              <img
+                src={image.preview_url ?? undefined}
+                alt={`${image.filename} — preview`}
+                className="lightbox__img"
+              />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -224,6 +276,7 @@ function PublicLightbox({
   if (!image) return null;
 
   const isLiked = image.customer_state === "liked";
+  const isVideo = image.media_type === "video";
 
   return (
     <div className="lightbox" onClick={onClose}>
@@ -242,11 +295,29 @@ function PublicLightbox({
       )}
 
       <div className="lightbox__content" onClick={(e) => e.stopPropagation()}>
-        <img
-          src={image.preview_url}
-          alt={image.filename}
-          className="lightbox__img"
-        />
+        {isVideo ? (
+          <>
+            {image.hevc_warning && (
+              <p style={{ color: "var(--clr-warning, #f59e0b)", marginBottom: "0.5rem", fontSize: "0.85rem" }}>
+                ⚠ HEVC/H.265 — may not play in all browsers
+              </p>
+            )}
+            <video
+              src={image.preview_url ?? undefined}
+              controls
+              playsInline
+              preload="metadata"
+              className="lightbox__img"
+              style={{ maxHeight: "80vh" }}
+            />
+          </>
+        ) : (
+          <img
+            src={image.preview_url ?? undefined}
+            alt={image.filename}
+            className="lightbox__img"
+          />
+        )}
       </div>
 
       {hasNext ? (
@@ -314,7 +385,7 @@ function DropZone({ onFiles, compact = false }: DropZoneProps) {
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png"
+        accept="image/jpeg,image/png,video/mp4,video/quicktime,video/webm,video/x-m4v"
         multiple
         style={{ display: "none" }}
         onChange={handleChange}
@@ -322,11 +393,11 @@ function DropZone({ onFiles, compact = false }: DropZoneProps) {
       <span className="material-icons drop-zone__icon">cloud_upload</span>
       {!compact && (
         <>
-          <p className="drop-zone__title">Drop photos here</p>
-          <p className="drop-zone__hint">or click to browse — JPEG & PNG, up to 20 MB each</p>
+          <p className="drop-zone__title">Drop photos or videos here</p>
+          <p className="drop-zone__hint">JPEG/PNG up to 20 MB · MP4/MOV/WebM/M4V up to 200 MB</p>
         </>
       )}
-      {compact && <p className="drop-zone__hint">Drop to add photos</p>}
+      {compact && <p className="drop-zone__hint">Drop to add photos or videos</p>}
     </div>
   );
 }
@@ -344,11 +415,19 @@ function UploadQueue({ items }: { items: UploadItem[] }) {
           <span className="material-icons upload-item__icon">
             {item.status === "uploading"
               ? "hourglass_top"
-              : item.status === "error"
-                ? "error_outline"
-                : "schedule"}
+              : item.status === "processing"
+                ? "sync"
+                : item.status === "error"
+                  ? "error_outline"
+                  : "schedule"}
           </span>
           <span className="upload-item__name">{item.file.name}</span>
+          {item.status === "uploading" && item.progress !== undefined && (
+            <span className="upload-item__progress">{item.progress}%</span>
+          )}
+          {item.status === "processing" && (
+            <span className="upload-item__progress">Processing…</span>
+          )}
           {item.status === "error" && (
             <span className="upload-item__error">{item.error}</span>
           )}
@@ -858,6 +937,12 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
     }
   }
 
+  function isVideoFile(f: File): boolean {
+    if (VIDEO_TYPES.has(f.type)) return true;
+    const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+    return VIDEO_EXTS.has(ext);
+  }
+
   async function handleFiles(files: File[]) {
     if (libId === undefined) return;
     const newItems: UploadItem[] = files.map((f) => ({
@@ -869,13 +954,30 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
 
     for (const item of newItems) {
       setQueue((q) =>
-        q.map((i) => (i.id === item.id ? { ...i, status: "uploading" } : i))
+        q.map((i) => (i.id === item.id ? { ...i, status: "uploading", progress: 0 } : i))
       );
       try {
-        await imagesApi.upload(libId, item.file);
-        setQueue((q) =>
-          q.map((i) => (i.id === item.id ? { ...i, status: "done" } : i))
-        );
+        if (isVideoFile(item.file)) {
+          const status = await uploadVideo(libId, item.file, (pct) => {
+            setQueue((q) =>
+              q.map((i) => (i.id === item.id ? { ...i, progress: pct } : i))
+            );
+          });
+          setQueue((q) =>
+            q.map((i) => (i.id === item.id ? { ...i, status: "processing", progress: 100 } : i))
+          );
+          if (status.processing_status !== "ready" && status.processing_status !== "failed") {
+            await pollVideoStatus(libId, status.uuid);
+          }
+          setQueue((q) =>
+            q.map((i) => (i.id === item.id ? { ...i, status: "done" } : i))
+          );
+        } else {
+          await imagesApi.upload(libId, item.file);
+          setQueue((q) =>
+            q.map((i) => (i.id === item.id ? { ...i, status: "done" } : i))
+          );
+        }
         invalidate();
       } catch (err) {
         const message = err instanceof Error ? err.message : "Upload failed";
@@ -975,14 +1077,14 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
 
         {data && (
           <p className="library-count-hint">
-            {totalImages} of {maxImagesPerLibrary ?? "\u221e"} photos
+            {totalImages} of {maxImagesPerLibrary ?? "\u221e"} media items
           </p>
         )}
 
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png"
+          accept="image/jpeg,image/png,video/mp4,video/quicktime,video/webm,video/x-m4v"
           multiple
           style={{ display: "none" }}
           onChange={(e) => {
@@ -1114,7 +1216,11 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
 
   async function toggleLike(img: PublicImage) {
     const newState = img.customer_state === "liked" ? "none" : "liked";
-    await publicApi.setCustomerState(libraryUuid, img.uuid, newState);
+    if (img.media_type === "video") {
+      await publicApi.setVideoCustomerState(libraryUuid, img.uuid, newState);
+    } else {
+      await publicApi.setCustomerState(libraryUuid, img.uuid, newState);
+    }
     queryClient.invalidateQueries({ queryKey: ["public-library", libraryUuid] });
   }
 
@@ -1131,7 +1237,14 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
     }
   }
 
+  function isVideoFile(f: File): boolean {
+    if (VIDEO_TYPES.has(f.type)) return true;
+    const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+    return VIDEO_EXTS.has(ext);
+  }
+
   async function handlePublicFiles(files: File[]) {
+    const videoUploadsEnabled = library?.video_uploads_enabled ?? false;
     const newItems: UploadItem[] = files.map((f) => ({
       id: crypto.randomUUID(),
       file: f,
@@ -1141,10 +1254,30 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
 
     for (const item of newItems) {
       setPublicQueue((q) =>
-        q.map((i) => (i.id === item.id ? { ...i, status: "uploading" } : i))
+        q.map((i) => (i.id === item.id ? { ...i, status: "uploading", progress: 0 } : i))
       );
       try {
-        await publicApi.uploadImage(libraryUuid, item.file);
+        if (isVideoFile(item.file) && videoUploadsEnabled) {
+          const { uuid, upload_url } = await publicApi.initVideoUpload(
+            libraryUuid, item.file.name, item.file.type, item.file.size
+          );
+          await xhrPutPublic(upload_url, item.file, item.file.type, (pct) => {
+            setPublicQueue((q) =>
+              q.map((i) => (i.id === item.id ? { ...i, progress: pct } : i))
+            );
+          });
+          await publicApi.finalizeVideoUpload(libraryUuid, uuid);
+          setPublicQueue((q) =>
+            q.map((i) => (i.id === item.id ? { ...i, status: "processing", progress: 100 } : i))
+          );
+          for (let attempt = 0; attempt < 60; attempt++) {
+            await new Promise((r) => setTimeout(r, 2000));
+            const s = await publicApi.getVideoStatus(libraryUuid, uuid);
+            if (s.processing_status === "ready" || s.processing_status === "failed") break;
+          }
+        } else {
+          await publicApi.uploadImage(libraryUuid, item.file);
+        }
         setPublicQueue((q) =>
           q.map((i) => (i.id === item.id ? { ...i, status: "done" } : i))
         );
@@ -1158,6 +1291,28 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
         );
       }
     }
+  }
+
+  function xhrPutPublic(
+    url: string, file: File, contentType: string, onProgress?: (pct: number) => void
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", url);
+      xhr.setRequestHeader("Content-Type", contentType);
+      if (onProgress) {
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+        });
+      }
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error(`Upload failed (${xhr.status})`));
+      });
+      xhr.addEventListener("error", () => reject(new Error("Network error")));
+      xhr.addEventListener("abort", () => reject(new Error("Upload aborted")));
+      xhr.send(file);
+    });
   }
 
   return (
@@ -1249,36 +1404,59 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
         {!isLoading && !isError && allImages.length > 0 && (
           visibleImages.length > 0 ? (
             <div className="photo-grid">
-              {visibleImages.map((img, idx) => (
+              {visibleImages.map((img, idx) => {
+                const isVideo = img.media_type === "video";
+                const isProcessing = isVideo && img.processing_status !== "ready";
+                return (
                 <div key={img.uuid} className="photo-tile">
-                  <img
-                    src={img.thumb_url}
-                    alt={img.filename}
-                    className="photo-tile__img"
-                    loading="lazy"
-                    onClick={() => setViewImageIndex(idx)}
-                    style={{ cursor: "pointer" }}
-                  />
-                  <button
-                    className={`photo-tile__like ${img.customer_state === "liked" ? "photo-tile__like--active" : ""}`}
-                    onClick={() => toggleLike(img)}
-                    title={img.customer_state === "liked" ? "Remove like" : "Like this photo"}
-                  >
-                    <span className="material-icons">
-                      {img.customer_state === "liked" ? "favorite" : "favorite_border"}
-                    </span>
-                  </button>
+                  {isVideo && !isProcessing && (
+                    <div className="photo-tile__play-badge">
+                      <span className="material-icons">play_circle</span>
+                    </div>
+                  )}
+                  {isVideo && img.hevc_warning && (
+                    <div className="photo-tile__hevc-badge" title="HEVC — may not play in all browsers">
+                      <span className="material-icons">warning</span>
+                    </div>
+                  )}
+                  {isProcessing ? (
+                    <div className="photo-tile__img photo-tile__img--processing" style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "var(--clr-surface-var)" }}>
+                      <span className="material-icons" style={{ fontSize: 36, color: "var(--clr-on-surface-var)", animation: img.processing_status === "failed" ? undefined : "spin 1.5s linear infinite" }}>
+                        {img.processing_status === "failed" ? "error_outline" : "hourglass_top"}
+                      </span>
+                    </div>
+                  ) : (
+                    <img
+                      src={img.thumb_url ?? undefined}
+                      alt={img.filename}
+                      className="photo-tile__img"
+                      loading="lazy"
+                      onClick={() => setViewImageIndex(idx)}
+                      style={{ cursor: "pointer" }}
+                    />
+                  )}
+                  {!isProcessing && (
+                    <button
+                      className={`photo-tile__like ${img.customer_state === "liked" ? "photo-tile__like--active" : ""}`}
+                      onClick={() => toggleLike(img)}
+                      title={img.customer_state === "liked" ? "Remove like" : `Like this ${isVideo ? "video" : "photo"}`}
+                    >
+                      <span className="material-icons">
+                        {img.customer_state === "liked" ? "favorite" : "favorite_border"}
+                      </span>
+                    </button>
+                  )}
                   {img.download_url && (
                     <a
                       className="photo-tile__download"
                       href={img.download_url}
-                      title="Download photo"
+                      title={`Download ${isVideo ? "video" : "photo"}`}
                     >
                       <span className="material-icons">download</span>
                     </a>
                   )}
                 </div>
-              ))}
+              );})}
             </div>
           ) : (
             <div className="empty-state">

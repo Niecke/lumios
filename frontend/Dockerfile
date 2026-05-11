@@ -2,6 +2,7 @@
 FROM docker.io/library/node:24-alpine AS builder
 
 ARG VITE_GOOGLE_CLIENT_ID
+ARG VITE_LANDING_URL
 ARG GIT_SHA
 
 WORKDIR /build

@@ -58,6 +58,7 @@ module "cloudrun" {
   google_client_secret_secret_id      = module.secrets.google_client_secret_secret_id
   google_frontend_client_id_secret_id = module.secrets.google_frontend_client_id_secret_id
   brevo_api_key_secret_id             = module.secrets.brevo_api_key_secret_id
+  cloud_tasks_secret_secret_id        = module.secrets.cloud_tasks_secret_secret_id
   admin_email                         = "daniel@niecke-it.de"
   project_id                          = var.project_id
   public_base_url                     = "https://lumios-api.niecke-it.de"
@@ -65,6 +66,14 @@ module "cloudrun" {
   landingpage_domain                  = "lumios.niecke-it.de"
 
   depends_on = [module.apis, module.network, module.vm, module.secrets, module.storage]
+}
+
+module "cloud_tasks" {
+  source                         = "../../modules/cloud_tasks"
+  location                       = var.region
+  cloudrun_service_account_email = module.cloudrun.cloudrun_service_account_email
+
+  depends_on = [module.apis, module.cloudrun]
 }
 
 module "cleanup" {

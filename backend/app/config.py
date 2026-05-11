@@ -26,7 +26,28 @@ PASSWORD_HASHER_PARALLELISM = int(os.getenv("PASSWORD_HASHER_PARALLELISM", 4))
 
 MAX_CONTENT_LENGTH = int(
     os.getenv("MAX_CONTENT_LENGTH", 20 * 1024 * 1024)
-)  # 20MB default
+)  # 20MB default (videos bypass Flask via presigned PUT)
+
+# Video upload feature flag and limits
+VIDEO_UPLOADS_ENABLED = os.getenv("VIDEO_UPLOADS_ENABLED", "false").lower() in (
+    "1", "true", "yes"
+)
+MAX_VIDEO_FILE_SIZE = int(os.getenv("MAX_VIDEO_FILE_SIZE", 200 * 1024 * 1024))  # 200MB
+ALLOWED_VIDEO_TYPES = {"video/mp4", "video/quicktime", "video/webm", "video/x-m4v"}
+VIDEO_EXTENSIONS = {
+    "video/mp4": "mp4",
+    "video/quicktime": "mov",
+    "video/webm": "webm",
+    "video/x-m4v": "m4v",
+}
+
+# Cloud Tasks (Architecture B async video processing)
+CLOUD_TASKS_QUEUE = os.getenv("CLOUD_TASKS_QUEUE", "")
+CLOUD_TASKS_LOCATION = os.getenv("CLOUD_TASKS_LOCATION", "europe-west1")
+# URL the Cloud Tasks worker calls for processing (must be reachable from GCP)
+BACKEND_INTERNAL_URL = os.getenv("BACKEND_INTERNAL_URL", "http://localhost:8080")
+# Shared secret protecting the internal processing endpoint
+CLOUD_TASKS_SECRET = os.getenv("CLOUD_TASKS_SECRET", "")
 
 # Database
 POSTGRES_USER = str(os.getenv("POSTGRES_USER", "lumios"))

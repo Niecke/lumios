@@ -16,6 +16,7 @@ from config import (
     S3_ACCESS_KEY,
     S3_SECRET_KEY,
     S3_BUCKET,
+    DEBUG,
 )
 
 
@@ -52,7 +53,31 @@ def ensure_bucket() -> None:
     except ClientError:
         logger.warning("Bucket %s not found, creating it", S3_BUCKET)
         _client.create_bucket(Bucket=S3_BUCKET)
+    if DEBUG:
+        _set_bucket_cors_for_dev()
     _bucket_verified = True
+
+
+def _set_bucket_cors_for_dev() -> None:
+    """Configure CORS on MinIO bucket so the browser can PUT directly via presigned URL."""
+    logger = logging.getLogger(__name__)
+    try:
+        _client.put_bucket_cors(
+            Bucket=S3_BUCKET,
+            CORSConfiguration={
+                "CORSRules": [
+                    {
+                        "AllowedHeaders": ["*"],
+                        "AllowedMethods": ["GET", "PUT", "HEAD"],
+                        "AllowedOrigins": ["*"],
+                        "ExposeHeaders": ["ETag"],
+                        "MaxAgeSeconds": 3600,
+                    }
+                ]
+            },
+        )
+    except Exception as exc:
+        logger.warning("Could not set bucket CORS (non-fatal): %s", exc)
 
 
 def upload_fileobj(file_obj, key: str, content_type: str) -> None:
@@ -103,6 +128,25 @@ def get_presigned_download_url(key: str, filename: str, expires_in: int = 3600) 
     )
     cache_set(cache_key, url, ttl=min(expires_in // 2, 1800))
     return url
+
+
+def create_presigned_put_url(key: str, content_type: str, expires_in: int = 3600) -> str:
+    """Generate a presigned PUT URL for direct browser-to-storage upload."""
+    return _public_client.generate_presigned_url(
+        "put_object",
+        Params={"Bucket": S3_BUCKET, "Key": key, "ContentType": content_type},
+        ExpiresIn=expires_in,
+        HttpMethod="PUT",
+    )
+
+
+def object_exists(key: str) -> bool:
+    """Return True if the object exists in the bucket."""
+    try:
+        _client.head_object(Bucket=S3_BUCKET, Key=key)
+        return True
+    except ClientError:
+        return False
 
 
 def delete_object(key: str) -> None:
