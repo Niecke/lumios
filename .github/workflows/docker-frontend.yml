@@ -66,6 +66,7 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
             VITE_GOOGLE_CLIENT_ID=${{ steps.secrets.outputs.google_client_id }}
+            VITE_LANDING_URL=https://lumios.niecke-it.de
             GIT_SHA=${{ github.sha }}
 
   deploy:

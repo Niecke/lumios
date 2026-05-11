@@ -22,3 +22,8 @@ output "gcs_hmac_secret_secret_id" {
   description = "Secret Manager secret ID for the GCS HMAC secret"
   value       = google_secret_manager_secret.gcs_hmac_secret.secret_id
 }
+
+output "cloudrun_service_account_email" {
+  description = "Service account email used by the backend Cloud Run service"
+  value       = google_service_account.cloudrun.email
+}

@@ -108,3 +108,8 @@ variable "project_id" {
   description = "GCP project ID"
   type        = string
 }
+
+variable "cloud_tasks_secret_secret_id" {
+  description = "Secret Manager secret ID for the Cloud Tasks internal endpoint secret"
+  type        = string
+}

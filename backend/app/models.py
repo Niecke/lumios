@@ -250,6 +250,8 @@ class Image(db.Model):
             "size": self.size,
             "width": self.width,
             "height": self.height,
+            "media_type": "photo",
+            "processing_status": "ready",
             "customer_state": self.customer_state.value,
             "is_external": self.is_external,
             "created_at": self.created_at.isoformat(),
@@ -360,6 +362,99 @@ class Waitlist(db.Model):
     )
 
 
+class VideoProcessingStatus(enum.Enum):
+    uploading = "uploading"
+    processing = "processing"
+    ready = "ready"
+    failed = "failed"
+
+
+class Video(db.Model):
+    id = db.Column(db.Integer(), primary_key=True)
+    uuid = db.Column(
+        db.String(36),
+        unique=True,
+        nullable=False,
+        index=True,
+        default=lambda: str(uuid_module.uuid4()),
+    )
+    library_id = db.Column(db.Integer(), db.ForeignKey("library.id"), nullable=False)
+    s3_key = db.Column(db.String(255), nullable=False)
+    original_filename = db.Column(db.String(255), nullable=False)
+    content_type = db.Column(db.String(32), nullable=False)
+    size = db.Column(db.Integer(), nullable=False)
+    width = db.Column(db.Integer(), nullable=True)
+    height = db.Column(db.Integer(), nullable=True)
+    duration_ms = db.Column(db.Integer(), nullable=True)
+    video_codec = db.Column(db.String(32), nullable=True)
+    audio_codec = db.Column(db.String(32), nullable=True)
+    bitrate = db.Column(db.Integer(), nullable=True)
+    processing_status = db.Column(
+        db.Enum(VideoProcessingStatus, name="videoprocessingstatus"),
+        nullable=False,
+        default=VideoProcessingStatus.uploading,
+        server_default=VideoProcessingStatus.uploading.value,
+    )
+    hevc_warning = db.Column(
+        db.Boolean, nullable=False, default=False, server_default=db.false()
+    )
+    customer_state = db.Column(
+        db.Enum(CustomerState, name="customerstate"),
+        nullable=False,
+        default=CustomerState.none,
+        server_default=CustomerState.none.value,
+    )
+    is_external = db.Column(
+        db.Boolean, nullable=False, default=False, server_default=db.false()
+    )
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    deleted_at = db.Column(db.DateTime, nullable=True)
+
+    library = db.relationship("Library", backref=db.backref("videos", lazy="dynamic"))
+
+    def storage_path(self, variant: str = "originals") -> str:
+        """Build full GCS key for a variant: originals or thumbs.
+
+        Videos have no previews/ variant — originals are served for streaming.
+        Thumbnails are always JPEG regardless of the video container format.
+        s3_key stores: {uuid}.{ext}
+        Returns:       photos/{photographer_id}/{library_id}/{variant}/{...}
+        """
+        if variant == "thumbs":
+            base = self.s3_key.rsplit(".", 1)[0]
+            return f"photos/{self.library.user_id}/{self.library_id}/thumbs/{base}.jpg"
+        return (
+            f"photos/{self.library.user_id}/{self.library_id}/{variant}/{self.s3_key}"
+        )
+
+    def to_dict(
+        self,
+        original_url: str | None = None,
+        thumb_url: str | None = None,
+    ):
+        return {
+            "id": self.id,
+            "uuid": self.uuid,
+            "filename": self.original_filename,
+            "content_type": self.content_type,
+            "size": self.size,
+            "width": self.width,
+            "height": self.height,
+            "duration_ms": self.duration_ms,
+            "media_type": "video",
+            "processing_status": self.processing_status.value,
+            "hevc_warning": self.hevc_warning,
+            "customer_state": self.customer_state.value,
+            "is_external": self.is_external,
+            "created_at": self.created_at.isoformat(),
+            "original_url": original_url,
+            "preview_url": original_url,
+            "thumb_url": thumb_url,
+        }
+
+
 class AuditLogType(enum.Enum):
     # System / user management
     user_created = "user_created"
@@ -381,6 +476,9 @@ class AuditLogType(enum.Enum):
     picture_uploaded = "picture_uploaded"
     picture_deleted = "picture_deleted"
     picture_downloaded = "picture_downloaded"
+    video_uploaded = "video_uploaded"
+    video_deleted = "video_deleted"
+    video_downloaded = "video_downloaded"
     # Admin / compliance
     gdpr_export = "gdpr_export"
 

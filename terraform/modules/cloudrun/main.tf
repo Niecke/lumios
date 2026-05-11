@@ -102,6 +102,12 @@ resource "google_secret_manager_secret_iam_member" "cloudrun_gcs_hmac_secret" {
   member    = "serviceAccount:${google_service_account.cloudrun.email}"
 }
 
+resource "google_secret_manager_secret_iam_member" "cloudrun_cloud_tasks_secret" {
+  secret_id = var.cloud_tasks_secret_secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.cloudrun.email}"
+}
+
 resource "google_cloud_run_v2_service_iam_member" "public" {
   name     = google_cloud_run_v2_service.backend.name
   location = google_cloud_run_v2_service.backend.location
@@ -284,6 +290,31 @@ resource "google_cloud_run_v2_service" "backend" {
       env {
         name  = "BREVO_WAITLIST_LIST_ID"
         value = "4"
+      }
+      env {
+        name  = "VIDEO_UPLOADS_ENABLED"
+        value = "false"
+      }
+      env {
+        name  = "CLOUD_TASKS_QUEUE"
+        value = "lumios-video-process"
+      }
+      env {
+        name  = "CLOUD_TASKS_LOCATION"
+        value = var.region
+      }
+      env {
+        name  = "BACKEND_INTERNAL_URL"
+        value = var.public_base_url
+      }
+      env {
+        name = "CLOUD_TASKS_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = var.cloud_tasks_secret_secret_id
+            version = "latest"
+          }
+        }
       }
 
       resources {

@@ -104,3 +104,20 @@ resource "google_secret_manager_secret" "brevo_api_key" {
     auto {}
   }
 }
+
+resource "random_password" "cloud_tasks_secret" {
+  length  = 64
+  special = false
+}
+
+resource "google_secret_manager_secret" "cloud_tasks_secret" {
+  secret_id = "lumios-cloud-tasks-secret"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "cloud_tasks_secret" {
+  secret      = google_secret_manager_secret.cloud_tasks_secret.id
+  secret_data = random_password.cloud_tasks_secret.result
+}
