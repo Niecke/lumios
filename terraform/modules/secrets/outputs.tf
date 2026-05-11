@@ -37,3 +37,8 @@ output "brevo_api_key_secret_id" {
   description = "Secret Manager secret ID for the Brevo transactional email API key"
   value       = google_secret_manager_secret.brevo_api_key.secret_id
 }
+
+output "cloud_tasks_secret_secret_id" {
+  description = "Secret Manager secret ID for the Cloud Tasks internal endpoint secret"
+  value       = google_secret_manager_secret.cloud_tasks_secret.secret_id
+}

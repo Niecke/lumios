@@ -91,6 +91,7 @@ services:
       context: frontend/.
       args:
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+        VITE_LANDING_URL: "https://lumios.niecke-it.de"
     env_file: .env
     container_name: lumios-frontend
     environment:

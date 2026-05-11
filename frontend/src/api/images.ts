@@ -10,6 +10,10 @@ export interface Image {
   size: number;
   width: number | null;
   height: number | null;
+  media_type: "photo" | "video";
+  processing_status?: "uploading" | "processing" | "ready" | "failed";
+  duration_ms?: number;
+  hevc_warning?: boolean;
   customer_state: string;
   is_external: boolean;
   created_at: string;

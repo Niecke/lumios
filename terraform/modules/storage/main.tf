@@ -4,6 +4,13 @@ resource "google_storage_bucket" "photos" {
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
 
+  cors {
+    origin          = ["https://lumios-app.niecke-it.de"]
+    method          = ["GET", "PUT", "HEAD"]
+    response_header = ["Content-Type", "ETag"]
+    max_age_seconds = 3600
+  }
+
   lifecycle_rule {
     condition {
       age = 365
