@@ -78,8 +78,8 @@ data "google_client_openid_userinfo" "terraform" {}
 
 resource "google_secret_manager_secret" "gcs_hmac_access_key" {
   secret_id = "lumios-gcs-hmac-access-key"
-  replication { 
-    auto {} 
+  replication {
+    auto {}
   }
 }
 
@@ -293,7 +293,7 @@ resource "google_cloud_run_v2_service" "backend" {
       }
       env {
         name  = "VIDEO_UPLOADS_ENABLED"
-        value = "false"
+        value = "true"
       }
       env {
         name  = "CLOUD_TASKS_QUEUE"
