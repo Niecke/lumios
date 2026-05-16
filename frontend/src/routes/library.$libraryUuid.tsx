@@ -10,7 +10,7 @@ import { authApi } from "../api/auth";
 import { librariesApi } from "../api/libraries";
 import { imagesApi, type Image } from "../api/images";
 import { publicApi, type PublicImage } from "../api/public";
-import { uploadVideo, pollVideoStatus } from "../api/videos";
+import { uploadVideo, pollVideoStatus, videosApi } from "../api/videos";
 import { AppBar } from "../components/AppBar";
 import { InfiniteScrollSentinel } from "../components/InfiniteScrollSentinel";
 
@@ -76,7 +76,11 @@ function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
   async function handleDelete() {
     setDeleting(true);
     try {
-      await imagesApi.delete(libraryId, image.id);
+      if (image.media_type === "video") {
+        await videosApi.delete(libraryId, image.id);
+      } else {
+        await imagesApi.delete(libraryId, image.id);
+      }
       onDeleted();
     } finally {
       setDeleting(false);
