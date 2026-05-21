@@ -47,17 +47,3 @@ resource "google_project_service" "cloudtasks" {
   service            = "cloudtasks.googleapis.com"
   disable_on_destroy = false
 }
-
-# Allow allUsers IAM bindings (required for public Cloud Run services).
-# Overrides the org-level iam.allowedPolicyMemberDomains constraint which
-# would otherwise block Cloud Run invoker grants to allUsers.
-resource "google_project_organization_policy" "iam_allow_all_members" {
-  project    = var.project_id
-  constraint = "constraints/iam.allowedPolicyMemberDomains"
-
-  list_policy {
-    allow {
-      all = true
-    }
-  }
-}
