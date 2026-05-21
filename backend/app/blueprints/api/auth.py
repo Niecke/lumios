@@ -348,6 +348,12 @@ def _create_pending_user(
     if photographer_role:
         user.roles = [photographer_role]
     db.session.add(user)
+    db.session.flush()
+    write_audit_log(
+        AuditLogType.user_created,
+        related_object_type="user",
+        related_object_id=str(user.id),
+    )
     return user
 
 
@@ -390,11 +396,6 @@ def register():
         db.session.rollback()
         return jsonify({"error": str(ex)}), 400
 
-    write_audit_log(
-        AuditLogType.user_created,
-        related_object_type="user",
-        related_object_id=str(user.id),
-    )
     db.session.commit()
     cache_delete("registration:status")
     notify_activation_email(
@@ -472,11 +473,6 @@ def google_register():
         )
 
     user = _create_pending_user(email, "google", google_sub)
-    write_audit_log(
-        AuditLogType.user_created,
-        related_object_type="user",
-        related_object_id=str(user.id),
-    )
     db.session.commit()
     cache_delete("registration:status")
     notify_activation_email(
