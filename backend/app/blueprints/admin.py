@@ -11,6 +11,7 @@ from flask import (
     url_for,
     current_app,
 )
+from current_user import current_user
 from datetime import datetime, timezone, timedelta, date
 from sqlalchemy import select, func, desc
 from sqlalchemy.orm import selectinload
@@ -41,7 +42,6 @@ from services.mail import (
     notify_account_cancellation,
     notify_registration,
 )
-
 
 AUDIT_LOG_PAGE_SIZE = 50
 USERS_PAGE_SIZE = 25
@@ -180,11 +180,10 @@ def user_create():
 
         db.session.add(user)
         db.session.flush()  # get user.id before commit
-        from current_user import current_user as _cu
 
         write_audit_log(
             AuditLogType.user_created,
-            creator_id=_cu.id,
+            creator_id=current_user.id,
             related_object_type="user",
             related_object_id=str(user.id),
         )
@@ -263,26 +262,24 @@ def user_edit(id):
                     subscription_types=SubscriptionType,
                 )
 
-        from current_user import current_user as _cu
-
         if "password" in changes:
             write_audit_log(
                 AuditLogType.password_set_by_admin,
-                creator_id=_cu.id,
+                creator_id=current_user.id,
                 related_object_type="user",
                 related_object_id=str(user.id),
             )
         if f"active={True}" in changes:
             write_audit_log(
                 AuditLogType.user_reactivated,
-                creator_id=_cu.id,
+                creator_id=current_user.id,
                 related_object_type="user",
                 related_object_id=str(user.id),
             )
         elif f"active={False}" in changes:
             write_audit_log(
                 AuditLogType.user_deactivated,
-                creator_id=_cu.id,
+                creator_id=current_user.id,
                 related_object_type="user",
                 related_object_id=str(user.id),
             )
@@ -308,8 +305,6 @@ def user_edit(id):
 @admin.route("/change_password", methods=["GET", "POST"])
 @login_required
 def change_password():
-    from current_user import current_user
-
     user = db.session.get(User, current_user.id)
     if user.account_type != "local":
         flash("Password change is only available for local accounts.", "error")
@@ -377,11 +372,9 @@ def set_password(id):
             flash(str(ex), "error")
             return render_template("admin/set_password.html", user=user)
 
-        from current_user import current_user as _cu
-
         write_audit_log(
             AuditLogType.password_set_by_admin,
-            creator_id=_cu.id,
+            creator_id=current_user.id,
             related_object_type="user",
             related_object_id=str(user.id),
         )
@@ -409,15 +402,13 @@ def user_delete(id):
         flash("System users cannot be deleted.", "error")
         return redirect(url_for("admin.users_view"))
 
-    from current_user import current_user as _cu
-
     deleted_email = user.email
     deleted_id = user.id
     user.deleted_at = datetime.now(timezone.utc)
     user.active = False
     write_audit_log(
         AuditLogType.user_deleted,
-        creator_id=_cu.id,
+        creator_id=current_user.id,
         related_object_type="user",
         related_object_id=str(deleted_id),
     )
@@ -435,8 +426,6 @@ def user_delete(id):
 @login_required
 @require_role("admin")
 def user_gdpr_export(user_id):
-    from current_user import current_user as _cu
-
     # db.session.get() returns soft-deleted users — intentional for GDPR
     user = db.session.get(User, user_id)
     if not user:
@@ -582,7 +571,7 @@ def user_gdpr_export(user_id):
     # --- Audit log ---
     write_audit_log(
         AuditLogType.gdpr_export,
-        creator_id=_cu.id,
+        creator_id=current_user.id,
         related_object_type="user",
         related_object_id=str(user_id),
     )
