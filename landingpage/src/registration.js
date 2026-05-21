@@ -4,10 +4,10 @@
 // If spots are available: shows "Create account" button (links to frontend /register).
 // If full: shows the waitlist email form (POSTs to /api/v1/public/waitlist).
 //
-// %%BACKEND_URL%% is replaced at Docker build time via sed (same as %%APP_URL%%).
+// ${BACKEND_URL} and ${APP_URL} are substituted at container startup via envsubst.
 
 (function () {
-  var BACKEND_URL = "%%BACKEND_URL%%";
+  var BACKEND_URL = "${BACKEND_URL}";
 
   var elRegister  = document.getElementById("access-register");
   var elWaitlist  = document.getElementById("access-waitlist");
@@ -20,7 +20,7 @@
     elWaitlist.classList.add("hidden");
     if (elHeroCta) {
       elHeroCta.textContent = "Create account";
-      elHeroCta.href = "%%APP_URL%%/register";
+      elHeroCta.href = "${APP_URL}/register";
     }
   }
 
