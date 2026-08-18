@@ -1,5 +1,5 @@
 # ---- Stage 1: Build ----
-FROM docker.io/library/node:24-alpine AS builder
+FROM docker.io/library/node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS builder
 
 ARG VITE_GOOGLE_CLIENT_ID
 ARG VITE_LANDING_URL
