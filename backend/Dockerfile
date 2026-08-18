@@ -1,6 +1,6 @@
 # ---- Stage 1: Build ----
 # Installs all dependencies (including C/Rust extensions) into a virtualenv.
-FROM python:3.13-slim AS builder
+FROM python:3.13-slim@sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a AS builder
 
 WORKDIR /build
 
@@ -22,7 +22,7 @@ RUN uv sync --no-install-project --frozen
 # ---- Stage 2: Runtime (distroless) ----
 # Only the installed packages and app code are copied — no compiler, no apt cache,
 # no pip, no shell. The distroless image ships with Python 3.13.
-FROM gcr.io/distroless/python3-debian13:nonroot
+FROM gcr.io/distroless/python3-debian13:nonroot@sha256:eff0a6050f5ea9e8154c3d137d468901864803ce3c7f4657d419e64f3f1f8b40
 
 # Copy only the site-packages from the builder venv; distroless provides its
 # own Python 3.13 binary so we do not need /venv/bin.
