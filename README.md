@@ -58,21 +58,18 @@ podman-compose up -d --build --force-recreate
 
 ```
 cd backend
-# python3 -m venv .venv
 
-source .venv/bin/activate
-
-pip install -r requirements.txt -r requirements-test.txt
+uv sync --group test
 ```
 
 Without coverage
 ```
-python -m pytest
+uv run python -m pytest
 ```
 
 With coverage
 ```
-python -m pytest --cov=app --cov-report=term-missing --cov-report=html
+uv run python -m pytest --cov=app --cov-report=term-missing --cov-report=html
 ```
 
 ### Database setup
