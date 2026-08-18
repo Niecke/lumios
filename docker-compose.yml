@@ -77,7 +77,8 @@ services:
       - "8080:8080"
     volumes:
       - ./backend/app:/app:Z
-      - ./backend/requirements.txt:/requirements.txt:Z
+      - ./backend/pyproject.toml:/pyproject.toml:Z
+      - ./backend/uv.lock:/uv.lock:Z
     #healthcheck:
     #  test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
     #  interval: 15s

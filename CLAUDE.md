@@ -10,7 +10,7 @@ Domain: **lumios.niecke-it.de** (landing page), **lumios-app.niecke-it.de** (app
 
 | Layer | Technology |
 |---|---|
-| Backend API | Python 3.13, Flask 3.x, Gunicorn, Distroless container |
+| Backend API | Python 3.13, Flask 3.x, Gunicorn, Distroless container, uv (package mgmt) |
 | Admin UI | Flask + Jinja2 templates, integrated in backend under `/admin` |
 | Frontend SPA | React 19, TanStack Query, TanStack Router (file-based), Vite 8, TypeScript |
 | Landing page | Separate static site, deployed as its own Cloud Run service |
@@ -68,7 +68,8 @@ lumios/
 │   │   └── gunicorn_logging.conf
 │   ├── Dockerfile            # Multi-stage: builder + distroless runtime
 │   ├── entrypoint.py         # Waits for DB, runs flask db upgrade, starts Gunicorn
-│   └── requirements.txt
+│   ├── pyproject.toml        # Dependencies (managed via uv)
+│   └── uv.lock               # Locked dependency versions
 ├── frontend/                 # React SPA (TanStack Router file-based routing)
 │   ├── src/
 │   │   ├── api/              # API client modules (auth, images, libraries, etc.)
@@ -103,15 +104,17 @@ podman-compose up -d --build --force-recreate
 podman exec -e FLASK_APP="main:create_app()" lumios-backend /usr/bin/python3 -m flask db migrate -m "description"
 podman exec -e FLASK_APP="main:create_app()" lumios-backend /usr/bin/python3 -m flask db upgrade
 
-# Backend tests (run from backend/app/ — uses SQLite in-memory, no services needed)
-# only for test setup
-python3 -m venv ./.venv
-source ./.venv/bin/activate
-./.venv/bin/pip install -r ./backend/requirements.txt
-./.venv/bin/pip install -r ./backend/requirements-test.txt
+# Backend tests (run from backend/ — uses SQLite in-memory, no services needed)
+# only for test setup (uv manages the virtualenv itself, no manual activation needed)
+cd backend
+uv sync --group test
 # for each test run
-source ./.venv/bin/activate
-python -m pytest ./backend/app/tests/ -v
+uv run python -m pytest app/tests/ -v
+
+# Add/update a backend dependency
+cd backend
+uv add <package>==<version>          # adds to pyproject.toml + uv.lock
+uv lock --upgrade-package <package>  # bump a pinned version
 
 # CLI commands (registered in main.py)
 flask purge-deleted-accounts             # Hard-delete accounts soft-deleted > 1 year

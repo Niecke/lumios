@@ -10,11 +10,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python -m venv /venv
-ENV PATH="/venv/bin:$PATH"
+COPY --from=ghcr.io/astral-sh/uv:0.8.17 /uv /usr/local/bin/uv
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+ENV UV_PROJECT_ENVIRONMENT=/venv \
+    UV_PYTHON_DOWNLOADS=never
+
+COPY pyproject.toml uv.lock .python-version .
+RUN uv sync --no-install-project --frozen
 
 
 # ---- Stage 2: Runtime (distroless) ----
