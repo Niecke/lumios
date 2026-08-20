@@ -10,7 +10,7 @@ dependencies = [
     "psycopg[binary]==3.3.4",
     "authlib==1.7.2",
     "requests==2.34.2",
-    "python-dotenv==1.2.2",
+    "python-dotenv==1.2.3",
     "cryptography==50.0.0",
     "Flask-Migrate==4.1.0",
     "argon2-cffi==25.1.0",
