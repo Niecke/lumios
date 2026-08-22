@@ -29,7 +29,7 @@ dependencies = [
     "opentelemetry-api==1.44.0",
     "opentelemetry-sdk==1.44.0",
     "opentelemetry-instrumentation-flask==0.65b0",
-    "opentelemetry-exporter-gcp-trace==1.14.0",
+    "opentelemetry-exporter-gcp-trace==1.15.0",
     "opentelemetry-exporter-otlp-proto-grpc==1.44.0",
     "opentelemetry-instrumentation-sqlalchemy==0.65b0",
 ]
