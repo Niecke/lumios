@@ -15,6 +15,11 @@ resource "google_compute_instance" "vm" {
   machine_type = var.machine_type
   zone         = var.zone
 
+  # Stopping the instance drops the vCPU/RAM charge; the boot and data disks
+  # keep billing and keep their contents, so Postgres and Redis come back as
+  # they were once this is flipped to RUNNING again.
+  desired_status = var.paused ? "TERMINATED" : "RUNNING"
+
   boot_disk {
     initialize_params {
       image = "debian-cloud/debian-13"

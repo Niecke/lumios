@@ -192,6 +192,7 @@ resource "google_cloud_scheduler_job" "cleanup_daily" {
   schedule         = "0 2 * * *"
   time_zone        = "UTC"
   attempt_deadline = "320s"
+  paused           = var.paused
 
   retry_config {
     retry_count = 3
@@ -309,6 +310,7 @@ resource "google_cloud_scheduler_job" "audit_cleanup_daily" {
   schedule         = "0 3 * * *"
   time_zone        = "UTC"
   attempt_deadline = "320s"
+  paused           = var.paused
 
   retry_config {
     retry_count = 3

@@ -34,3 +34,9 @@ variable "subnet_cidr" {
   description = "Subnet CIDR — Cloud Run Direct VPC Egress IPs come from here, allowed to reach Postgres and Redis"
   type        = string
 }
+
+variable "paused" {
+  description = "Platform pause switch — stops the VM (TERMINATED). Disks and their data are retained."
+  type        = bool
+  default     = false
+}
