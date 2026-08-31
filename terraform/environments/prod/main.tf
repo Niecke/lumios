@@ -6,20 +6,25 @@ locals {
   # cleanup schedulers paused so they do not fire against a stopped database.
   # Buckets, disks, secrets and images are all left untouched.
   #
-  # ORDERING CONSTRAINT — read before editing module.cloudrun while paused.
+  # WHY THE SERVICES ARE DESTROYED RATHER THAN LEFT IDLE
   #
   # module.cloudrun consumes module.vm.internal_ip, so Terraform always applies
-  # the VM before Cloud Run. While paused the VM is TERMINATED, which means any
-  # change to the backend service rolls a new revision whose startup probe waits
-  # on a Postgres that is not running (see backend/entrypoint.py) and fails after
-  # 4 minutes, taking the whole apply with it.
+  # the VM before Cloud Run. While paused the VM is TERMINATED, so any change to
+  # the backend service rolls a new revision whose startup probe waits forever on
+  # a Postgres that is not running (see backend/entrypoint.py) and fails after
+  # 4 minutes — taking the whole apply with it, every time. Keeping the service
+  # defined but unreachable therefore leaves Terraform permanently unable to
+  # converge. Deleting a service needs no healthy revision, so it always works.
   #
-  # So: do not change google_cloud_run_v2_service.backend while paused. Changes
-  # to the backend service must be applied while the VM is still RUNNING —
-  # either before pausing, or in a separate apply after unpausing.
+  # RESTORE takes two applies. Set paused = false and apply: the VM starts and
+  # Terraform immediately moves on to recreate the backend service, but Postgres
+  # is not listening yet (the startup script still has to bring the podman
+  # containers up) so that first apply will likely fail on the backend. Re-run it
+  # once the VM is warm and it converges.
   #
-  # Deferred until unpause: cpu_idle = true on the three services (see the
-  # startup-cost discussion — worth ~EUR 40/month once traffic resumes).
+  # Deferred until restore: cpu_idle = true on the three services — worth roughly
+  # EUR 40/month once traffic resumes, but it is a service change, so it can only
+  # be applied while the VM is RUNNING.
   paused = true
 }
 
