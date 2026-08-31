@@ -324,7 +324,6 @@ resource "google_cloud_run_v2_service" "backend" {
           cpu    = "1"
           memory = "512Mi"
         }
-        cpu_idle = true
       }
     }
   }
@@ -381,7 +380,6 @@ resource "google_cloud_run_v2_service" "frontend" {
           cpu    = "1"
           memory = "512Mi"
         }
-        cpu_idle = true
       }
     }
   }
@@ -423,7 +421,6 @@ resource "google_cloud_run_v2_service" "landingpage" {
           cpu    = "1"
           memory = "512Mi"
         }
-        cpu_idle = true
       }
     }
   }
