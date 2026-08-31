@@ -78,13 +78,28 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      - name: Check platform pause state
+        id: pause
+        run: |
+          PAUSED=$(grep -oP '^\s*paused\s*=\s*\K(true|false)' terraform/environments/prod/main.tf | head -1)
+          if [ -z "$PAUSED" ]; then
+            echo "::warning::Could not read local.paused from terraform/environments/prod/main.tf — assuming not paused."
+            PAUSED=false
+          fi
+          echo "paused=${PAUSED}" >> "$GITHUB_OUTPUT"
+          if [ "$PAUSED" = "true" ]; then
+            echo "::notice::Lumios is paused (local.paused = true) — skipping deploy. The image was still built and pushed."
+          fi
+
       - name: Authenticate to GCP
+        if: steps.pause.outputs.paused != 'true'
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Deploy to Cloud Run
+        if: steps.pause.outputs.paused != 'true'
         run: |
           SHA=$(git rev-parse --short HEAD)
           gcloud run services update lumios-frontend \
