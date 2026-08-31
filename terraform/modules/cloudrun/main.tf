@@ -111,13 +111,15 @@ resource "google_secret_manager_secret_iam_member" "cloudrun_cloud_tasks_secret"
 resource "google_cloud_run_v2_service_iam_member" "public" {
   count = var.paused ? 0 : 1
 
-  name     = google_cloud_run_v2_service.backend.name
-  location = google_cloud_run_v2_service.backend.location
+  name     = google_cloud_run_v2_service.backend[0].name
+  location = google_cloud_run_v2_service.backend[0].location
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
 
 resource "google_cloud_run_v2_service" "backend" {
+  count = var.paused ? 0 : 1
+
   name                = "lumios-backend"
   location            = var.region
   ingress             = "INGRESS_TRAFFIC_ALL"
@@ -332,13 +334,15 @@ resource "google_cloud_run_v2_service" "backend" {
 resource "google_cloud_run_v2_service_iam_member" "frontend_public" {
   count = var.paused ? 0 : 1
 
-  name     = google_cloud_run_v2_service.frontend.name
-  location = google_cloud_run_v2_service.frontend.location
+  name     = google_cloud_run_v2_service.frontend[0].name
+  location = google_cloud_run_v2_service.frontend[0].location
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
 
 resource "google_cloud_run_v2_service" "frontend" {
+  count = var.paused ? 0 : 1
+
   name                = "lumios-frontend"
   location            = var.region
   ingress             = "INGRESS_TRAFFIC_ALL"
@@ -388,13 +392,15 @@ resource "google_cloud_run_v2_service" "frontend" {
 resource "google_cloud_run_v2_service_iam_member" "landingpage_public" {
   count = var.paused ? 0 : 1
 
-  name     = google_cloud_run_v2_service.landingpage.name
-  location = google_cloud_run_v2_service.landingpage.location
+  name     = google_cloud_run_v2_service.landingpage[0].name
+  location = google_cloud_run_v2_service.landingpage[0].location
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
 
 resource "google_cloud_run_v2_service" "landingpage" {
+  count = var.paused ? 0 : 1
+
   name                = "lumios-landingpage"
   location            = var.region
   ingress             = "INGRESS_TRAFFIC_ALL"
@@ -427,6 +433,8 @@ resource "google_cloud_run_v2_service" "landingpage" {
 }
 
 resource "google_cloud_run_domain_mapping" "backend" {
+  count = var.paused ? 0 : 1
+
   name     = trimprefix(var.public_base_url, "https://")
   location = var.region
 
@@ -435,11 +443,13 @@ resource "google_cloud_run_domain_mapping" "backend" {
   }
 
   spec {
-    route_name = google_cloud_run_v2_service.backend.name
+    route_name = google_cloud_run_v2_service.backend[0].name
   }
 }
 
 resource "google_cloud_run_domain_mapping" "frontend" {
+  count = var.paused ? 0 : 1
+
   name     = trimprefix(var.frontend_url, "https://")
   location = var.region
 
@@ -448,11 +458,13 @@ resource "google_cloud_run_domain_mapping" "frontend" {
   }
 
   spec {
-    route_name = google_cloud_run_v2_service.frontend.name
+    route_name = google_cloud_run_v2_service.frontend[0].name
   }
 }
 
 resource "google_cloud_run_domain_mapping" "landingpage" {
+  count = var.paused ? 0 : 1
+
   name     = var.landingpage_domain
   location = var.region
 
@@ -461,6 +473,6 @@ resource "google_cloud_run_domain_mapping" "landingpage" {
   }
 
   spec {
-    route_name = google_cloud_run_v2_service.landingpage.name
+    route_name = google_cloud_run_v2_service.landingpage[0].name
   }
 }
