@@ -109,6 +109,8 @@ resource "google_secret_manager_secret_iam_member" "cloudrun_cloud_tasks_secret"
 }
 
 resource "google_cloud_run_v2_service_iam_member" "public" {
+  count = var.paused ? 0 : 1
+
   name     = google_cloud_run_v2_service.backend.name
   location = google_cloud_run_v2_service.backend.location
   role     = "roles/run.invoker"
@@ -322,12 +324,15 @@ resource "google_cloud_run_v2_service" "backend" {
           cpu    = "1"
           memory = "512Mi"
         }
+        cpu_idle = true
       }
     }
   }
 }
 
 resource "google_cloud_run_v2_service_iam_member" "frontend_public" {
+  count = var.paused ? 0 : 1
+
   name     = google_cloud_run_v2_service.frontend.name
   location = google_cloud_run_v2_service.frontend.location
   role     = "roles/run.invoker"
@@ -376,12 +381,15 @@ resource "google_cloud_run_v2_service" "frontend" {
           cpu    = "1"
           memory = "512Mi"
         }
+        cpu_idle = true
       }
     }
   }
 }
 
 resource "google_cloud_run_v2_service_iam_member" "landingpage_public" {
+  count = var.paused ? 0 : 1
+
   name     = google_cloud_run_v2_service.landingpage.name
   location = google_cloud_run_v2_service.landingpage.location
   role     = "roles/run.invoker"
@@ -415,6 +423,7 @@ resource "google_cloud_run_v2_service" "landingpage" {
           cpu    = "1"
           memory = "512Mi"
         }
+        cpu_idle = true
       }
     }
   }

@@ -1,3 +1,13 @@
+locals {
+  # Lumios is paused. Flip to false and apply to bring the platform back online.
+  #
+  # Paused means: VM stopped (disks and their data retained), Cloud Run public
+  # invoker access revoked so no instance starts and nothing is billed, and the
+  # cleanup schedulers paused so they do not fire against a stopped database.
+  # Buckets, disks, secrets and images are all left untouched.
+  paused = true
+}
+
 module "apis" {
   source = "../../modules/apis"
 }
@@ -36,6 +46,7 @@ module "vm" {
   subnet_self_link            = module.network.subnet_self_link
   postgres_password_secret_id = module.secrets.postgres_password_secret_id
   subnet_cidr                 = "10.0.0.0/24"
+  paused                      = local.paused
 
   depends_on = [module.apis, module.network, module.secrets]
 }
@@ -64,6 +75,7 @@ module "cloudrun" {
   public_base_url                     = "https://lumios-api.niecke-it.de"
   frontend_url                        = "https://lumios-app.niecke-it.de"
   landingpage_domain                  = "lumios.niecke-it.de"
+  paused                              = local.paused
 
   depends_on = [module.apis, module.network, module.vm, module.secrets, module.storage]
 }
@@ -91,6 +103,7 @@ module "cleanup" {
   jwt_secret_secret_id          = module.secrets.jwt_secret_secret_id
   gcs_hmac_access_key_secret_id = module.cloudrun.gcs_hmac_access_key_secret_id
   gcs_hmac_secret_secret_id     = module.cloudrun.gcs_hmac_secret_secret_id
+  paused                        = local.paused
 
   depends_on = [module.apis, module.network, module.vm, module.secrets, module.storage, module.cloudrun]
 }
