@@ -5,6 +5,21 @@ locals {
   # invoker access revoked so no instance starts and nothing is billed, and the
   # cleanup schedulers paused so they do not fire against a stopped database.
   # Buckets, disks, secrets and images are all left untouched.
+  #
+  # ORDERING CONSTRAINT — read before editing module.cloudrun while paused.
+  #
+  # module.cloudrun consumes module.vm.internal_ip, so Terraform always applies
+  # the VM before Cloud Run. While paused the VM is TERMINATED, which means any
+  # change to the backend service rolls a new revision whose startup probe waits
+  # on a Postgres that is not running (see backend/entrypoint.py) and fails after
+  # 4 minutes, taking the whole apply with it.
+  #
+  # So: do not change google_cloud_run_v2_service.backend while paused. Changes
+  # to the backend service must be applied while the VM is still RUNNING —
+  # either before pausing, or in a separate apply after unpausing.
+  #
+  # Deferred until unpause: cpu_idle = true on the three services (see the
+  # startup-cost discussion — worth ~EUR 40/month once traffic resumes).
   paused = true
 }
 
