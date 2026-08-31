@@ -57,3 +57,9 @@ variable "gcs_hmac_secret_secret_id" {
   description = "Secret Manager secret ID for the GCS HMAC secret"
   type        = string
 }
+
+variable "paused" {
+  description = "Platform pause switch — pauses the Cloud Scheduler triggers so jobs do not fire against a stopped database."
+  type        = bool
+  default     = false
+}

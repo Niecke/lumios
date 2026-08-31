@@ -113,3 +113,9 @@ variable "cloud_tasks_secret_secret_id" {
   description = "Secret Manager secret ID for the Cloud Tasks internal endpoint secret"
   type        = string
 }
+
+variable "paused" {
+  description = "Platform pause switch — revokes public invoker access so no container instance ever starts (and nothing is billed). Services stay defined."
+  type        = bool
+  default     = false
+}

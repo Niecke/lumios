@@ -4,7 +4,7 @@ resource "google_cloud_tasks_queue" "video_process" {
 
   rate_limits {
     max_concurrent_dispatches = 5
-    max_dispatches_per_second  = 2
+    max_dispatches_per_second = 2
   }
 
   retry_config {
