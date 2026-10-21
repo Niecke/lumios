@@ -1,0 +1,11 @@
+# Patterns to ignore when building packages.
+.DS_Store
+.git/
+.gitignore
+.vscode/
+*.swp
+*.bak
+*.tmp
+*~
+# Local value overrides — credentials never ship in the package.
+values-*.yaml

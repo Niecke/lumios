@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "lumios.fullname" . }}-landingpage
+  labels:
+    {{- include "lumios.labels" . | nindent 4 }}
+    app.kubernetes.io/component: landingpage
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "lumios.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: landingpage
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "lumios.fullname" . }}-landingpage
+  labels:
+    {{- include "lumios.labels" . | nindent 4 }}
+    app.kubernetes.io/component: landingpage
+spec:
+  replicas: {{ .Values.landingpage.replicas }}
+  selector:
+    matchLabels:
+      {{- include "lumios.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: landingpage
+  template:
+    metadata:
+      labels:
+        {{- include "lumios.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: landingpage
+    spec:
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      containers:
+        - name: landingpage
+          # Runs as root for the same reason as the frontend; its startup script
+          # also rewrites the HTML in place.
+          securityContext:
+            allowPrivilegeEscalation: false
+          image: {{ include "lumios.image" (list "landingpage" .Values.landingpage.image) | quote }}
+          imagePullPolicy: {{ .Values.landingpage.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # Substituted into index.html and registration.js at container
+            # start, so the same image serves staging and production.
+            - name: APP_URL
+              value: {{ printf "https://%s" .Values.ingress.hosts.frontend | quote }}
+            - name: BACKEND_URL
+              value: {{ printf "https://%s" .Values.ingress.hosts.backend | quote }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.landingpage.resources | nindent 12 }}
