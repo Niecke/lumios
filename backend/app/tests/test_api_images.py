@@ -395,3 +395,70 @@ class TestListImagesPagination:
         ).get_json()
         assert len(data["images"]) == 2
         assert data["has_more"] is False
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/libraries/<id>/images — quota boundaries
+# ---------------------------------------------------------------------------
+
+
+from unittest.mock import PropertyMock
+
+
+def _limits(storage=None, media=5000):
+    return {
+        "max_libraries": 10,
+        "max_images_per_library": media,
+        "max_storage_bytes": storage if storage is not None else 10**9,
+    }
+
+
+def _patch_limits(**kwargs):
+    return patch.object(
+        User, "effective_limits", new_callable=PropertyMock, return_value=_limits(**kwargs)
+    )
+
+
+class TestUploadImageQuotas:
+    def _upload(self, client, photographer, library):
+        return upload(
+            client, library.id, make_token(photographer), make_jpeg_bytes(), "a.jpg", "image/jpeg"
+        )
+
+    @patch("services.images.storage")
+    def test_media_count_below_limit_allowed(self, _s, client, photographer, library):
+        make_images(library, 2)
+        with _patch_limits(media=3):
+            res = self._upload(client, photographer, library)
+        assert res.status_code == 201
+
+    @patch("services.images.storage")
+    def test_media_count_at_limit_rejected(self, _s, client, photographer, library):
+        make_images(library, 3)
+        with _patch_limits(media=3):
+            res = self._upload(client, photographer, library)
+        assert res.status_code == 422
+
+    @patch("services.images.storage")
+    def test_storage_exactly_at_limit_allowed(self, _s, client, photographer, library):
+        size = len(make_jpeg_bytes())
+        make_images(library, 1)  # 1024 bytes
+        with _patch_limits(storage=1024 + size):
+            res = self._upload(client, photographer, library)
+        assert res.status_code == 201
+
+    @patch("services.images.storage")
+    def test_storage_one_byte_over_rejected(self, _s, client, photographer, library):
+        size = len(make_jpeg_bytes())
+        make_images(library, 1)
+        with _patch_limits(storage=1024 + size - 1):
+            res = self._upload(client, photographer, library)
+        assert res.status_code == 422
+
+    @patch("services.images.storage")
+    def test_storage_overshoot_rejected(self, _s, client, photographer, library):
+        make_images(library, 1)
+        with _patch_limits(storage=1024 + 10):
+            res = self._upload(client, photographer, library)
+        assert res.status_code == 422
+        assert res.get_json()["error"].endswith("for your subscription.")
