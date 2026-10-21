@@ -100,8 +100,8 @@ RATELIMIT_ENABLED = os.getenv("RATELIMIT_ENABLED", "true").lower() not in (
 # Redis (optional — enables Redis-backed sessions when set, falls back to filesystem)
 REDIS_URL = os.getenv("REDIS_URL", None)
 
-# S3-compatible object storage (use MinIO for local dev, GCS/S3 in production)
-S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "http://minio:9000")
+# S3-compatible object storage (use Versity Gateway for local dev, GCS/S3 in production)
+S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "http://s3:7070")
 # Public URL used when generating presigned URLs — must be reachable by the browser
 S3_PUBLIC_ENDPOINT_URL = os.getenv("S3_PUBLIC_ENDPOINT_URL", S3_ENDPOINT_URL)
 S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "").strip()
