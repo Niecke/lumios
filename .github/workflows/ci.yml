@@ -64,7 +64,7 @@ jobs:
           changed="$(git diff --name-only "$BASE...$HEAD")"
           echo "$changed"
 
-          if echo "$changed" | grep -qE '^(backend/|frontend/|landingpage/|\.github/workflows/(ci|backend-tests)\.yml)'; then
+          if echo "$changed" | grep -qE '^(backend/|frontend/|landingpage/|\.github/workflows/(ci|backend-tests)\.yml|\.release-please-manifest\.json)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "Application code touched — running the full pipeline." >> "$GITHUB_STEP_SUMMARY"
           else
