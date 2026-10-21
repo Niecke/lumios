@@ -1,0 +1,407 @@
+name: Release
+
+# release-please tags vX.Y.Z when its release pull request merges. That merge is
+# the production decision; this workflow carries it out. It never builds: the
+# images were built once on the release pull request, tested there, and retagged
+# sha-<short> by promote.yml when it merged. Here they get their version tags,
+# the chart as of the tag is pushed to GHCR as an OCI artifact, and the version
+# is written into deploy/flux/prod/, which is the only thing that moves
+# production. The chart and the Flux manifests arrive with #398; until then those
+# steps are skipped.
+#
+# Each released digest — images and chart — is also signed keyless with cosign,
+# and each image gets a signed syft SBOM attestation, all before production is
+# pointed at it, so a cluster that verifies signatures never sees an unsigned
+# release.
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  # write: editing the GitHub Release body. The deploy commit goes over SSH with
+  # the DEPLOY_KEY deploy key when that secret exists, as in promote.yml.
+  contents: write
+  packages: write
+  # Keyless cosign: the workflow's OIDC token is exchanged for a short-lived
+  # Fulcio certificate naming this workflow and the tag it ran for.
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  REGISTRY_HOST: ghcr.io
+  # GHCR rejects uppercase in a path, so this is not github.repository_owner.
+  REGISTRY: ghcr.io/niecke/lumios
+  RELEASE: deploy/flux/prod/helmrelease.yaml
+  CHART_SOURCE: deploy/flux/prod/ocirepository.yaml
+  # helm push appends the chart name: this is ghcr.io/niecke/lumios/charts/lumios.
+  CHART_REGISTRY: ghcr.io/niecke/lumios/charts
+  # renovate: datasource=github-releases depName=helm/helm
+  HELM_VERSION: v4.3.1
+  # renovate: datasource=github-releases depName=sigstore/cosign
+  COSIGN_VERSION: v3.1.3
+  # renovate: datasource=github-releases depName=anchore/syft
+  SYFT_VERSION: v1.54.1
+
+jobs:
+  release:
+    name: Release images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # main, not the tag: the deploy commit is pushed to main. Over SSH with
+      # DEPLOY_KEY when set (rulesets can exempt deploy keys), else GITHUB_TOKEN.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+          ssh-key: ${{ secrets.DEPLOY_KEY }}
+
+      # The floating tags and production only ever move forward. Re-running the
+      # workflow for an older tag, or a patch cut for an older line, still gets
+      # its own x.y.z tag but must not drag `stable` or production back to it —
+      # a rollback is a revert of the deploy commit, not a re-release.
+      - name: Resolve the release
+        id: release
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          version="${tag#v}"
+          if ! [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::$tag is not a vX.Y.Z tag."
+            exit 1
+          fi
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*' --tags --quiet || true
+
+          commit=$(git rev-parse "refs/tags/$tag^{commit}")
+          on_valid_branch=false
+          if git merge-base --is-ancestor "$commit" origin/main; then
+            on_valid_branch=true
+          else
+            for branch in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/release/*'); do
+              if git merge-base --is-ancestor "$commit" "$branch"; then
+                on_valid_branch=true
+                echo "Tag is on release branch: $branch"
+                break
+              fi
+            done
+          fi
+
+          if [ "$on_valid_branch" = "false" ]; then
+            echo "::error::$tag points at $commit, which is not on main or any release branch." \
+                 "Only commits that went through a pull request have images."
+            exit 1
+          fi
+
+          newest() {
+            git tag --list "$1" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1
+          }
+          floating=""
+          [ "$(newest "v$major.$minor.*")" = "$tag" ] && floating="$floating $major.$minor"
+          [ "$(newest "v$major.*")" = "$tag" ] && floating="$floating $major"
+          latest=false
+          if [ "$(newest 'v*')" = "$tag" ]; then
+            floating="$floating stable"
+            latest=true
+          fi
+
+          echo "Releasing $version from $commit; floating tags:${floating:- none}"
+          {
+            echo "version=$version"
+            echo "commit=$commit"
+            echo "source=sha-${commit:0:7}"
+            echo "floating=$floating"
+            echo "latest=$latest"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ env.REGISTRY_HOST }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      # promote.yml and release-please both run on the push of the release
+      # merge, and release-please's tag can start this workflow before promote
+      # has added sha-<short>. Wait for it, then fail — never build. A missing
+      # set means the release pull request skipped its builds or promote failed;
+      # either way there is no tested image to release.
+      - name: Find the promoted images
+        id: images
+        env:
+          SOURCE: ${{ steps.release.outputs.source }}
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 600))
+          for image in backend frontend landingpage; do
+            until digest=$(docker buildx imagetools inspect "$REGISTRY/$image:$SOURCE" \
+                             --format '{{.Manifest.Digest}}' 2>/dev/null); do
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "::error::$REGISTRY/$image:$SOURCE does not exist." \
+                     "Check the promote.yml run for ${{ steps.release.outputs.commit }}" \
+                     "and the CI builds on the release pull request. Nothing is built here."
+                exit 1
+              fi
+              echo "waiting for $image:$SOURCE"
+              sleep 15
+            done
+            echo "found $image:$SOURCE at $digest"
+            echo "$image=$digest" >> "$GITHUB_OUTPUT"
+          done
+
+      # By digest, not by the sha- tag, so the bytes that were looked up are the
+      # bytes that get tagged. imagetools copies the manifest; the check after
+      # it holds that to the same digest.
+      - name: Tag the release
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          FLOATING: ${{ steps.release.outputs.floating }}
+          BACKEND: ${{ steps.images.outputs.backend }}
+          FRONTEND: ${{ steps.images.outputs.frontend }}
+          LANDINGPAGE: ${{ steps.images.outputs.landingpage }}
+        run: |
+          set -euo pipefail
+          for image in backend frontend landingpage; do
+            var="${image^^}"
+            digest="${!var}"
+            args=(--tag "$REGISTRY/$image:$VERSION")
+            for tag in $FLOATING; do
+              args+=(--tag "$REGISTRY/$image:$tag")
+            done
+            docker buildx imagetools create "${args[@]}" "$REGISTRY/$image@$digest"
+
+            for tag in "$VERSION" $FLOATING; do
+              got=$(docker buildx imagetools inspect "$REGISTRY/$image:$tag" --format '{{.Manifest.Digest}}')
+              if [ "$got" != "$digest" ]; then
+                echo "::error::$image:$tag is $got, expected $digest."
+                exit 1
+              fi
+            done
+          done
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      # The chart as the tag has it — the checkout is main, which may already be
+      # ahead. release-please bumped Chart.yaml in the release pull request, so
+      # its version must be this release; anything else means the extra-files
+      # config broke, and production would pin a chart named after the wrong
+      # release.
+      #
+      # A chart version is pushed once. A re-run finds it and reads its digest
+      # rather than pushing a fresh package, whose timestamps would give the
+      # same version a new digest under an existing signature.
+      - name: Publish the chart
+        id: chart
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+          COMMIT: ${{ steps.release.outputs.commit }}
+        run: |
+          set -euo pipefail
+          if [ ! -f charts/lumios/Chart.yaml ]; then
+            echo "::notice::charts/lumios does not exist yet — skipping the chart."
+            exit 0
+          fi
+          src="$RUNNER_TEMP/chart-src"
+          mkdir -p "$src"
+          git archive "$COMMIT" charts/lumios | tar -x -C "$src"
+
+          chart_version=$(yq '.version' "$src/charts/lumios/Chart.yaml")
+          if [ "$chart_version" != "$VERSION" ]; then
+            echo "::error::charts/lumios/Chart.yaml at $COMMIT is $chart_version, expected $VERSION." \
+                 "Check the Chart.yaml entry in release-please-config.json."
+            exit 1
+          fi
+
+          echo "$GH_TOKEN" | helm registry login "$REGISTRY_HOST" \
+            --username "${{ github.actor }}" --password-stdin
+
+          ref="oci://$CHART_REGISTRY/lumios"
+          if helm show chart "$ref" --version "$VERSION" >/dev/null 2>&1; then
+            echo "lumios:$VERSION already published — reading its digest"
+            out=$(helm pull "$ref" --version "$VERSION" --destination "$RUNNER_TEMP" 2>&1)
+          else
+            helm package "$src/charts/lumios" --destination "$RUNNER_TEMP"
+            out=$(helm push "$RUNNER_TEMP/lumios-$VERSION.tgz" "oci://$CHART_REGISTRY" 2>&1)
+          fi
+          echo "$out"
+
+          digest=$(echo "$out" | sed -n 's/^Digest: *//p')
+          if ! [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Could not read the digest of $CHART_REGISTRY/lumios:$VERSION from helm's output."
+            exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+
+      - uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        id: syft
+        with:
+          syft-version: ${{ env.SYFT_VERSION }}
+
+      # By digest, like the tagging: a signature belongs to a digest, not a tag,
+      # so it covers every name this digest carries — sha-<short> included.
+      # The certificate names release.yml and the vX.Y.Z ref, which is what a
+      # verifier pins to. Re-running adds another signature; that is harmless.
+      #
+      # The SBOM is read from the registry, not a local daemon: syft resolves
+      # the index to the linux/amd64 image, and the attestation goes on the
+      # index digest that the HelmRelease and Kyverno resolve the tag to.
+      #
+      # The chart is signed the same way. It has no SBOM: it is templates, not
+      # packages.
+      - name: Sign the images and the chart, attest the images' SBOMs
+        env:
+          SYFT: ${{ steps.syft.outputs.cmd }}
+          BACKEND: ${{ steps.images.outputs.backend }}
+          FRONTEND: ${{ steps.images.outputs.frontend }}
+          LANDINGPAGE: ${{ steps.images.outputs.landingpage }}
+          CHART: ${{ steps.chart.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [ -n "$CHART" ]; then
+            cosign sign --yes "$CHART_REGISTRY/lumios@$CHART"
+          fi
+
+          for image in backend frontend landingpage; do
+            var="${image^^}"
+            ref="$REGISTRY/$image@${!var}"
+            sbom="sbom-$image.spdx.json"
+
+            cosign sign --yes "$ref"
+
+            "$SYFT" scan "registry:$ref" --output "spdx-json=$sbom"
+            cosign attest --yes --type spdxjson --predicate "$sbom" "$ref"
+          done
+
+      # The push races promote's own deploy commit for the same merge — both
+      # start from the release merge. They touch different files, so a rebase
+      # always applies cleanly. promote's job-level `if:` skips this commit.
+      #
+      # Chart and images move in one commit, so production never renders one
+      # release's chart with another's images, and reverting the commit rolls
+      # back both.
+      - name: Record the release for Flux
+        if: steps.release.outputs.latest == 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ ! -f "$RELEASE" ] || [ ! -f "$CHART_SOURCE" ]; then
+            echo "::notice::$RELEASE or $CHART_SOURCE does not exist yet — skipping the production tag."
+            exit 0
+          fi
+
+          git pull --ff-only origin main
+
+          TAG="$VERSION" yq -i '
+            .spec.values.backend.image.tag = strenv(TAG) |
+            .spec.values.frontend.image.tag = strenv(TAG) |
+            .spec.values.landingpage.image.tag = strenv(TAG)
+          ' "$RELEASE"
+          TAG="$VERSION" yq -i '.spec.ref.tag = strenv(TAG)' "$CHART_SOURCE"
+
+          if git diff --quiet -- "$RELEASE" "$CHART_SOURCE"; then
+            echo "Production already at $VERSION — nothing to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$RELEASE" "$CHART_SOURCE"
+          git commit -m "Deploy $VERSION to production"
+
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "main moved underneath — rebasing (attempt $attempt)"
+            git pull --rebase origin main
+          done
+          echo "::error::Could not push the production deploy commit for $VERSION."
+          exit 1
+
+      - name: Skip production for an older release
+        if: steps.release.outputs.latest != 'true'
+        run: |
+          echo "A newer release is tagged — production stays where it is, \`stable\` was not moved." >> "$GITHUB_STEP_SUMMARY"
+
+      # release-please creates the Release and the tag in one call, so it should
+      # exist already; the retry covers GitHub's eventual consistency. Everything
+      # from the marker down is this workflow's, which keeps a re-run idempotent.
+      #
+      # Notes only, no assets: the repository has immutable releases on, which
+      # still allows editing the notes but refuses uploads once the Release is
+      # published. The SBOMs live in GHCR as the signed attestations above, and
+      # the notes say how to pull one out.
+      - name: Attach the image digests to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IDENTITY: https://github.com/${{ github.workflow_ref }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.release.outputs.version }}
+          COMMIT: ${{ steps.release.outputs.commit }}
+          FLOATING: ${{ steps.release.outputs.floating }}
+          BACKEND: ${{ steps.images.outputs.backend }}
+          FRONTEND: ${{ steps.images.outputs.frontend }}
+          LANDINGPAGE: ${{ steps.images.outputs.landingpage }}
+          CHART: ${{ steps.chart.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5 6; do
+            if body=$(gh release view "$TAG" --json body --jq .body 2>/dev/null); then
+              break
+            fi
+            if [ "$attempt" -eq 6 ]; then
+              echo "::error::No GitHub Release for $TAG."
+              exit 1
+            fi
+            sleep 10
+          done
+
+          marker='<!-- release-images -->'
+          notes="$RUNNER_TEMP/notes.md"
+          {
+            printf '%s\n' "$body" | sed "/^$marker\$/,\$d"
+            echo "$marker"
+            echo "## Images"
+            echo
+            echo "Built and tested on the release pull request, retagged here — not rebuilt."
+            echo "Commit \`$COMMIT\`. Also tagged:${FLOATING:- (none — a newer release exists)}."
+            echo
+            echo "| Image | Digest |"
+            echo "|---|---|"
+            echo "| \`$REGISTRY/backend:$VERSION\` | \`$BACKEND\` |"
+            echo "| \`$REGISTRY/frontend:$VERSION\` | \`$FRONTEND\` |"
+            echo "| \`$REGISTRY/landingpage:$VERSION\` | \`$LANDINGPAGE\` |"
+            if [ -n "$CHART" ]; then
+              echo "| \`$CHART_REGISTRY/lumios:$VERSION\` (Helm chart) | \`$CHART\` |"
+            fi
+            echo
+            echo "All signed keyless with cosign; each image carries a signed SPDX SBOM"
+            echo "attestation in the registry. To verify, and to extract the SBOM:"
+            echo
+            echo '```sh'
+            echo "cosign verify $REGISTRY/backend:$VERSION \\"
+            echo "  --certificate-identity '$IDENTITY' \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+            echo "cosign verify-attestation --type spdxjson $REGISTRY/backend:$VERSION \\"
+            echo "  --certificate-identity '$IDENTITY' \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com \\"
+            echo "  | jq -r .payload | base64 -d | jq .predicate > sbom-backend.spdx.json"
+            echo '```'
+          } > "$notes"
+
+          gh release edit "$TAG" --notes-file "$notes"
+          cat "$notes" >> "$GITHUB_STEP_SUMMARY"
