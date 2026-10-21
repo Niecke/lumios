@@ -226,7 +226,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -240,29 +239,12 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
-      # Only the Vite client id is read from GCP; the images themselves live in
-      # GHCR. WIF is used to read the secret, not to push anything.
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
-
-      - name: Fetch Google Client ID
-        id: secrets
-        run: |
-          CLIENT_ID=$(gcloud secrets versions access latest --secret=lumios-google-frontend-client-id)
-          echo "::add-mask::${CLIENT_ID}"
-          echo "google_client_id=${CLIENT_ID}" >> "$GITHUB_OUTPUT"
-
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: frontend
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
-            VITE_GOOGLE_CLIENT_ID=${{ steps.secrets.outputs.google_client_id }}
-            VITE_LANDING_URL=https://lumios.niecke-it.de
             GIT_SHA=${{ needs.meta.outputs.commit }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -301,7 +283,6 @@ jobs:
           context: landingpage
           platforms: linux/amd64,linux/arm64
           push: true
-          build-args: APP_URL=https://lumios-app.niecke-it.de
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ needs.meta.outputs.commit }}

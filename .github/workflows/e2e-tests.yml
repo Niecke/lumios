@@ -22,7 +22,7 @@ jobs:
           POSTGRES_DB=lumios
           SECRET_KEY=test-secret-key-at-least-32-chars-long!
           JWT_SECRET=test-jwt-secret-key-at-least-32-chars!!
-          VITE_GOOGLE_CLIENT_ID=
+          GOOGLE_FRONTEND_CLIENT_ID=
           EOF
 
       - name: Build and start backend + dependencies
