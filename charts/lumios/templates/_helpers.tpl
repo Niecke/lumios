@@ -50,7 +50,8 @@ tag happens to point at. Call with (list "backend" .Values.backend.image).
 {{/*
 Environment shared by the backend Deployment and the cleanup CronJobs, which run
 the same image against the same database. Credentials come from the backend
-Secret via envFrom, so they are not repeated here.
+Secret via envFrom (including REDIS_URL, which embeds the Redis password), so
+they are not repeated here.
 */}}
 {{- define "lumios.backendEnv" -}}
 - name: POSTGRES_HOST
@@ -61,8 +62,6 @@ Secret via envFrom, so they are not repeated here.
   value: {{ .Values.postgres.username | quote }}
 - name: POSTGRES_DB
   value: {{ .Values.postgres.database | quote }}
-- name: REDIS_URL
-  value: {{ printf "redis://%s:6379/0" (include "lumios.redisHost" .) | quote }}
 - name: PUBLIC_BASE_URL
   value: {{ printf "https://%s" .Values.ingress.hosts.backend | quote }}
 - name: FRONTEND_URL

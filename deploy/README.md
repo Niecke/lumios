@@ -111,6 +111,8 @@ inline values.
 cat > /tmp/values.yaml <<EOF
 postgres:
   password: $(openssl rand -base64 24)
+redis:
+  password: $(openssl rand -hex 24)
 s3:
   endpointUrl: https://<object storage endpoint>
   accessKey: ...
@@ -138,6 +140,9 @@ Put every value in a password manager before deleting the file.
 it first initialises the volume, and changing it afterwards leaves the backend
 with a password the database rejects. Change it with `ALTER USER` first, then
 update the Secret.
+`redis.password` is Redis's `requirepass` and is sent to the backend in
+`REDIS_URL`. Rotating it is an edit of the Secret plus a Flux reconcile, which
+restarts Redis and logs everybody out. Generate it with `openssl rand -hex`.
 
 Then point Flux at the repo:
 

@@ -139,7 +139,9 @@ def create_app(test_config=None):
 
         app.config["SESSION_TYPE"] = "redis"
         app.config["SESSION_REDIS"] = get_redis_session()
-        app.logger.info(f"Sessions: Redis ({REDIS_URL})", extra={"log_type": "startup"})
+        # REDIS_URL may carry the password, so log the host only.
+        redis_host = REDIS_URL.rsplit("@", 1)[-1]
+        app.logger.info(f"Sessions: Redis ({redis_host})", extra={"log_type": "startup"})
     else:
         app.config["SESSION_TYPE"] = "filesystem"
         app.config["SESSION_FILE_DIR"] = "/tmp/flask_sessions"

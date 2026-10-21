@@ -110,6 +110,7 @@ jobs:
             --set frontend.image.tag=ci
             --set landingpage.image.tag=ci
             --set postgres.password=ci-password
+            --set redis.password=ci-redis-password
             --set backend.secretKey=ci-secret-key-ci-secret-key-ci-secret
             --set backend.jwtSecret=ci-jwt-secret-ci-jwt-secret-ci-jwt-secret
           )
@@ -122,6 +123,7 @@ jobs:
             yq '.spec.values' "deploy/flux/$env/helmrelease.yaml" > "$RUNNER_TEMP/$env-values.yaml"
             helm template lumios charts/lumios -f "$RUNNER_TEMP/$env-values.yaml" \
               --set postgres.password=ci-password \
+              --set redis.password=ci-redis-password \
               --set backend.secretKey=ci-secret-key-ci-secret-key-ci-secret \
               --set backend.jwtSecret=ci-jwt-secret-ci-jwt-secret-ci-jwt-secret > /dev/null
           done

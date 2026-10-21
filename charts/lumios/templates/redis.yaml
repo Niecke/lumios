@@ -1,3 +1,15 @@
+{{- $pw := required "redis.password is required — generate one with `openssl rand -hex 24`" .Values.redis.password }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "lumios.redisHost" . }}
+  labels:
+    {{- include "lumios.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+type: Opaque
+stringData:
+  REDIS_PASSWORD: {{ $pw | quote }}
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -30,6 +42,9 @@ spec:
       app.kubernetes.io/component: redis
   template:
     metadata:
+      annotations:
+        # Env vars are read at start: a new password must roll the pod.
+        checksum/password: {{ sha256sum $pw | quote }}
       labels:
         {{- include "lumios.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: redis
@@ -51,8 +66,24 @@ spec:
             capabilities:
               drop: ["ALL"]
           image: {{ .Values.redis.image | quote }}
-          # Sessions only — no RDB snapshots, no AOF, so nothing to write.
-          args: ["--save", "", "--appendonly", "no"]
+          # Sessions only — no RDB snapshots, no AOF, so nothing to write. The
+          # password comes from the environment so it is not in the pod spec.
+          command:
+            - sh
+            - -c
+            - exec redis-server --save "" --appendonly no --requirepass "$REDIS_PASSWORD"
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "lumios.redisHost" . }}
+                  key: REDIS_PASSWORD
+            # Read by redis-cli, so the probes authenticate too.
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "lumios.redisHost" . }}
+                  key: REDIS_PASSWORD
           ports:
             - name: redis
               containerPort: 6379

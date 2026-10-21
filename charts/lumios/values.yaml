@@ -35,6 +35,9 @@ postgres:
 # ---------------------------------------------------------------------------
 redis:
   image: docker.io/library/redis:8-alpine
+  # Required. `openssl rand -hex 24`. Other pods on the node can reach the
+  # Service, so Redis demands it (requirepass); the backend gets it via REDIS_URL.
+  password: ""
   resources:
     requests:
       cpu: 25m

@@ -1,6 +1,7 @@
 {{- $pw := required "postgres.password is required — generate one with `openssl rand -base64 24`" .Values.postgres.password }}
 {{- $secretKey := required "backend.secretKey is required — generate one with `openssl rand -hex 32`" .Values.backend.secretKey }}
 {{- $jwt := required "backend.jwtSecret is required — generate one with `openssl rand -hex 32`" .Values.backend.jwtSecret }}
+{{- $redisPw := required "redis.password is required — generate one with `openssl rand -hex 24`" .Values.redis.password }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -13,6 +14,7 @@ stringData:
   POSTGRES_PASSWORD: {{ $pw | quote }}
   SECRET_KEY: {{ $secretKey | quote }}
   JWT_SECRET: {{ $jwt | quote }}
+  REDIS_URL: {{ printf "redis://:%s@%s:6379/0" ($redisPw | urlquery) (include "lumios.redisHost" .) | quote }}
   {{- with .Values.s3.accessKey }}
   S3_ACCESS_KEY: {{ . | quote }}
   {{- end }}
