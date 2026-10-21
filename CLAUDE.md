@@ -488,17 +488,26 @@ feature/xyz  →  PR to dev  →  merge to dev  →  PR to main  →  merge to m
 
 ### GitHub Actions workflows
 
-All workflows use **Workload Identity Federation** for GCP auth (no service account keys). Images are pushed to **Artifact Registry** (`europe-west1-docker.pkg.dev`).
+Container images live in **GHCR** (`ghcr.io/niecke/lumios/{backend,frontend,landingpage}`) and are pushed with `GITHUB_TOKEN`. Workload Identity Federation (no service account keys) is still used for GCP: Terraform, and reading the frontend Google client ID from Secret Manager. Direct Cloud Run deploys from workflows are gone.
 
 | Workflow | Trigger | Actions |
 |---|---|---|
-| `backend-tests.yml` | Push/PR to `backend/` | pytest |
-| `docker-backend.yml` | Push/PR to `backend/` or `main`/`dev` | test → build → push image → deploy (main only) |
-| `docker-frontend.yml` | Push/PR to `frontend/` or `main`/`dev` | build (fetches Google client ID from Secret Manager) → push → deploy (main only) |
-| `docker-landingpage.yml` | Push/PR to `landingpage/` or `main`/`dev` | build → push → deploy (main only) |
+| `commitlint.yml` | PR to `main`/`dev`/`release/**` | PR title must be a conventional commit |
+| `ci.yml` | PR to `main`/`dev`/`release/**` | detect code changes → backend tests → build multi-arch (`linux/amd64,linux/arm64`) images, push as `ci-<head_sha40>` |
+| `backend-tests.yml` | Push/PR to `backend/`, called by `ci.yml` | pytest |
+| `e2e-tests.yml` | PR to `main`/`dev` | docker compose integration tests |
+| `promote.yml` | Push to `main`/`release/**` | retag the tested `ci-<sha40>` digests to `sha-<main_sha7>` (no rebuild); update `deploy/flux/staging/helmrelease.yaml` if it exists |
+| `release-please.yml` | Push to `main`/`release/**` | keep a release PR open (version bumps + `CHANGELOG.md`); merging it tags `vX.Y.Z` and creates the GitHub Release |
+| `release.yml` | Tag `vX.Y.Z` | retag images `vX.Y.Z` + `stable`/`X.Y`/`X` by digest, publish Helm chart to `oci://ghcr.io/niecke/lumios/charts` (if `charts/lumios` exists), cosign-sign, Syft SBOM attestations, digests table in release notes |
 | `terraform.yml` | Push/PR to `terraform/` or `main` | fmt → init → validate → plan → apply (main only) |
 
-Image tagging: `main` → `<sha>` + `latest`, `dev` → `dev-<sha>`, PR → `pr-<sha>` (not pushed).
+Image tagging: PR → `ci-<head_sha40>`, merge to `main` → `sha-<main_sha7>`, release → `vX.Y.Z` (+ floating tags).
+
+### Conventional Commits and releases
+
+PRs are squash-merged, so the **PR title** is the commit release-please reads (`feat:` → minor, `fix:` → patch, `feat!:` → major; `chore`, `docs`, `ci`, … → no release). Never bump versions or edit `CHANGELOG.md` by hand: release-please owns `.release-please-manifest.json`, `backend/pyproject.toml`, `backend/uv.lock` and `charts/lumios/Chart.yaml`.
+
+Optional secrets: `RELEASE_PLEASE_TOKEN` (PAT; without it the release PR and tag do not trigger further workflows) and `DEPLOY_KEY` (deploy key used by `promote.yml`/`release.yml` to push deploy commits to a protected `main`).
 
 ### Git Hash
 The short git hash is injected at build time and available everywhere:

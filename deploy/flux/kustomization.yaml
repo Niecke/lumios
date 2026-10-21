@@ -1,0 +1,13 @@
+# Plain kustomize manifest listing what the Flux Kustomization in
+# base/sync.yaml applies. It stays at deploy/flux/, the path sync.yaml points
+# at: every object keeps its name and namespace, so moving files between the
+# subdirectories below changes nothing in the cluster. Renaming or
+# re-namespacing the production HelmRelease instead would make Flux prune it —
+# a helm uninstall, the database's StatefulSet included. The PVC survives that,
+# but the release does not.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - base
+  - prod
+  - staging

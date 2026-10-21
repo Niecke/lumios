@@ -1,0 +1,11 @@
+# Staging shares the one k3s node with production. Pods without a class run at
+# priority 0, so under memory pressure the kubelet evicts these first, and a
+# production pod that cannot be scheduled may preempt them.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: lumios-staging
+value: -100
+preemptionPolicy: Never
+globalDefault: false
+description: Lumios staging — evicted before production when the node runs short.

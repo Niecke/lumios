@@ -1,0 +1,7 @@
+# The git source and the Flux Kustomization that applies deploy/flux/ —
+# shared by both environments.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gitrepository.yaml
+  - sync.yaml

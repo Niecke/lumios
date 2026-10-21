@@ -1,0 +1,96 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: lumios
+  namespace: lumios-staging
+spec:
+  interval: 5m
+  chart:
+    spec:
+      chart: ./charts/lumios
+      # The one GitRepository, in the production namespace. Staging reads the
+      # chart from the same commit, so template changes reach it on merge.
+      sourceRef:
+        kind: GitRepository
+        name: lumios
+        namespace: lumios
+      reconcileStrategy: Revision
+  driftDetection:
+    mode: enabled
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  # Its own credentials Secret in lumios-staging — its own postgres password,
+  # signing keys and object-storage key. See deploy/README.md.
+  valuesFrom:
+    - kind: Secret
+      name: lumios-values
+      valuesKey: values.yaml
+  # Staging shares the node with production. Everything below is sized small, and
+  # the priority class makes it the first thing evicted.
+  values:
+    priorityClassName: lumios-staging
+    ingress:
+      noindex: true
+      basicAuth:
+        secretName: lumios-staging-basic-auth
+      hosts:
+        landingpage: lumios-staging.niecke-it.de
+        frontend: lumios-app-staging.niecke-it.de
+        backend: lumios-api-staging.niecke-it.de
+    # A separate bucket: a staging key that could reach production photos could
+    # also delete them.
+    s3:
+      bucket: lumios-staging
+    cleanup:
+      enabled: false
+    postgres:
+      storage:
+        size: 2Gi
+      resources:
+        requests:
+          cpu: 50m
+          memory: 96Mi
+        limits:
+          memory: 256Mi
+    redis:
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          memory: 64Mi
+    backend:
+      gunicornWorkers: 1
+      image:
+        # Managed by .github/workflows/promote.yml — do not edit by hand.
+        # Placeholder until the first promotion after this lands.
+        tag: sha-0000000
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          memory: 384Mi
+    frontend:
+      image:
+        tag: sha-0000000
+      resources:
+        requests:
+          cpu: 5m
+          memory: 16Mi
+        limits:
+          memory: 64Mi
+    landingpage:
+      image:
+        tag: sha-0000000
+      resources:
+        requests:
+          cpu: 5m
+          memory: 16Mi
+        limits:
+          memory: 64Mi

@@ -1,0 +1,159 @@
+nameOverride: ""
+fullnameOverride: ""
+
+# PriorityClass for every pod the chart creates. Empty in production. Staging
+# sets a negative one so that, when the shared node runs short of memory, the
+# kubelet evicts staging pods before production.
+priorityClassName: ""
+
+# ---------------------------------------------------------------------------
+# Database — a single-replica StatefulSet on a local-path PVC. The cluster is
+# one node, so a second replica would land on the same disk and buy no
+# availability. Restarts are therefore downtime; that is the accepted trade.
+# ---------------------------------------------------------------------------
+postgres:
+  image: docker.io/library/postgres:18-alpine
+  database: lumios
+  username: lumios
+  # Required. `openssl rand -base64 24`. Postgres sets it at first start only:
+  # changing it later leaves the backend with a password the database rejects.
+  password: ""
+  storage:
+    size: 10Gi
+    # k3s' bundled provisioner, pointed at the dedicated data volume.
+    storageClass: local-path
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+# ---------------------------------------------------------------------------
+# Redis — server-side sessions and rate limiting. No persistence: a restart logs
+# everybody out, which is cheaper than a volume to look after.
+# ---------------------------------------------------------------------------
+redis:
+  image: docker.io/library/redis:8-alpine
+  # Required. `openssl rand -hex 24`. Other pods on the node can reach the
+  # Service, so Redis demands it (requirepass); the backend gets it via REDIS_URL.
+  password: ""
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+# ---------------------------------------------------------------------------
+# Object storage — any S3-compatible endpoint. Credentials go in the
+# lumios-values Secret, not here.
+# ---------------------------------------------------------------------------
+s3:
+  endpointUrl: ""
+  # Reachable from the browser, for presigned URLs. Defaults to endpointUrl.
+  publicEndpointUrl: ""
+  bucket: lumios
+  accessKey: ""
+  secretKey: ""
+
+backend:
+  image:
+    repository: ghcr.io/niecke/lumios/backend
+    # Required, no default: set by promote.yml (staging) and release.yml (prod).
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 1
+  # Required. `openssl rand -hex 32` (min. 32 chars).
+  secretKey: ""
+  # Required. `openssl rand -hex 32` (min. 32 chars).
+  jwtSecret: ""
+  jwtExpirySeconds: 3600
+  # entrypoint.py defaults to 2 * cpus + 1, which is far more than a shared
+  # 2-vCPU node has memory for.
+  gunicornWorkers: 2
+  maxUsers: 100
+  agbVersion: "1.0"
+  google:
+    clientId: ""
+    # Not a secret: it is also compiled into the frontend bundle.
+    frontendClientId: ""
+    clientSecret: ""
+  mail:
+    senderEmail: lumios@niecke-it.de
+    senderName: Lumios
+    adminEmail: ""
+    # 0 disables the waitlist sync.
+    waitlistListId: 0
+    # Mail is off while this is empty.
+    brevoApiKey: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+frontend:
+  image:
+    repository: ghcr.io/niecke/lumios/frontend
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      memory: 64Mi
+
+landingpage:
+  image:
+    repository: ghcr.io/niecke/lumios/landingpage
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicas: 1
+  resources:
+    requests:
+      cpu: 5m
+      memory: 16Mi
+    limits:
+      memory: 64Mi
+
+# ---------------------------------------------------------------------------
+# Ingress — Traefik, with cert-manager issuing one certificate per host.
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: traefik
+  hosts:
+    landingpage: lumios.niecke-it.de
+    frontend: lumios-app.niecke-it.de
+    backend: lumios-api.niecke-it.de
+  tls:
+    enabled: true
+    clusterIssuer: letsencrypt
+  # Adds X-Robots-Tag: noindex to every host. Staging turns it on.
+  noindex: false
+  basicAuth:
+    # Name of a Secret holding htpasswd lines under the key `users`, created by
+    # hand. Applied to the landing page and the frontend, except the frontend's
+    # /api/ path (proxied to the backend) and the backend host: the API
+    # authenticates with a JWT in the Authorization header, the same header
+    # basic auth uses, and the landing page calls it cross-origin.
+    secretName: ""
+
+# ---------------------------------------------------------------------------
+# Cleanup — the flask maintenance commands, one CronJob each, on the backend
+# image. Replaces the Cloud Scheduler + Cloud Run Job.
+# ---------------------------------------------------------------------------
+cleanup:
+  enabled: true
+  schedule: "0 2 * * *"
+  timeZone: UTC
+  resources:
+    requests:
+      cpu: 25m
+      memory: 128Mi
+    limits:
+      memory: 256Mi

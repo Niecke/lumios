@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "lumios.fullname" . }}-frontend
+  labels:
+    {{- include "lumios.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "lumios.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "lumios.fullname" . }}-frontend
+  labels:
+    {{- include "lumios.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: {{ .Values.frontend.replicas }}
+  selector:
+    matchLabels:
+      {{- include "lumios.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        {{- include "lumios.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: frontend
+    spec:
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      containers:
+        - name: frontend
+          # No runAsNonRoot or read-only root: the nginx entrypoint renders its
+          # config template into /etc/nginx/conf.d as root, and the master then
+          # drops to the nginx user.
+          securityContext:
+            allowPrivilegeEscalation: false
+          image: {{ include "lumios.image" (list "frontend" .Values.frontend.image) | quote }}
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # The /api/ location proxies to the backend over the cluster
+            # network, not back out through Traefik.
+            - name: BACKEND_URL
+              value: {{ printf "http://%s-backend:8080" (include "lumios.fullname" .) | quote }}
+            # What the backend sees as the request host. Talisman and the share
+            # links are built from the public name.
+            - name: BACKEND_HOST
+              value: {{ .Values.ingress.hosts.backend | quote }}
+            # Allowed in the CSP's img-src and connect-src: the browser loads
+            # presigned previews straight from object storage.
+            - name: S3_ENDPOINT_URL
+              value: {{ default .Values.s3.endpointUrl .Values.s3.publicEndpointUrl | quote }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}

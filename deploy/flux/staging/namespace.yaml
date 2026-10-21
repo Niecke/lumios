@@ -1,0 +1,7 @@
+# Managed by Flux, so removing staging/ from git deletes the namespace and
+# everything in it — the staging database included. Staging data is disposable;
+# that is the point of it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lumios-staging

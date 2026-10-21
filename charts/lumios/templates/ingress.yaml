@@ -1,0 +1,149 @@
+{{- if .Values.ingress.enabled -}}
+{{- $fullName := include "lumios.fullname" . -}}
+# Traefik refers to a Middleware as <namespace>-<name>@kubernetescrd.
+{{- $compressRef := printf "%s-%s-compress@kubernetescrd" .Release.Namespace $fullName }}
+{{- $noindexRef := printf "%s-%s-noindex@kubernetescrd" .Release.Namespace $fullName }}
+{{- $basicAuthRef := printf "%s-%s-basic-auth@kubernetescrd" .Release.Namespace $fullName }}
+# Compression is done here and nowhere else: neither nginx nor gunicorn is
+# configured to. Traefik skips anything that already carries a Content-Encoding
+# and any body under minResponseBodyBytes, where the gzip framing would cost
+# more than it saves. Photos are compressed already and only burn CPU.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $fullName }}-compress
+  labels:
+    {{- include "lumios.labels" . | nindent 4 }}
+spec:
+  compress:
+    minResponseBodyBytes: 1024
+    excludedContentTypes:
+      - image/jpeg
+      - image/png
+      - image/gif
+      - image/webp
+      - image/avif
+      - font/woff
+      - font/woff2
+      - application/zip
+      - application/gzip
+      - application/x-gzip
+---
+{{- if .Values.ingress.noindex }}
+# Keeps a non-production copy out of search results.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $fullName }}-noindex
+  labels:
+    {{- include "lumios.labels" . | nindent 4 }}
+spec:
+  headers:
+    customResponseHeaders:
+      X-Robots-Tag: "noindex, nofollow"
+---
+{{- end }}
+{{- if .Values.ingress.basicAuth.secretName }}
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $fullName }}-basic-auth
+  labels:
+    {{- include "lumios.labels" . | nindent 4 }}
+spec:
+  basicAuth:
+    # htpasswd lines under the key `users`, created by hand — deploy/README.md.
+    secret: {{ .Values.ingress.basicAuth.secretName }}
+    removeHeader: true
+---
+{{- end }}
+{{- /*
+One Ingress per host rather than one with three rules: the middleware annotation
+applies to every route of the Ingress it sits on, and the API must not sit
+behind basic auth. Each carries its own cert-manager annotation, so each gets
+its own Certificate and Secret.
+
+The frontend's nginx proxies /api/ to the backend, and the SPA sends its JWT as
+`Authorization: Bearer`, which basic auth would reject with a 401. So the
+frontend host gets a second Ingress for /api/ without it; Traefik prefers the
+longer prefix. It reuses the first Ingress's TLS Secret and asks cert-manager
+for nothing.
+*/}}
+{{- range $component := list "landingpage" "frontend" "backend" }}
+{{- $host := index $.Values.ingress.hosts $component }}
+{{- $middlewares := list $compressRef }}
+{{- if $.Values.ingress.noindex }}
+{{- $middlewares = append $middlewares $noindexRef }}
+{{- end }}
+{{- if and $.Values.ingress.basicAuth.secretName (ne $component "backend") }}
+{{- $middlewares = append $middlewares $basicAuthRef }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}-{{ $component }}
+  labels:
+    {{- include "lumios.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+  annotations:
+    {{- if $.Values.ingress.tls.enabled }}
+    cert-manager.io/cluster-issuer: {{ $.Values.ingress.tls.clusterIssuer | quote }}
+    {{- end }}
+    traefik.ingress.kubernetes.io/router.middlewares: {{ join "," $middlewares }}
+spec:
+  ingressClassName: {{ $.Values.ingress.className }}
+  {{- if $.Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ $host | quote }}
+      secretName: {{ $fullName }}-{{ $component }}-tls
+  {{- end }}
+  rules:
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}-{{ $component }}
+                port:
+                  number: 8080
+---
+{{- if and (eq $component "frontend") $.Values.ingress.basicAuth.secretName }}
+{{- $apiMiddlewares := list $compressRef }}
+{{- if $.Values.ingress.noindex }}
+{{- $apiMiddlewares = append $apiMiddlewares $noindexRef }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}-{{ $component }}-api
+  labels:
+    {{- include "lumios.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ join "," $apiMiddlewares }}
+spec:
+  ingressClassName: {{ $.Values.ingress.className }}
+  {{- if $.Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ $host | quote }}
+      secretName: {{ $fullName }}-{{ $component }}-tls
+  {{- end }}
+  rules:
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}-{{ $component }}
+                port:
+                  number: 8080
+---
+{{- end }}
+{{- end }}
+{{- end }}

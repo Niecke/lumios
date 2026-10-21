@@ -1,0 +1,26 @@
+# The production chart: the package release.yml pushed for a vX.Y.Z tag, not
+# the chart on main. A template change reaches production only with a release,
+# the same as an image change does. Staging keeps reading charts/lumios from
+# git, so templates are still exercised from the commit that changed them.
+#
+# The repository is public and so is the package, so there is no secretRef.
+# A new GHCR package starts out private — see deploy/README.md, "Repository
+# settings this depends on".
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: lumios-chart
+  namespace: lumios
+spec:
+  interval: 5m
+  url: oci://ghcr.io/niecke/lumios/charts/lumios
+  ref:
+    # Written by release.yml in the same commit as the image tags. Rolling back
+    # is reverting that Deploy commit. Until the first release exists this tag
+    # has no package behind it.
+    tag: 0.1.0
+  # A Helm chart pushed with helm push is a single layer; HelmRelease chartRef
+  # needs it copied as is, not extracted.
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy

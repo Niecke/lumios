@@ -1,0 +1,58 @@
+{{- if .Values.cleanup.enabled }}
+{{- /*
+The two retention jobs from terraform/modules/cleanup, one CronJob each so a
+failure in one does not hide the other. The backend image is distroless: there
+is no shell, so the command is the interpreter itself.
+*/}}
+{{- range $job := list "purge-deleted-accounts" "purge-audit-logs" }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "lumios.fullname" $ }}-{{ $job }}
+  labels:
+    {{- include "lumios.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: cleanup
+spec:
+  schedule: {{ $.Values.cleanup.schedule | quote }}
+  timeZone: {{ $.Values.cleanup.timeZone | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            {{- include "lumios.selectorLabels" $ | nindent 12 }}
+            app.kubernetes.io/component: cleanup
+        spec:
+          restartPolicy: Never
+          {{- with $.Values.priorityClassName }}
+          priorityClassName: {{ . | quote }}
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: cleanup
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+              image: {{ include "lumios.image" (list "backend" $.Values.backend.image) | quote }}
+              imagePullPolicy: {{ $.Values.backend.image.pullPolicy }}
+              command: ["/usr/bin/python3", "-m", "flask", {{ $job | quote }}]
+              envFrom:
+                - secretRef:
+                    name: {{ include "lumios.fullname" $ }}-backend
+              env:
+                {{- include "lumios.backendEnv" $ | nindent 16 }}
+              resources:
+                {{- toYaml $.Values.cleanup.resources | nindent 16 }}
+{{- end }}
+{{- end }}
