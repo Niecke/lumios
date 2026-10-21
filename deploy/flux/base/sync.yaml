@@ -1,0 +1,32 @@
+# Applies deploy/flux/ from git, including itself.
+#
+# Without this, the HelmRelease only exists because someone once ran `kubectl
+# apply` by hand — and promote.yml's commit of the deployed image tag would sit
+# in git forever, never reaching the cluster. This is the controller that closes
+# that loop.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: lumios-flux
+  namespace: lumios
+spec:
+  interval: 5m
+  path: ./deploy/flux
+  sourceRef:
+    kind: GitRepository
+    name: lumios
+  # Objects removed from git are removed from the cluster. That includes the
+  # HelmRelease: deleting prod/helmrelease.yaml uninstalls the app. Intended, but
+  # worth knowing before pruning a file that looks unused.
+  prune: true
+  wait: false
+
+  # Self-managing: this Kustomization applies the GitRepository it reads from and
+  # the HelmReleases it deploys. One practical consequence — hand-patching the
+  # GitRepository's branch no longer sticks, because the next reconcile restores
+  # whatever git says. Change the branch in git, or suspend this first:
+  #
+  #   flux -n lumios suspend kustomization lumios-flux
+  #
+  # cluster-admin is what `flux install` grants kustomize-controller; no
+  # serviceAccountName override is needed for a single-tenant cluster.
