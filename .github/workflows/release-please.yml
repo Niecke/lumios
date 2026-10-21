@@ -1,0 +1,36 @@
+name: Release please
+
+# Keeps one release pull request open against main. It collects the conventional
+# commits since the last tag, bumps the version in every file listed in
+# release-please-config.json and prepends them to CHANGELOG.md. Merging that pull
+# request tags vX.Y.Z and publishes the GitHub Release — the merge is the release
+# decision.
+on:
+  push:
+    branches: [main, "release/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Release please
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Prefer RELEASE_PLEASE_TOKEN (a fine-grained PAT with contents and
+      # pull-requests read/write). GitHub does not start workflows for events
+      # GITHUB_TOKEN causes, so with the fallback the release pull request gets
+      # no CI run and the tag it pushes does not start release.yml.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          target-branch: ${{ github.ref_name }}

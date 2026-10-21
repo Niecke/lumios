@@ -1,0 +1,51 @@
+name: Commitlint
+
+# Pull requests merge as squashes, so the pull request title becomes the commit
+# release-please reads. Checking the title is checking the commit.
+#
+# A separate workflow rather than a job in ci.yml: fixing a title fires
+# `edited`, which should re-run this check and not the whole build pipeline.
+on:
+  pull_request:
+    branches: [main, dev, "release/**"]
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commitlint-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  commitlint:
+    name: commitlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # A regex, not @commitlint/cli: no npm install in a job that gates every
+      # merge. Same types as config-conventional.
+      - name: Check the pull request title
+        env:
+          # Through env, never interpolated into the script — the title is
+          # attacker-controlled text.
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9._/-]+\))?!?: [^ ].*$'
+          if [[ "$TITLE" =~ $pattern ]]; then
+            echo "ok: $TITLE"
+            exit 0
+          fi
+          echo "::error::Pull request title is not a conventional commit: \"$TITLE\""
+          {
+            echo "Title must look like \`<type>(<scope>)?!?: <description>\`, for example:"
+            echo ""
+            echo "- \`fix: handle expired share links\` → patch release"
+            echo "- \`feat: bulk image download\` → minor release"
+            echo "- \`feat!: drop the v1 libraries endpoint\` → major release"
+            echo "- \`chore(deps): bump postgres digest\` → no release"
+            echo ""
+            echo "Types: build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
