@@ -28,25 +28,44 @@ services:
       timeout: 3s
       retries: 5
 
-  minio:
-    image: docker.io/minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    container_name: lumios-minio
-    env_file: .env
+  s3:
+    image: docker.io/versity/versitygw:v1.9.0@sha256:57b45f18ff79cc2fc28aa6eb49920abd96be9786569842b7c5f783cc8ad5a1a4
+    container_name: lumios-s3
+    entrypoint: ["/bin/sh", "-ec", "mkdir -p /data/buckets /data/versions && exec /usr/local/bin/docker-entrypoint.sh"]
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      ROOT_ACCESS_KEY: ${S3_ACCESS_KEY}
+      ROOT_SECRET_KEY: ${S3_SECRET_KEY}
+      VGW_BACKEND: posix
+      VGW_BACKEND_ARG: /data/buckets
+      VGW_VERSIONING_DIR: /data/versions
+      VGW_HEALTH: /health
+      VGW_QUIET: "true"
+      VGW_CORS_ALLOW_ORIGIN: "*"
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Web console
+      - "7070:7070"   # S3 API
     volumes:
-      - lumios_minio_data:/data:Z
-    command: server /data --console-address ":9001"
+      - lumios_s3_data:/data:Z
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 10s
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7070/health"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 20
     restart: unless-stopped
+
+  s3-init:
+    image: docker.io/rclone/rclone:1.75.2@sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5
+    container_name: lumios-s3-init
+    depends_on:
+      s3:
+        condition: service_healthy
+    environment:
+      RCLONE_CONFIG_S3_TYPE: s3
+      RCLONE_CONFIG_S3_PROVIDER: Other
+      RCLONE_CONFIG_S3_ENDPOINT: http://s3:7070
+      RCLONE_CONFIG_S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY}
+      RCLONE_CONFIG_S3_SECRET_ACCESS_KEY: ${S3_SECRET_KEY}
+    command: ["mkdir", "s3:${S3_BUCKET:-lumios}"]
+    restart: "no"
 
   jaeger:
     image: docker.io/jaegertracing/jaeger:2.20.0@sha256:46a886260e04002d8f45e213fc39063fa11a50446048fdaa64786fc0840cb9f8
@@ -73,6 +92,9 @@ services:
     build: backend/.
     container_name: lumios-backend
     env_file: .env
+    depends_on:
+      s3-init:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
     volumes:
@@ -98,7 +120,7 @@ services:
     environment:
       BACKEND_URL: "http://lumios-backend:8080"
       BACKEND_HOST: "lumios-backend"
-      S3_ENDPOINT_URL: "http://localhost:9000"
+      S3_ENDPOINT_URL: "http://localhost:7070"
     ports:
       - "8081:8080"
     #depends_on:
@@ -108,4 +130,4 @@ services:
 
 volumes:
   lumios_postgres_data:
-  lumios_minio_data:
+  lumios_s3_data:

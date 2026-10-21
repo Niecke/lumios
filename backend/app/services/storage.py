@@ -1,6 +1,6 @@
 """
 S3-compatible object storage service.
-Uses boto3 — works with MinIO locally and any S3-compatible backend in production.
+Uses boto3 — works with Versity Gateway locally and any S3-compatible backend in production.
 """
 
 import hashlib
@@ -59,7 +59,7 @@ def ensure_bucket() -> None:
 
 
 def _set_bucket_cors_for_dev() -> None:
-    """Configure CORS on MinIO bucket so the browser can PUT directly via presigned URL."""
+    """Configure CORS on the local dev bucket so the browser can PUT directly via presigned URL."""
     logger = logging.getLogger(__name__)
     try:
         _client.put_bucket_cors(
