@@ -7,6 +7,7 @@ from services.audit import write_audit_log
 from sqlalchemy import select, func
 from datetime import datetime, timezone
 from services import storage
+from services.quota import check_upload_allowed
 from services.redis_client import cache_delete, cache_delete_pattern
 from services.videos import validate_video_init, init_video_upload, finalize_video_upload, process_video
 from config import VIDEO_UPLOADS_ENABLED, CLOUD_TASKS_SECRET
@@ -62,47 +63,9 @@ def init_upload(library_id: int):
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 422
 
-    limits = user.effective_limits
-
-    # Count toward max_images_per_library (TODO: rename to max_media in a later release)
-    current_count = (
-        db.session.scalar(
-            select(func.count()).select_from(Image).where(
-                Image.library_id == library_id, Image.deleted_at.is_(None)
-            )
-        ) or 0
-    ) + (
-        db.session.scalar(
-            select(func.count()).select_from(Video).where(
-                Video.library_id == library_id, Video.deleted_at.is_(None)
-            )
-        ) or 0
-    )
-
-    if current_count >= limits["max_images_per_library"]:
-        return (
-            jsonify({"error": f"Media limit reached ({limits['max_images_per_library']}) for this library."}),
-            422,
-        )
-
-    image_storage = db.session.scalar(
-        select(db.func.coalesce(db.func.sum(Image.size), 0))
-        .join(Image.library)
-        .where(Library.user_id == user_id, Image.deleted_at.is_(None), Library.deleted_at.is_(None))
-    ) or 0
-    video_storage = db.session.scalar(
-        select(db.func.coalesce(db.func.sum(Video.size), 0))
-        .join(Video.library)
-        .where(Library.user_id == user_id, Video.deleted_at.is_(None), Library.deleted_at.is_(None))
-    ) or 0
-    storage_used = image_storage + video_storage
-
-    if storage_used + size > limits["max_storage_bytes"]:
-        limit_mb = limits["max_storage_bytes"] // (1024 * 1024)
-        return (
-            jsonify({"error": f"Storage limit reached ({limit_mb} MB) for your subscription."}),
-            422,
-        )
+    err = check_upload_allowed(user, library, size, is_external=False)
+    if err:
+        return err
 
     try:
         video, upload_url = init_video_upload(library, user, filename, content_type, size)

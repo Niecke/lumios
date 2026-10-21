@@ -5,6 +5,7 @@ from services.audit import write_audit_log
 from sqlalchemy import select, func, literal, union_all
 from datetime import datetime, timezone
 from services import storage
+from services.quota import check_upload_allowed
 from services.redis_client import cache_delete, cache_delete_pattern
 from services.images import (
     validate_upload,
@@ -155,56 +156,6 @@ def upload_image(library_id: int):
     if user is None:
         return jsonify({"error": "User not found"}), 404
 
-    limits = user.effective_limits
-
-    # TODO: rename max_images_per_library to max_media in a later release
-    current_count = (
-        db.session.scalar(
-            select(db.func.count()).select_from(Image).where(
-                Image.library_id == library_id, Image.deleted_at.is_(None)
-            )
-        ) or 0
-    ) + (
-        db.session.scalar(
-            select(db.func.count()).select_from(Video).where(
-                Video.library_id == library_id, Video.deleted_at.is_(None)
-            )
-        ) or 0
-    )
-
-    if current_count >= limits["max_images_per_library"]:
-        return (
-            jsonify(
-                {
-                    "error": f"Media limit reached ({limits['max_images_per_library']}) for this library."
-                }
-            ),
-            422,
-        )
-
-    image_storage = db.session.scalar(
-        select(db.func.coalesce(db.func.sum(Image.size), 0))
-        .join(Image.library)
-        .where(Library.user_id == user_id, Image.deleted_at.is_(None), Library.deleted_at.is_(None))
-    ) or 0
-    video_storage = db.session.scalar(
-        select(db.func.coalesce(db.func.sum(Video.size), 0))
-        .join(Video.library)
-        .where(Library.user_id == user_id, Video.deleted_at.is_(None), Library.deleted_at.is_(None))
-    ) or 0
-    storage_used = image_storage + video_storage
-
-    if storage_used >= limits["max_storage_bytes"]:
-        limit_mb = limits["max_storage_bytes"] // (1024 * 1024)
-        return (
-            jsonify(
-                {
-                    "error": f"Storage limit reached ({limit_mb} MB) for your subscription."
-                }
-            ),
-            422,
-        )
-
     if "file" not in request.files:
         return jsonify({"error": "No file provided"}), 400
 
@@ -224,6 +175,10 @@ def upload_image(library_id: int):
         if "too large" in msg:
             return jsonify({"error": msg}), 413
         return jsonify({"error": msg}), 415
+
+    err = check_upload_allowed(user, library, len(file_data), is_external=False)
+    if err:
+        return err
 
     try:
         image = process_and_store_image(
