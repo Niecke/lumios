@@ -8,6 +8,7 @@
   "baseBranchPatterns": [
     "dev"
   ],
+  "rebaseWhen": "conflicted",
   "minimumReleaseAge": "3 days",
   "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {
