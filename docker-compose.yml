@@ -78,10 +78,8 @@ services:
   landingpage:
     build:
       context: landingpage/.
-      args:
-        APP_URL: "http://localhost:8081"
-        BACKEND_URL: "http://localhost:8080"
     environment:
+      APP_URL: "http://localhost:8081"
       BACKEND_URL: "http://localhost:8080"
     container_name: lumios-landingpage
     ports:
@@ -112,12 +110,12 @@ services:
   frontend:
     build:
       context: frontend/.
-      args:
-        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
-        VITE_LANDING_URL: "https://lumios.niecke-it.de"
     env_file: .env
     container_name: lumios-frontend
     environment:
+      GOOGLE_CLIENT_ID: ${GOOGLE_FRONTEND_CLIENT_ID:-}
+      LANDING_URL: "http://localhost:8082"
+      APP_URL: "http://localhost:8081"
       BACKEND_URL: "http://lumios-backend:8080"
       BACKEND_HOST: "lumios-backend"
       S3_ENDPOINT_URL: "http://localhost:7070"

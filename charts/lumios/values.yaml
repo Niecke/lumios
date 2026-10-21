@@ -76,7 +76,8 @@ backend:
   agbVersion: "1.0"
   google:
     clientId: ""
-    # Not a secret: it is also compiled into the frontend bundle.
+    # Not a secret: the frontend container serves it in /config.js. Used for
+    # the frontend unless frontend.googleClientId is set.
     frontendClientId: ""
     clientSecret: ""
   mail:
@@ -95,6 +96,9 @@ backend:
       memory: 512Mi
 
 frontend:
+  # Google client id served to the SPA at runtime; empty falls back to
+  # backend.google.frontendClientId.
+  googleClientId: ""
   image:
     repository: ghcr.io/niecke/lumios/frontend
     tag: ""

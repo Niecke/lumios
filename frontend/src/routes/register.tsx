@@ -9,9 +9,10 @@
 
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { config } from "../config";
 import { authApi, isGsiInitialized, markGsiInitialized, resetGsiInitialized } from "../api/auth";
 
-const LANDING_URL = (import.meta.env.VITE_LANDING_URL as string | undefined) ?? "";
+const LANDING_URL = config.LANDING_URL;
 
 export const Route = createFileRoute("/register")({
   component: RegisterPage,
@@ -48,11 +49,11 @@ function RegisterPage() {
     }
 
     function initGsi() {
-      if (!window.google || isGsiInitialized()) return;
+      if (!config.GOOGLE_CLIENT_ID || !window.google || isGsiInitialized()) return;
       markGsiInitialized();
 
       window.google.accounts.id.initialize({
-        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID as string,
+        client_id: config.GOOGLE_CLIENT_ID,
         callback: handleGoogleCredential,
       });
 
