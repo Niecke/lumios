@@ -8,6 +8,7 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { authApi, tokenStore, isGsiInitialized, markGsiInitialized, resetGsiInitialized } from "../api/auth";
+import { config } from "../config";
 
 // Minimal type declaration for the GIS library loaded via index.html
 declare global {
@@ -91,11 +92,11 @@ function LoginPage() {
     const loginUri = `${window.location.origin}/api/v1/auth/google/callback`;
 
     function initGsi() {
-      if (!window.google || isGsiInitialized()) return;
+      if (!config.GOOGLE_CLIENT_ID || !window.google || isGsiInitialized()) return;
       markGsiInitialized();
 
       window.google.accounts.id.initialize({
-        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID as string,
+        client_id: config.GOOGLE_CLIENT_ID,
         callback: () => {},
         ux_mode: "redirect",
         login_uri: loginUri,

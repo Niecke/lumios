@@ -209,8 +209,9 @@ after the first merge — the HelmRelease reports not-ready until they exist:
 
 Staging has its cleanup CronJobs switched off, runs at a negative priority so
 the kubelet evicts it before production, and is sized small. It runs the same
-images as production, so the Google client id and the landing-page links baked
-in at build time still point at the production hosts.
+images as production; the frontend's Google client id, landing-page links and
+app URL are set per environment at runtime (`/config.js`, written from the
+container's environment).
 
 ## Releasing
 
