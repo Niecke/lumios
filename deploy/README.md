@@ -197,9 +197,10 @@ after the first merge — the HelmRelease reports not-ready until they exist:
 
    The Secret holds only the bcrypt hash, so put the printed password in the
    password manager. Until it exists, Traefik cannot load the middleware and
-   drops those routes. The API host is deliberately not behind it: it
-   authenticates with its own JWT in the same `Authorization` header, and the
-   landing page calls it cross-origin.
+   drops those routes. The API is deliberately not behind it — neither the API
+   host nor `/api/` on the frontend host, which the SPA calls: the API
+   authenticates with its own JWT in the same `Authorization` header, which
+   basic auth would reject, and the landing page calls it cross-origin.
 
 Staging has its cleanup CronJobs switched off, runs at a negative priority so
 the kubelet evicts it before production, and is sized small. It runs the same

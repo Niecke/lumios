@@ -134,9 +134,10 @@ ingress:
   noindex: false
   basicAuth:
     # Name of a Secret holding htpasswd lines under the key `users`, created by
-    # hand. Applied to the landing page and the frontend only — the API has its
-    # own JWT in the Authorization header, the same header basic auth uses, and
-    # the landing page's own script calls the API cross-origin.
+    # hand. Applied to the landing page and the frontend, except the frontend's
+    # /api/ path (proxied to the backend) and the backend host: the API
+    # authenticates with a JWT in the Authorization header, the same header
+    # basic auth uses, and the landing page calls it cross-origin.
     secretName: ""
 
 # ---------------------------------------------------------------------------

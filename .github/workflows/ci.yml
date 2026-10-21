@@ -103,6 +103,8 @@ jobs:
       - name: Lint and render
         run: |
           set -euo pipefail
+          # Preinstalled on ubuntu-latest, not pinned by us: fail loudly if gone.
+          yq --version
           args=(
             --set backend.image.tag=ci
             --set frontend.image.tag=ci

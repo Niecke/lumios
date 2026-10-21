@@ -62,6 +62,12 @@ One Ingress per host rather than one with three rules: the middleware annotation
 applies to every route of the Ingress it sits on, and the API must not sit
 behind basic auth. Each carries its own cert-manager annotation, so each gets
 its own Certificate and Secret.
+
+The frontend's nginx proxies /api/ to the backend, and the SPA sends its JWT as
+`Authorization: Bearer`, which basic auth would reject with a 401. So the
+frontend host gets a second Ingress for /api/ without it; Traefik prefers the
+longer prefix. It reuses the first Ingress's TLS Secret and asks cert-manager
+for nothing.
 */}}
 {{- range $component := list "landingpage" "frontend" "backend" }}
 {{- $host := index $.Values.ingress.hosts $component }}
@@ -104,5 +110,40 @@ spec:
                 port:
                   number: 8080
 ---
+{{- if and (eq $component "frontend") $.Values.ingress.basicAuth.secretName }}
+{{- $apiMiddlewares := list $compressRef }}
+{{- if $.Values.ingress.noindex }}
+{{- $apiMiddlewares = append $apiMiddlewares $noindexRef }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}-{{ $component }}-api
+  labels:
+    {{- include "lumios.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ join "," $apiMiddlewares }}
+spec:
+  ingressClassName: {{ $.Values.ingress.className }}
+  {{- if $.Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ $host | quote }}
+      secretName: {{ $fullName }}-{{ $component }}-tls
+  {{- end }}
+  rules:
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          - path: /api/
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullName }}-{{ $component }}
+                port:
+                  number: 8080
+---
+{{- end }}
 {{- end }}
 {{- end }}
