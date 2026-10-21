@@ -7,7 +7,7 @@
  *   3. Finish / mark selection complete
  *
  * Test data is set up in beforeAll via the authenticated photographer API and
- * torn down in afterAll. No external mocks — real backend + real DB + real MinIO.
+ * torn down in afterAll. No external mocks — real backend + real DB + real Versity Gateway.
  */
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import {

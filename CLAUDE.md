@@ -16,7 +16,7 @@ Domain: **lumios.niecke-it.de** (landing page), **lumios-app.niecke-it.de** (app
 | Landing page | Separate static site, deployed as its own Cloud Run service |
 | Database | PostgreSQL 18 (Podman container on e2-small VM) |
 | Cache / Sessions | Redis 8 (Podman container on same e2-small VM) |
-| File storage | S3-compatible (MinIO for local dev, GCS HMAC in production) via boto3 |
+| File storage | S3-compatible (Versity Gateway for local dev, GCS HMAC in production) via boto3 |
 | Image processing | Pillow — inline in Flask, no separate worker |
 | Auth | Google OAuth 2.0 (photographers + admins); JWT tokens for API; UUID share links (customers) |
 | Email | Brevo (formerly Sendinblue) transactional API |
@@ -84,7 +84,7 @@ lumios/
 │   ├── environments/prod/    # Production environment (main.tf, variables.tf, backend.tf)
 │   └── modules/              # apis, network, storage, secrets, vm, artifact_registry, cloudrun, cleanup, monitoring
 ├── .github/workflows/        # CI/CD pipelines
-├── docker-compose.yml        # Local dev: backend, frontend, landingpage, postgres, redis, minio, jaeger
+├── docker-compose.yml        # Local dev: backend, frontend, landingpage, postgres, redis, s3 (Versity Gateway), jaeger
 ├── CLAUDE.md                 # This file
 └── TODO.md                   # Contains the next steps
 ```
@@ -154,7 +154,7 @@ Defined and validated in `backend/app/config.py`. The app **refuses to start** i
 | `PUBLIC_BASE_URL` | `http://localhost:8080` | Must match OAuth redirect URIs |
 | `FRONTEND_URL` | `http://localhost:5173` | URL of the React frontend |
 | `JWT_EXPIRY_SECONDS` | `3600` | JWT token lifetime |
-| `S3_ENDPOINT_URL` | `http://minio:9000` | S3-compatible endpoint (MinIO locally, GCS in prod) |
+| `S3_ENDPOINT_URL` | `http://s3:7070` | S3-compatible endpoint (Versity Gateway locally, GCS in prod) |
 | `S3_PUBLIC_ENDPOINT_URL` | same as above | Public URL for presigned URLs (must be browser-reachable) |
 | `S3_ACCESS_KEY` | — | S3/HMAC access key |
 | `S3_SECRET_KEY` | — | S3/HMAC secret key |
