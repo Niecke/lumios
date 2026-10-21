@@ -1,0 +1,8 @@
+apiVersion: v2
+name: lumios
+description: Lumios photo library platform
+type: application
+# Stub so release-please finds the file it bumps; the templates follow in #398.
+# The x-release-please markers tell its generic updater which lines to rewrite.
+version: 0.1.0 # x-release-please-version
+appVersion: 0.1.0 # x-release-please-version
