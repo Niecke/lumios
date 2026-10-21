@@ -1,8 +1,21 @@
 apiVersion: v2
 name: lumios
-description: Lumios photo library platform
+description: Lumios photo library platform — Flask backend, React frontend, landing page, PostgreSQL and Redis
 type: application
-# Stub so release-please finds the file it bumps; the templates follow in #398.
-# The x-release-please markers tell its generic updater which lines to rewrite.
+
+# Both set by release-please from release-please-config.json — one version for
+# the whole product, do not bump by hand. The markers tell its generic updater
+# which lines to rewrite. appVersion names the release, not the image: the image
+# tags are still set per deploy (image.tag=sha-<short>).
 version: 0.1.0 # x-release-please-version
 appVersion: 0.1.0 # x-release-please-version
+
+# helm push turns the first entry into org.opencontainers.image.source, which is
+# what links the chart's GHCR package to this repository.
+sources:
+  - https://github.com/Niecke/lumios
+
+# cert-manager and Traefik are cluster-scoped and shared, so they are installed
+# once by hand rather than being subcharts here. `helm uninstall lumios` must
+# not be able to take the cluster's certificate issuer or ingress controller
+# with it.

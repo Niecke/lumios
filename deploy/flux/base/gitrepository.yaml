@@ -1,0 +1,16 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: lumios
+  namespace: lumios
+spec:
+  # The repository is public, so no secretRef: Flux clones it anonymously and
+  # there is no deploy key to rotate.
+  url: https://github.com/Niecke/lumios
+  ref:
+    branch: main
+  interval: 1m
+  ignore: |
+    /*
+    !/charts
+    !/deploy

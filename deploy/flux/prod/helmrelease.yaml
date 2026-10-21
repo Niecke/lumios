@@ -1,0 +1,49 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: lumios
+  namespace: lumios
+spec:
+  interval: 5m
+  # The released chart from GHCR, pinned in ocirepository.yaml — not
+  # charts/lumios on main, which is staging's.
+  chartRef:
+    kind: OCIRepository
+    name: lumios-chart
+  # Without this, helm-controller only acts when the chart revision or the
+  # values change, never on a live object being edited underneath it. Enabled,
+  # the cluster is corrected back to the chart on every interval.
+  driftDetection:
+    mode: enabled
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      remediateLastFailure: true
+  # Credentials. This Secret is created once by hand and never lives in git —
+  # see deploy/README.md. It carries the same YAML that a local
+  # values-secrets.yaml would.
+  valuesFrom:
+    - kind: Secret
+      name: lumios-values
+      valuesKey: values.yaml
+  # Inline values win over valuesFrom, so this is the deployment's own config.
+  values:
+    ingress:
+      hosts:
+        landingpage: lumios.niecke-it.de
+        frontend: lumios-app.niecke-it.de
+        backend: lumios-api.niecke-it.de
+    backend:
+      image:
+        # Written by release.yml from a vX.Y.Z tag — a merge to main never
+        # moves production. Rolling back is reverting that Deploy commit.
+        tag: 0.1.0
+    frontend:
+      image:
+        tag: 0.1.0
+    landingpage:
+      image:
+        tag: 0.1.0
