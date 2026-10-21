@@ -1,7 +1,7 @@
 name: CI
 
 # Pull requests run the tests and build the images once, as multi-arch images
-# tagged ci-<head sha7> in GHCR. Merging changes nothing about their contents, so
+# tagged ci-<head sha40> in GHCR. Merging changes nothing about their contents, so
 # promote.yml only retags them — no rebuild, and the digest that was tested is the
 # digest that ships.
 #
@@ -103,7 +103,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
-          echo "tag=ci-${COMMIT:0:7}" >> "$GITHUB_OUTPUT"
+          echo "tag=ci-${COMMIT}" >> "$GITHUB_OUTPUT"
 
           version="v$(jq -r '."."' .release-please-manifest.json)"
           case "$HEAD_REF" in
@@ -111,7 +111,7 @@ jobs:
             *) version="$version-${COMMIT:0:7}" ;;
           esac
           echo "app_version=$version" >> "$GITHUB_OUTPUT"
-          echo "Images are tagged \`ci-${COMMIT:0:7}\` and report version \`$version\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "Images are tagged \`ci-${COMMIT}\` and report version \`$version\`." >> "$GITHUB_STEP_SUMMARY"
 
   backend-tests:
     name: Backend tests

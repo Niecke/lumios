@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       source_tag:
-        description: "CI tag to promote (e.g. ci-abc1234)"
+        description: "CI tag to promote (ci-<40-char head sha>)"
         required: true
 
 permissions:
@@ -61,8 +61,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "$SOURCE_TAG_INPUT" ]; then
-            if ! [[ "$SOURCE_TAG_INPUT" =~ ^ci-[0-9a-f]{7}$ ]]; then
-              echo "::error::source_tag must look like ci-abc1234."
+            if ! [[ "$SOURCE_TAG_INPUT" =~ ^ci-[0-9a-f]{40}$ ]]; then
+              echo "::error::source_tag must look like ci-<40-char sha>."
               exit 1
             fi
             echo "tag=$SOURCE_TAG_INPUT" >> "$GITHUB_OUTPUT"
@@ -83,7 +83,7 @@ jobs:
             exit 1
           fi
           echo "Promoting images built from $head"
-          echo "tag=ci-${head:0:7}" >> "$GITHUB_OUTPUT"
+          echo "tag=ci-${head}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:

@@ -79,22 +79,11 @@ jobs:
           git fetch origin '+refs/heads/*:refs/remotes/origin/*' --tags --quiet || true
 
           commit=$(git rev-parse "refs/tags/$tag^{commit}")
-          on_valid_branch=false
-          if git merge-base --is-ancestor "$commit" origin/main; then
-            on_valid_branch=true
-          else
-            for branch in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/release/*'); do
-              if git merge-base --is-ancestor "$commit" "$branch"; then
-                on_valid_branch=true
-                echo "Tag is on release branch: $branch"
-                break
-              fi
-            done
-          fi
-
-          if [ "$on_valid_branch" = "false" ]; then
-            echo "::error::$tag points at $commit, which is not on main or any release branch." \
-                 "Only commits that went through a pull request have images."
+          # Only commits that went through a pull request into main have tested
+          # images; a release branch commit must never move stable or production.
+          if ! git merge-base --is-ancestor "$commit" origin/main; then
+            echo "::error::$tag points at $commit, which is not reachable from main." \
+                 "Only commits merged to main are released."
             exit 1
           fi
 

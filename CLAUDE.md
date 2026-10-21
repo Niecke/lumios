@@ -493,15 +493,15 @@ Container images live in **GHCR** (`ghcr.io/niecke/lumios/{backend,frontend,land
 | Workflow | Trigger | Actions |
 |---|---|---|
 | `commitlint.yml` | PR to `main`/`dev`/`release/**` | PR title must be a conventional commit |
-| `ci.yml` | PR to `main`/`dev`/`release/**` | detect code changes → backend tests → build multi-arch (`linux/amd64,linux/arm64`) images, push as `ci-<head_sha7>` |
+| `ci.yml` | PR to `main`/`dev`/`release/**` | detect code changes → backend tests → build multi-arch (`linux/amd64,linux/arm64`) images, push as `ci-<head_sha40>` |
 | `backend-tests.yml` | Push/PR to `backend/`, called by `ci.yml` | pytest |
 | `e2e-tests.yml` | PR to `main`/`dev` | docker compose integration tests |
-| `promote.yml` | Push to `main`/`release/**` | retag the tested `ci-<sha7>` digests to `sha-<main_sha7>` (no rebuild); update `deploy/flux/staging/helmrelease.yaml` if it exists |
+| `promote.yml` | Push to `main`/`release/**` | retag the tested `ci-<sha40>` digests to `sha-<main_sha7>` (no rebuild); update `deploy/flux/staging/helmrelease.yaml` if it exists |
 | `release-please.yml` | Push to `main`/`release/**` | keep a release PR open (version bumps + `CHANGELOG.md`); merging it tags `vX.Y.Z` and creates the GitHub Release |
 | `release.yml` | Tag `vX.Y.Z` | retag images `vX.Y.Z` + `stable`/`X.Y`/`X` by digest, publish Helm chart to `oci://ghcr.io/niecke/lumios/charts` (if `charts/lumios` exists), cosign-sign, Syft SBOM attestations, digests table in release notes |
 | `terraform.yml` | Push/PR to `terraform/` or `main` | fmt → init → validate → plan → apply (main only) |
 
-Image tagging: PR → `ci-<head_sha7>`, merge to `main` → `sha-<main_sha7>`, release → `vX.Y.Z` (+ floating tags).
+Image tagging: PR → `ci-<head_sha40>`, merge to `main` → `sha-<main_sha7>`, release → `vX.Y.Z` (+ floating tags).
 
 ### Conventional Commits and releases
 
