@@ -481,3 +481,137 @@ class TestDownloadLibraryZip:
             _select(AuditLog).where(AuditLog.audit_type == AuditLogType.picture_downloaded)
         ).scalars().all()
         assert len(logs) == 2
+
+
+# ---------------------------------------------------------------------------
+# Public upload / video init — quota boundaries
+# ---------------------------------------------------------------------------
+
+from unittest.mock import PropertyMock as _PropertyMock
+
+
+def _quota_limits(storage=None, media=5000):
+    return {
+        "max_libraries": 10,
+        "max_images_per_library": media,
+        "max_storage_bytes": storage if storage is not None else 10**9,
+    }
+
+
+def _patch_quota(**kwargs):
+    return _patch.object(
+        User,
+        "effective_limits",
+        new_callable=_PropertyMock,
+        return_value=_quota_limits(**kwargs),
+    )
+
+
+@pytest.fixture
+def quota_library(photographer):
+    lib = Library(
+        user_id=photographer.id,
+        name="Quota Gallery",
+        is_private=False,
+        public_upload_enabled=True,
+    )
+    db.session.add(lib)
+    db.session.commit()
+    return lib
+
+
+def _add_media(library, count, size=1000):
+    for i in range(count):
+        db.session.add(
+            Image(
+                library_id=library.id,
+                s3_key=f"q-{i}.jpg",
+                original_filename=f"q-{i}.jpg",
+                content_type="image/jpeg",
+                size=size,
+            )
+        )
+    db.session.commit()
+
+
+class TestPublicUploadImageQuotas:
+    def _post(self, client, library):
+        return client.post(
+            f"{BASE}/libraries/{library.uuid}/images",
+            data={"file": (_io.BytesIO(_make_jpeg_bytes()), "p.jpg", "image/jpeg")},
+            content_type="multipart/form-data",
+        )
+
+    def test_media_count_below_limit_allowed(self, client, quota_library):
+        _add_media(quota_library, 2)
+        with _patch_quota(media=3), _patch("services.images.storage"):
+            assert self._post(client, quota_library).status_code == 201
+
+    def test_media_count_at_limit_rejected(self, client, quota_library):
+        _add_media(quota_library, 3)
+        with _patch_quota(media=3), _patch("services.images.storage"):
+            assert self._post(client, quota_library).status_code == 422
+
+    def test_storage_exactly_at_limit_allowed(self, client, quota_library):
+        size = len(_make_jpeg_bytes())
+        _add_media(quota_library, 1)
+        with _patch_quota(storage=1000 + size), _patch("services.images.storage"):
+            assert self._post(client, quota_library).status_code == 201
+
+    def test_storage_one_byte_over_rejected(self, client, quota_library):
+        size = len(_make_jpeg_bytes())
+        _add_media(quota_library, 1)
+        with _patch_quota(storage=1000 + size - 1), _patch("services.images.storage"):
+            assert self._post(client, quota_library).status_code == 422
+
+    def test_storage_overshoot_rejected(self, client, quota_library):
+        _add_media(quota_library, 1)
+        with _patch_quota(storage=1010), _patch("services.images.storage"):
+            res = self._post(client, quota_library)
+        assert res.status_code == 422
+        assert res.get_json()["error"].endswith("for this library.")
+
+
+class TestPublicVideoInitQuotas:
+    SIZE = 5000
+
+    def _post(self, client, library):
+        return client.post(
+            f"{BASE}/libraries/{library.uuid}/videos/init",
+            json={"filename": "v.mp4", "content_type": "video/mp4", "size": self.SIZE},
+        )
+
+    @pytest.fixture(autouse=True)
+    def video_enabled(self):
+        with _patch("blueprints.api.public.VIDEO_UPLOADS_ENABLED", True), _patch(
+            "services.videos.storage"
+        ) as st:
+            st.create_presigned_put_url.return_value = "http://example.com/put"
+            yield
+
+    def test_media_count_below_limit_allowed(self, client, quota_library):
+        _add_media(quota_library, 2)
+        with _patch_quota(media=3):
+            assert self._post(client, quota_library).status_code == 201
+
+    def test_media_count_at_limit_rejected(self, client, quota_library):
+        _add_media(quota_library, 3)
+        with _patch_quota(media=3):
+            assert self._post(client, quota_library).status_code == 422
+
+    def test_storage_exactly_at_limit_allowed(self, client, quota_library):
+        _add_media(quota_library, 1)
+        with _patch_quota(storage=1000 + self.SIZE):
+            assert self._post(client, quota_library).status_code == 201
+
+    def test_storage_one_byte_over_rejected(self, client, quota_library):
+        _add_media(quota_library, 1)
+        with _patch_quota(storage=1000 + self.SIZE - 1):
+            assert self._post(client, quota_library).status_code == 422
+
+    def test_storage_overshoot_rejected(self, client, quota_library):
+        _add_media(quota_library, 1)
+        with _patch_quota(storage=1000 + self.SIZE // 2):
+            res = self._post(client, quota_library)
+        assert res.status_code == 422
+        assert res.get_json()["error"].endswith("for this library.")

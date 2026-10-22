@@ -23,6 +23,7 @@ from models import (
 from services.audit import write_audit_log
 from sqlalchemy import select, func, or_, literal, union_all
 from services import storage
+from services.quota import check_upload_allowed
 from services.zip_stream import stream_zip
 from services.mail import notify_gallery_finished, add_to_brevo_waitlist
 from config import MAX_USERS, BREVO_WAITLIST_LIST_ID, VIDEO_UPLOADS_ENABLED
@@ -607,70 +608,6 @@ def public_upload_image(library_uuid: str):
     if owner is None:
         return jsonify({"error": "Library owner not found"}), 404
 
-    limits = owner.effective_limits
-
-    # TODO: rename max_images_per_library to max_media in a later release
-    current_count = (
-        db.session.scalar(
-            select(db.func.count())
-            .select_from(Image)
-            .where(Image.library_id == library.id, Image.deleted_at.is_(None))
-        )
-        or 0
-    ) + (
-        db.session.scalar(
-            select(db.func.count())
-            .select_from(Video)
-            .where(Video.library_id == library.id, Video.deleted_at.is_(None))
-        )
-        or 0
-    )
-
-    if current_count >= limits["max_images_per_library"]:
-        return (
-            jsonify(
-                {
-                    "error": f"Media limit reached ({limits['max_images_per_library']}) for this library."
-                }
-            ),
-            422,
-        )
-
-    image_storage = (
-        db.session.scalar(
-            select(db.func.coalesce(db.func.sum(Image.size), 0))
-            .join(Image.library)
-            .where(
-                Library.user_id == owner.id,
-                Image.deleted_at.is_(None),
-                Library.deleted_at.is_(None),
-            )
-        )
-        or 0
-    )
-    video_storage = (
-        db.session.scalar(
-            select(db.func.coalesce(db.func.sum(Video.size), 0))
-            .join(Video.library)
-            .where(
-                Library.user_id == owner.id,
-                Video.deleted_at.is_(None),
-                Library.deleted_at.is_(None),
-            )
-        )
-        or 0
-    )
-    storage_used = image_storage + video_storage
-
-    if storage_used >= limits["max_storage_bytes"]:
-        limit_mb = limits["max_storage_bytes"] // (1024 * 1024)
-        return (
-            jsonify(
-                {"error": f"Storage limit reached ({limit_mb} MB) for this library."}
-            ),
-            422,
-        )
-
     if "file" not in request.files:
         return jsonify({"error": "No file provided"}), 400
     file = request.files["file"]
@@ -689,6 +626,10 @@ def public_upload_image(library_uuid: str):
         if "too large" in msg:
             return jsonify({"error": msg}), 413
         return jsonify({"error": msg}), 415
+
+    err = check_upload_allowed(owner, library, len(file_data), is_external=True)
+    if err:
+        return err
 
     try:
         image = process_and_store_image(
@@ -745,68 +686,9 @@ def public_init_video_upload(library_uuid: str):
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 422
 
-    limits = owner.effective_limits
-
-    current_count = (
-        db.session.scalar(
-            select(db.func.count())
-            .select_from(Image)
-            .where(Image.library_id == library.id, Image.deleted_at.is_(None))
-        )
-        or 0
-    ) + (
-        db.session.scalar(
-            select(db.func.count())
-            .select_from(Video)
-            .where(Video.library_id == library.id, Video.deleted_at.is_(None))
-        )
-        or 0
-    )
-
-    if current_count >= limits["max_images_per_library"]:
-        return (
-            jsonify(
-                {
-                    "error": f"Media limit reached ({limits['max_images_per_library']}) for this library."
-                }
-            ),
-            422,
-        )
-
-    image_storage = (
-        db.session.scalar(
-            select(db.func.coalesce(db.func.sum(Image.size), 0))
-            .join(Image.library)
-            .where(
-                Library.user_id == owner.id,
-                Image.deleted_at.is_(None),
-                Library.deleted_at.is_(None),
-            )
-        )
-        or 0
-    )
-    video_storage = (
-        db.session.scalar(
-            select(db.func.coalesce(db.func.sum(Video.size), 0))
-            .join(Video.library)
-            .where(
-                Library.user_id == owner.id,
-                Video.deleted_at.is_(None),
-                Library.deleted_at.is_(None),
-            )
-        )
-        or 0
-    )
-    storage_used = image_storage + video_storage
-
-    if storage_used + size > limits["max_storage_bytes"]:
-        limit_mb = limits["max_storage_bytes"] // (1024 * 1024)
-        return (
-            jsonify(
-                {"error": f"Storage limit reached ({limit_mb} MB) for this library."}
-            ),
-            422,
-        )
+    err = check_upload_allowed(owner, library, size, is_external=True)
+    if err:
+        return err
 
     try:
         video, upload_url = init_video_upload(
