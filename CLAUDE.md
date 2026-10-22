@@ -42,6 +42,7 @@ lumios/
 │   │   │       ├── auth.py           # /api/v1/auth — JWT login, register, OAuth
 │   │   │       ├── libraries.py      # /api/v1/libraries — CRUD, watermark mgmt
 │   │   │       ├── images.py         # /api/v1/libraries/<id>/images — upload, delete
+│   │   │       ├── videos.py         # /api/v1/libraries/<id>/videos — presigned upload, finalize; /internal/videos processing callback
 │   │   │       ├── public.py         # /api/v1/public — share links, waitlist, registration status
 │   │   │       ├── notifications.py  # /api/v1/notifications — user notifications
 │   │   │       ├── support.py        # /api/v1/support — support tickets
@@ -49,14 +50,19 @@ lumios/
 │   │   ├── services/
 │   │   │   ├── audit.py      # Audit log creation helpers
 │   │   │   ├── auth.py       # Auth service logic
+│   │   │   ├── cloud_tasks.py # Google Cloud Tasks dispatch for video processing (obsolete, see Video Uploads)
+│   │   │   ├── images.py     # Pillow processing: watermarked preview + thumbnail
 │   │   │   ├── mail.py       # Brevo email sending
+│   │   │   ├── redis_client.py # Shared Redis client
 │   │   │   ├── storage.py    # S3-compatible storage operations
-│   │   │   └── token.py      # JWT token generation/validation
+│   │   │   ├── token.py      # JWT token generation/validation
+│   │   │   ├── videos.py     # Video validation, ffmpeg probe + thumbnail extraction
+│   │   │   └── zip_stream.py # Streaming ZIP download of a library
 │   │   ├── migrations/       # Alembic migration files
 │   │   ├── static/
 │   │   ├── templates/
 │   │   ├── tests/
-│   │   ├── commands.py       # CLI commands: purge_deleted_accounts, purge_audit_logs, apply_agb_acceptance
+│   │   ├── commands.py       # CLI commands: purge_deleted_accounts, purge_audit_logs, apply_agb_acceptance, seed_test_data
 │   │   ├── config.py         # All env vars loaded here — fail-fast on missing
 │   │   ├── current_user.py   # Thread-local current user helper
 │   │   ├── log.py            # Structured JSON logging
@@ -74,7 +80,7 @@ lumios/
 │   ├── src/
 │   │   ├── api/              # API client modules (auth, images, libraries, etc.)
 │   │   ├── components/       # AppBar, CookieBanner, FeedbackWidget
-│   │   ├── routes/           # File-based routes (TanStack Router)
+│   │   ├── routes/           # File-based routes (TanStack Router): __root, index, login, register, activate, account, support, library.$libraryUuid
 │   │   └── main.tsx
 │   ├── Dockerfile
 │   ├── nginx.conf.template
@@ -83,6 +89,10 @@ lumios/
 ├── terraform/                # All GCP infrastructure
 │   ├── environments/prod/    # Production environment (main.tf, variables.tf, backend.tf)
 │   └── modules/              # apis, network, storage, secrets, vm, artifact_registry, cloudrun, cleanup, monitoring
+├── charts/lumios/            # Helm chart (published as OCI chart on release)
+├── deploy/                   # Flux GitOps manifests for k3s staging/prod (see deploy/README.md)
+├── e2e/                      # Playwright end-to-end tests (run by e2e-tests.yml)
+├── cloudflare-waf-rules.md   # Cloudflare WAF rule documentation
 ├── .github/workflows/        # CI/CD pipelines
 ├── docker-compose.yml        # Local dev: backend, frontend, landingpage, postgres, redis, s3 (Versity Gateway), jaeger
 ├── CLAUDE.md                 # This file
@@ -120,6 +130,7 @@ uv lock --upgrade-package <package>  # bump a pinned version
 flask purge-deleted-accounts             # Hard-delete accounts soft-deleted > 1 year
 flask purge-audit-logs                   # Purge audit logs older than 90 days
 flask apply-agb-acceptance               # Apply AGB acceptance after effective date
+flask seed-test-data                     # Seed demo data (only runs when DEBUG=true; also run by entrypoint if SEED_TEST_DATA=true)
 
 # Docker image (CI pattern)
 docker build --build-arg GIT_SHA=$(git rev-parse --short HEAD) -t lumios-backend .
@@ -159,6 +170,9 @@ Defined and validated in `backend/app/config.py`. The app **refuses to start** i
 | `S3_ACCESS_KEY` | — | S3/HMAC access key |
 | `S3_SECRET_KEY` | — | S3/HMAC secret key |
 | `S3_BUCKET` | `lumios` | Bucket name |
+| `S3_REGION` | `auto` | S3 region name passed to boto3 |
+| `VIDEO_UPLOADS_ENABLED` | `false` | Feature gate for the video upload routes |
+| `MAX_VIDEO_FILE_SIZE` | `209715200` | Max video size in bytes (200MB) |
 | `CLOUD_TRACE_ENABLED` | `false` | Enable OpenTelemetry tracing |
 | `GOOGLE_CLOUD_PROJECT` | — | GCP project ID for Cloud Trace |
 | `OTEL_EXPORTER_ENDPOINT` | — | OTLP endpoint (e.g. Jaeger); overrides Cloud Trace |
@@ -171,6 +185,35 @@ Defined and validated in `backend/app/config.py`. The app **refuses to start** i
 | `CURRENT_AGB_VERSION` | `1.0` | Current Terms of Service version |
 | `LANDINGPAGE_URL` | `https://lumios.niecke-it.de` | Landing page origin (CORS allowlist) |
 | `MAX_CONTENT_LENGTH` | `20MB` | Max upload size |
+
+### Secondary configuration
+
+Also read in `backend/app/config.py`, `backend/entrypoint.py` or `services/storage.py`; the defaults are usually fine.
+
+| Variable | Default | Description |
+|---|---|---|
+| `CLOUD_TASKS_QUEUE` | `""` | Cloud Tasks queue for video processing (obsolete, see Video Uploads); empty = in-process thread fallback |
+| `CLOUD_TASKS_LOCATION` | `europe-west1` | Cloud Tasks location |
+| `CLOUD_TASKS_SECRET` | `""` | Shared secret expected in the `X-Internal-Secret` header of `/internal` calls |
+| `BACKEND_INTERNAL_URL` | `http://localhost:8080` | URL Cloud Tasks calls back to |
+| `CLOUD_TRACE_SERVICE` | `lumios-backend` | Service name reported to tracing |
+| `CLOUD_TRACE_SERVICE_VERSION` | `$GIT_HASH` | Service version reported to tracing |
+| `INIT_ADMIN_PASSWORD` | random | Password of the seeded admin; generated if empty |
+| `INIT_ADMIN_LENGTH` | `16` | Length of the generated admin password |
+| `INIT_ADMIN_SPECIAL_CHARS` | `!@#\$%&*` | Special characters used in the generated admin password |
+| `MIN_PASSWORD_LENGTH` | `8` | Minimum password length |
+| `PASSWORD_HASHER_TIME_COST` | `2` | Argon2id time cost |
+| `PASSWORD_HASHER_MEMORY_COST` | `65536` | Argon2id memory cost (KiB) |
+| `PASSWORD_HASHER_PARALLELISM` | `4` | Argon2id parallelism |
+| `RATELIMIT_ENABLED` | `true` | Rate limiter switch; only disabled in tests |
+| `GUNICORN_WORKERS` | `2*cpu+1` | Gunicorn worker count |
+| `SEED_TEST_DATA` | unset | `true` makes the entrypoint run `flask seed-test-data` (needs `DEBUG=true`) |
+| `SQLALCHEMY_TRACK_MODIFICATIONS` | `false` | Flask-SQLAlchemy modification tracking |
+| `SQLALCHEMY_ENGINE_OPTIONS_POOL_PRE_PING` | `true` | Engine option `pool_pre_ping` |
+| `SQLALCHEMY_ENGINE_OPTIONS_POOL_RECYCLE` | `3600` | Engine option `pool_recycle` (seconds) |
+| `SQLALCHEMY_ENGINE_OPTIONS_POOL_TIMEOUT` | `30` | Engine option `pool_timeout` (seconds) |
+| `SQLALCHEMY_ENGINE_OPTIONS_POOL_SIZE` | `3` | Engine option `pool_size` |
+| `SQLALCHEMY_ENGINE_OPTIONS_MAX_OVERFLOW` | `3` | Engine option `max_overflow` |
 
 Never commit `.env`. Never bake secrets into the Docker image.
 
@@ -185,6 +228,7 @@ All models in `backend/app/models.py`. Migrations in `backend/app/migrations/ver
 User          --< roles_users >-- Role          # many-to-many
 User (photographer) --< Library                 # one-to-many
 Library             --< Image                   # one-to-many
+Library             --< Video                   # one-to-many
 User                --< SupportTicket           # one-to-many
 SupportTicket       --< SupportTicketComment    # one-to-many
 User                --< Notification            # one-to-many
@@ -196,9 +240,10 @@ User                --> AuditLog                # append-only
 
 - `SubscriptionType`: `free`, `standard`, `premium`
 - `CustomerState`: `none`, `liked`
+- `VideoProcessingStatus`: `uploading`, `processing`, `ready`, `failed`
 - `NotificationType`: `library_marked`, `library_viewed`, `ticket_comment_added`
 - `SupportTicketStatus`: `open`, `closed`
-- `AuditLogType`: `user_created`, `user_activated`, `user_deactivated`, `user_reactivated`, `user_deleted`, `password_changed`, `password_set_by_admin`, `login_backend`, `login_frontend`, `login_failed`, `library_created`, `library_edited`, `library_deleted`, `library_finished`, `picture_uploaded`, `picture_deleted`, `picture_downloaded`, `gdpr_export`
+- `AuditLogType`: `user_created`, `user_activated`, `user_deactivated`, `user_reactivated`, `user_deleted`, `password_changed`, `password_set_by_admin`, `login_backend`, `login_frontend`, `login_failed`, `library_created`, `library_edited`, `library_deleted`, `library_finished`, `picture_uploaded`, `picture_deleted`, `picture_downloaded`, `gdpr_export`, `activation_token_resent`, `video_uploaded`, `video_deleted`, `video_downloaded`
 
 ### Tables
 
@@ -214,11 +259,17 @@ Subscription tier limits (defined in `config.py`) set caps; per-user `max_*` col
 
 **roles_users** — `user_id FK, role_id FK` (junction table, indexed on both columns)
 
-**libraries** — `id, uuid (unique, indexed), user_id FK, name, created_at, archived_at, deleted_at, finished_at, use_original_as_preview, download_enabled, is_private, last_viewed_at, watermark_gcs_key, watermark_scale, watermark_position`
+**libraries** — `id, uuid (unique, indexed), user_id FK, name, created_at, archived_at, deleted_at, finished_at, use_original_as_preview, download_enabled, is_private, last_viewed_at, watermark_gcs_key, watermark_scale, watermark_position, public_upload_enabled`
 
-**images** — `id, uuid (unique, indexed), library_id FK, s3_key, original_filename, content_type, size, width, height, customer_state (CustomerState, default none), created_at, deleted_at`
+**images** — `id, uuid (unique, indexed), library_id FK, s3_key, original_filename, content_type, size, width, height, customer_state (CustomerState, default none), is_external, created_at, deleted_at`
 
 `Image.storage_path(variant)` builds the full S3 key: `photos/{photographer_id}/{library_id}/{variant}/{uuid}.{ext}` where variant is `originals`, `previews`, or `thumbs`.
+
+**videos** — `id, uuid (unique, indexed), library_id FK, s3_key, original_filename, content_type, size, width, height, duration_ms, video_codec, audio_codec, bitrate, processing_status (VideoProcessingStatus, default uploading), hevc_warning, customer_state (CustomerState, default none), is_external, created_at, deleted_at`
+
+`Video.storage_path(variant)` builds `photos/{photographer_id}/{library_id}/originals/{uuid}.{ext}` or `.../thumbs/{uuid}.jpg`. There is no `previews` variant: originals are served for streaming and thumbnails are always JPEG.
+
+`is_external` on `images` and `videos` marks files uploaded by a customer through the public upload routes (`libraries.public_upload_enabled`) rather than by the photographer.
 
 **support_tickets** — `id, user_id FK, subject, body, status (SupportTicketStatus, default open), created_at, updated_at`
 
@@ -238,7 +289,7 @@ Subscription tier limits (defined in `config.py`) set caps; per-user `max_*` col
 
 ### Rules
 - `deleted_at` is set when a user/library/image is soft-deleted. Hard delete runs after 1 year via `flask purge-deleted-accounts`.
-- `archived_at` is set by lifecycle job after 1 year. GCS lifecycle rule moves object to Nearline storage.
+- `archived_at` on libraries is currently not set by any lifecycle job (the column exists, nothing populates it; cleanup is tracked in the dead-code issue). The GCS lifecycle rule (365d → Nearline) works on object age, not on this column.
 - Audit logs retain for 90 days then are purged via `flask purge-audit-logs` (IP address is personal data under GDPR).
 
 ---
@@ -308,26 +359,41 @@ def login():
 # S3 key structure (built by Image.storage_path())
 f"photos/{photographer_id}/{library_id}/originals/{uuid}.{ext}"
 f"photos/{photographer_id}/{library_id}/previews/{uuid}.{ext}"   # watermarked
-f"photos/{photographer_id}/{library_id}/thumbs/{uuid}.{ext}"     # 300px
+f"photos/{photographer_id}/{library_id}/thumbs/{uuid}.{ext}"     # 600px longest side
 
 # Access rules
 # - Originals: NEVER served to customers, no signed URLs issued
 # - Previews + thumbnails: presigned URLs via storage service
-# - Uploads: Flask receives multipart, validates, then streams to S3
+# - Image uploads: Flask receives multipart, validates, then streams to S3
+# - Video uploads: browser PUTs directly to S3 via presigned URL (see Video Uploads)
 ```
 
-### Upload validation
-1. MIME type must be `image/jpeg` or `image/png` — reject everything else
+### Upload validation (images)
+1. MIME type must be `image/jpeg` or `image/png` — reject everything else (videos have their own list, see Video Uploads)
 2. Library must have fewer than `max_images_per_library` images (respects subscription tier)
 3. Photographer must own the library
 
-### Thumbnail generation (inline, no queue)
+### Thumbnail generation for images (inline, no queue)
 1. Validate MIME type and library capacity
 2. Generate watermarked preview with Pillow (custom watermark image per library, or centred text overlay)
-3. Generate 300px thumbnail with Pillow
+3. Generate thumbnail (600px longest side) with Pillow
 4. Upload all three variants to S3
 5. Insert image metadata to DB
 6. Return image metadata in response
+
+Inline Pillow processing applies to **images only**.
+
+### Video Uploads
+
+Videos are gated by `VIDEO_UPLOADS_ENABLED` and capped by `MAX_VIDEO_FILE_SIZE` (default 200MB). Allowed types: `video/mp4`, `video/quicktime` (MOV), `video/webm`, `video/x-m4v`. The code lives in `blueprints/api/videos.py` (photographer routes and the `/internal` callback), `blueprints/api/public.py` (customer upload routes), `services/videos.py` and `services/cloud_tasks.py`.
+
+1. **Init** — `POST .../videos/init` validates type, size and library capacity, creates the `videos` row (`processing_status=uploading`) and returns a presigned S3 PUT URL. The file never passes through Flask.
+2. **Upload** — the client PUTs the file straight to S3.
+3. **Finalize** — `POST .../videos/<uuid>/finalize` checks the object exists in storage, sets `processing`, and dispatches processing.
+4. **Process** — Cloud Tasks calls `POST /internal/videos/<uuid>/process` with the `X-Internal-Secret` header (`CLOUD_TASKS_SECRET`). If `CLOUD_TASKS_QUEUE` is unset, a daemon thread in the same process does the work instead. ffmpeg probes metadata (duration, codecs, bitrate, `hevc_warning`) and extracts one frame; Pillow watermarks it and writes a 600px JPEG thumbnail. Status ends as `ready` or `failed`.
+5. **Serving** — there is no preview transcode. Originals are streamed to customers; the thumbnail is the only derived file.
+
+> **Obsolete:** the Google Cloud Tasks dispatch (`services/cloud_tasks.py`, `CLOUD_TASKS_*`, `BACKEND_INTERNAL_URL`) belongs to the decommissioned GCP project and is pending replacement by a separate worker (tracked in the worker issue). That worker does not exist yet: do not describe or rely on it, and do not extend the Cloud Tasks path.
 
 ---
 
@@ -365,6 +431,8 @@ POST /api/v1/auth/register                          # Register new account
 POST /api/v1/auth/google/register                   # Register via Google
 POST /api/v1/auth/activate                          # Activate account with token
 POST /api/v1/auth/change_password                   # Change password
+POST /api/v1/auth/resend-activation                 # Resend activation email
+DELETE /api/v1/auth/account                         # Delete own account (soft-delete)
 
 # Libraries (/api/v1/libraries, JWT, photographer role)
 GET  /api/v1/libraries                              # List photographer's libraries
@@ -375,18 +443,33 @@ DELETE /api/v1/libraries/<id>                        # Soft-delete library
 POST /api/v1/libraries/<id>/watermark               # Upload custom watermark
 DELETE /api/v1/libraries/<id>/watermark              # Remove watermark
 GET  /api/v1/libraries/<id>/watermark/preview        # Preview watermark on sample image
+POST /api/v1/libraries/<id>/watermark/apply          # Apply watermark settings
 
 # Images (/api/v1/libraries/<id>/images, JWT, photographer role)
 GET  /api/v1/libraries/<id>/images                  # List images in library
 POST /api/v1/libraries/<id>/images                  # Upload image (multipart)
 DELETE /api/v1/libraries/<id>/images/<image_id>      # Delete image
 
+# Videos (/api/v1/libraries/<id>/videos, JWT, photographer role, VIDEO_UPLOADS_ENABLED)
+POST /api/v1/libraries/<id>/videos/init                      # Create video row + presigned PUT URL
+POST /api/v1/libraries/<id>/videos/<video_uuid>/finalize     # Confirm upload, start processing
+GET  /api/v1/libraries/<id>/videos/<video_uuid>              # Video metadata / processing status
+DELETE /api/v1/libraries/<id>/videos/<video_id>              # Delete video
+
+# Internal (not under /api/v1, CSRF-exempt, X-Internal-Secret header)
+POST /internal/videos/<video_uuid>/process                   # Processing callback (ffmpeg + thumbnail)
 # Public (/api/v1/public, no auth)
 GET  /api/v1/public/libraries/<uuid>                # Get library + image metadata (share link)
-POST /api/v1/public/libraries/<uuid>/images/<id>/toggle  # Toggle favourite
+PATCH /api/v1/public/libraries/<uuid>/images/<image_uuid>/state  # Set customer state (liked/none)
+PATCH /api/v1/public/libraries/<uuid>/videos/<video_uuid>/state  # Set customer state (liked/none)
 POST /api/v1/public/libraries/<uuid>/finish          # Mark selection complete
 GET  /api/v1/public/libraries/<uuid>/images/<id>/download  # Download original (if enabled)
 GET  /api/v1/public/libraries/<uuid>/download        # Stream all images as ZIP (if enabled)
+POST /api/v1/public/libraries/<uuid>/images          # Customer image upload (if public_upload_enabled)
+POST /api/v1/public/libraries/<uuid>/videos/init     # Customer video upload: presigned PUT URL
+POST /api/v1/public/libraries/<uuid>/videos/<video_uuid>/finalize  # Customer video upload: finalize
+GET  /api/v1/public/libraries/<uuid>/videos/<video_uuid>           # Video metadata / status
+GET  /api/v1/public/libraries/<uuid>/videos/<video_uuid>/download  # Download video original (if enabled)
 GET  /api/v1/public/registration_status              # Check if registration is open
 POST /api/v1/public/waitlist                         # Join waitlist
 POST /api/v1/public/client-errors                    # Report frontend errors
@@ -404,7 +487,7 @@ GET  /api/v1/support/tickets/<id>                   # Get ticket with comments
 POST /api/v1/feedback                               # Submit feedback (rating + body)
 
 # Admin (admin role required, Jinja2-rendered)
-GET  /admin/dashboard
+GET  /                                              # Admin index / dashboard
 GET  /admin/users
 GET/POST /admin/user_create
 GET/POST /admin/user_edit/<id>
@@ -471,9 +554,13 @@ tests/
 ├── test_feedback.py
 ├── test_health.py
 ├── test_models.py
+├── test_redis_client.py
 ├── test_security.py
+├── test_storage.py
 └── test_support.py
 ```
+
+**Untested today:** `blueprints/api/videos.py` (including the `/internal` route), `services/videos.py`, `services/cloud_tasks.py` and `services/zip_stream.py` have no tests. Do not assume coverage there.
 
 Every new blueprint needs a corresponding `tests/test_<blueprint>.py`. Test happy path, auth enforcement, role enforcement, and input validation for every route.
 
@@ -482,9 +569,13 @@ Every new blueprint needs a corresponding `tests/test_<blueprint>.py`. Test happ
 ## Git & CI/CD
 
 ### Branching
+Trunk-based: `main` is the only long-lived branch. `dev` is retired; never branch from it.
+
 ```
-feature/xyz  →  PR to dev  →  merge to dev  →  PR to main  →  merge to main (deploys)
+feature/xyz  →  PR to main  →  merge to main (deploys staging)  →  merge release-please PR (deploys production)
 ```
+
+Some workflow triggers below still list `dev` (and `release/**`); those entries are leftovers, nothing is merged to `dev` any more.
 
 ### GitHub Actions workflows
 
