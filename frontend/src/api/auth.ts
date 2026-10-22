@@ -65,6 +65,14 @@ export const googleProfileStore = {
   clear: () => sessionStorage.removeItem(PROFILE_KEY),
 };
 
+// Drop every piece of client-side session state. Used on logout and when the
+// backend rejects the stored token, so the login page can initialise GIS again.
+export function clearAuthSession() {
+  tokenStore.clear();
+  googleProfileStore.clear();
+  resetGsiInitialized();
+}
+
 // Decode the base64url-encoded JWT payload without verifying the signature.
 // Used only to extract display fields from the Google ID token.
 function decodeJwtPayload(token: string): Record<string, unknown> {
@@ -93,6 +101,17 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const data = contentType.includes("application/json") ? await res.json() : null;
 
   if (!res.ok) {
+    // An expired or invalid token must not survive: otherwise /login sees it
+    // and redirects straight back to a protected route (redirect loop).
+    // A wrong current password on change_password is also a 401 but the
+    // session itself is still valid.
+    if (
+      res.status === 401 &&
+      token &&
+      (data as { error?: string } | null)?.error !== "Current password is incorrect"
+    ) {
+      clearAuthSession();
+    }
     const err = new Error(
       (data as { error?: string } | null)?.error ?? `Request failed (${res.status})`
     );
@@ -188,9 +207,7 @@ export const authApi = {
     apiFetch<{ ok: boolean }>("/api/v1/auth/account", { method: "DELETE" }),
 
   logout: () => {
-    tokenStore.clear();
-    googleProfileStore.clear();
-    resetGsiInitialized();
+    clearAuthSession();
     return Promise.resolve({ ok: true });
   },
 };
