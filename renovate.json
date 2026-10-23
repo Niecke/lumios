@@ -3,16 +3,17 @@
   "extends": [
     "config:recommended",
     "docker:pinDigests",
-    "helpers:pinGitHubActionDigests"
+    "helpers:pinGitHubActionDigests",
+    ":semanticCommits"
   ],
-  "baseBranchPatterns": [
-    "dev"
-  ],
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps",
   "rebaseWhen": "conflicted",
   "minimumReleaseAge": "3 days",
   "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {
     "minimumReleaseAge": "0 days",
+    "semanticCommitType": "fix",
     "labels": [
       "security"
     ]
