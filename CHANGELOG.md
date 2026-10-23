@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.0](https://github.com/Niecke/lumios/compare/v0.2.0...v0.3.0) (2026-10-23)
+
+
+### Features
+
+* **admin:** add system page with build info and health checks ([#458](https://github.com/Niecke/lumios/issues/458)) ([696aa51](https://github.com/Niecke/lumios/commit/696aa518a3d872a3deb75c296f2b649735412389))
+
+
+### Bug Fixes
+
+* **deps:** group OpenTelemetry packages and exempt digest updates from age gate ([#457](https://github.com/Niecke/lumios/issues/457)) ([177b6b7](https://github.com/Niecke/lumios/commit/177b6b7fbefb0ee63aa231c8b1a535cdc3409ee2))
+* **deps:** update dependency authlib to v1.9.1 ([a213bb9](https://github.com/Niecke/lumios/commit/a213bb950be963fbb59fa0fec745a7bc6edfb772))
+* **deps:** update dependency authlib to v1.9.1 ([61c294e](https://github.com/Niecke/lumios/commit/61c294e99d1e2fd5b9531c11a047edefed33c1a4))
+* **deps:** update dependency cryptography to v50.0.2 ([8c3db3a](https://github.com/Niecke/lumios/commit/8c3db3aea78528c07b12ce58a74912c7cd259b84))
+* **deps:** update dependency cryptography to v50.0.2 ([f67e8bf](https://github.com/Niecke/lumios/commit/f67e8bf95f7a8976c2b7886eb423841ace44f605))
+* **deps:** update dependency pillow to v13 [security] ([19a33f9](https://github.com/Niecke/lumios/commit/19a33f975b27dc4bcf9946a86ff953e76229c26e))
+* **deps:** update dependency pillow to v13 [security] ([e538082](https://github.com/Niecke/lumios/commit/e53808275a553c322ada0bf168d3e5bc859518f4))
+* **deps:** update dependency pyjwt to v2.15.0 [security] ([4b07976](https://github.com/Niecke/lumios/commit/4b07976a99c67de8ee797ccd2615de3e8b812af8))
+* **deps:** update dependency pyjwt to v2.15.0 [security] ([934de1e](https://github.com/Niecke/lumios/commit/934de1ef03a73e22a4e3f2aadf014e5e2a7ad560))
+* **deps:** update dependency vite to v8.2.4 [security] ([3c3512a](https://github.com/Niecke/lumios/commit/3c3512a10d5e32b55a7a2f1b63542d40552edf19))
+* **deps:** update dependency vite to v8.2.4 [security] ([5f90d0a](https://github.com/Niecke/lumios/commit/5f90d0ae3f40aa37df0170b127cff67861958e60))
+
 ## [0.2.0](https://github.com/Niecke/lumios/compare/v0.1.0...v0.2.0) (2026-10-23)
 
 
