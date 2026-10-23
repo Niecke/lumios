@@ -75,7 +75,6 @@ def photographer(photographer_role):
     user = User(
         email="photo@test.com",
         active=True,
-        max_libraries=10,
         subscription=SubscriptionType.premium,
     )
     user.set_password("PhotoPass123!")

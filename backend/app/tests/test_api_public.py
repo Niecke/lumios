@@ -38,7 +38,6 @@ def photographer(photographer_role):
     user = User(
         email="photo@test.com",
         active=True,
-        max_libraries=5,
         subscription=SubscriptionType.premium,
     )
     user.set_password("PhotoPass123!")
@@ -343,9 +342,7 @@ class TestPublicUpload:
         assert res.status_code == 415
 
     def test_public_upload_enforces_quota(self, client, upload_library, photographer):
-        photographer.max_images_per_library = 0
-        db.session.commit()
-        with _patch("services.images.storage"):
+        with _patch_quota(media=0), _patch("services.images.storage"):
             res = self._post_jpeg(client, upload_library.uuid)
         assert res.status_code == 422
 

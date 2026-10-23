@@ -473,6 +473,27 @@ class TestAdminGdprExport:
         assert user_json["id"] == regular_user.id
         assert "auth_string" not in user_json
 
+    def test_gdpr_export_user_json_omits_legacy_quota_columns(
+        self, client, admin_user, regular_user, monkeypatch
+    ):
+        login_admin(client, admin_user)
+        uploaded = {}
+
+        def mock_upload(file_obj, key, content_type):
+            uploaded["data"] = file_obj.read()
+
+        monkeypatch.setattr("blueprints.admin.storage.upload_fileobj", mock_upload)
+
+        client.post(
+            f"/admin/user_gdpr_export/{regular_user.id}",
+            follow_redirects=True,
+        )
+
+        zf = zipfile.ZipFile(io.BytesIO(uploaded["data"]))
+        user_json = json.loads(zf.read("user.json"))
+        assert "max_libraries" not in user_json
+        assert "max_images_per_library" not in user_json
+
     def test_gdpr_export_s3_key_format(
         self, client, admin_user, regular_user, monkeypatch
     ):
