@@ -76,8 +76,6 @@ class User(db.Model):
     activation_token_created_at = db.Column(db.DateTime, nullable=True)
     account_type = db.Column(db.String(16), nullable=False, default="local")
     auth_string = db.Column(db.String(255), nullable=True)
-    max_libraries = db.Column(db.Integer(), nullable=False, default=100)
-    max_images_per_library = db.Column(db.Integer(), nullable=False, default=500)
     created_at = db.Column(
         db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )
@@ -106,15 +104,12 @@ class User(db.Model):
     def effective_limits(self) -> dict:
         """Return the enforced limits for this user.
 
-        Subscription tier sets the cap; the per-user max_* columns allow the
-        admin to impose stricter limits for a specific user (lower wins).
+        The limits are defined solely by the user's subscription tier.
         """
         tier = SUBSCRIPTION_LIMITS[self.subscription.value]
         return {
-            "max_libraries": min(self.max_libraries, tier["max_libraries"]),
-            "max_images_per_library": min(
-                self.max_images_per_library, tier["max_images_per_library"]
-            ),
+            "max_libraries": tier["max_libraries"],
+            "max_images_per_library": tier["max_images_per_library"],
             "max_storage_bytes": tier["max_storage_bytes"],
         }
 

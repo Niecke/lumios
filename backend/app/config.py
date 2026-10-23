@@ -122,7 +122,7 @@ CLOUD_TRACE_SERVICE_VERSION = os.getenv("CLOUD_TRACE_SERVICE_VERSION", GIT_HASH)
 # When set, traces are exported via OTLP to this endpoint (e.g. Jaeger) instead of Cloud Trace
 OTEL_EXPORTER_ENDPOINT = os.getenv("OTEL_EXPORTER_ENDPOINT", "")
 
-# Subscription tier limits — lower of (tier, per-user column) is enforced
+# Subscription tier limits — the only source of per-user quotas
 SUBSCRIPTION_LIMITS = {
     "free": {
         "max_libraries": 1000,

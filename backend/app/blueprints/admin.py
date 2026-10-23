@@ -448,8 +448,6 @@ def user_gdpr_export(user_id):
         "active": user.active,
         "account_type": user.account_type,
         "subscription": user.subscription.value,
-        "max_libraries": user.max_libraries,
-        "max_images_per_library": user.max_images_per_library,
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "last_login": user.last_login.isoformat() if user.last_login else None,
         "deleted_at": user.deleted_at.isoformat() if user.deleted_at else None,

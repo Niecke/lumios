@@ -254,13 +254,13 @@ User                --> AuditLog                # append-only
 
 ### Tables
 
-**users** — `id, email, active, activation_pending, activation_token, account_type ('local' | 'google'), auth_string, max_libraries (default 100), max_images_per_library (default 500), created_at, last_login, deleted_at, agb_accepted_at, agb_version, is_system, subscription (SubscriptionType, default free)`
+**users** — `id, email, active, activation_pending, activation_token, account_type ('local' | 'google'), auth_string, created_at, last_login, deleted_at, agb_accepted_at, agb_version, is_system, subscription (SubscriptionType, default free)`
 
 `account_type` determines how the user authenticates:
 - `'local'` — `auth_string` holds an Argon2id-hashed password. Used only for the seeded admin account.
 - `'google'` — `auth_string` holds the Google `sub` (subject identifier). Set on first successful OAuth callback.
 
-Subscription tier limits (defined in `config.py`) set caps; per-user `max_*` columns allow stricter limits (lower wins). See `User.effective_limits`.
+Quota limits come solely from the subscription tier (`SUBSCRIPTION_LIMITS` in `config.py`). See `User.effective_limits`.
 
 **roles** — `id, name ('admin' | 'photographer'), description`
 
