@@ -65,6 +65,8 @@ def _zip_date_time(value: DateTime) -> tuple:
 
     ``None`` means "now". Anything before 1980 (or beyond the DOS range) is
     clamped, since ZipInfo raises on it and DOS timestamps cannot store it.
+    The fields are written as-is: DOS timestamps carry no timezone, so a
+    UTC ``created_at`` shows up shifted by the extractor's UTC offset.
     """
     if value is None:
         return time.localtime()[:6]

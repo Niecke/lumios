@@ -10,7 +10,7 @@ from services.zip_stream import stream_zip
 
 @pytest.fixture(autouse=True)
 def _with_app(app):
-    """clean_db needs an application context."""
+    """The autouse clean_db fixture needs an application context for its teardown."""
 
 
 def _build(entries):
