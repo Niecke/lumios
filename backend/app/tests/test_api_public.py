@@ -11,8 +11,11 @@ Private library enforcement: all four routes must return 404 when
 library.is_private is True.
 """
 
+from datetime import datetime as _datetime
+
 import pytest
 from unittest.mock import patch
+from sqlalchemy import select
 
 from models import db, User, Role, Library, Image, CustomerState, SubscriptionType
 from services.token import create_token
@@ -393,6 +396,9 @@ class TestDownloadLibraryZip:
     def test_streams_zip_with_all_images(self, client, public_library):
         public_library.download_enabled = True
         make_images_in_library(public_library, 3)
+        stored = _datetime(2022, 3, 4, 5, 6, 8)
+        for img in db.session.execute(select(Image)).scalars():
+            img.created_at = stored
         db.session.commit()
 
         def fake_chunks(key):
@@ -411,6 +417,8 @@ class TestDownloadLibraryZip:
         assert names == ["img-0.jpg", "img-1.jpg", "img-2.jpg"]
         contents = zf.read("img-0.jpg")
         assert contents.startswith(b"DATA-photos/")
+        for info in zf.infolist():
+            assert info.date_time == (2022, 3, 4, 5, 6, 8)
 
     def test_duplicate_filenames_are_disambiguated(self, client, public_library):
         public_library.download_enabled = True
