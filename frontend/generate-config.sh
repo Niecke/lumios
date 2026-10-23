@@ -10,3 +10,10 @@ window.__CONFIG__ = {
   APP_URL: "$(esc "${APP_URL:-}")"
 };
 CONF
+cat > /usr/share/nginx/html/version.json <<VERSION
+{
+  "commit": "$(esc "${GIT_SHA:-dev}")",
+  "version": "$(esc "${APP_VERSION:-dev}")",
+  "built_at": "$(esc "${BUILD_TIMESTAMP:-unknown}")"
+}
+VERSION
