@@ -54,6 +54,8 @@ Secret via envFrom (including REDIS_URL, which embeds the Redis password), so
 they are not repeated here.
 */}}
 {{- define "lumios.backendEnv" -}}
+- name: APP_VERSION
+  value: {{ .Values.backend.image.tag | quote }}
 - name: POSTGRES_HOST
   value: {{ include "lumios.postgresHost" . | quote }}
 - name: POSTGRES_PORT
