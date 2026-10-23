@@ -109,7 +109,7 @@ def photographer_role():
 
 @pytest.fixture
 def photographer(photographer_role):
-    user = User(email="photo@test.com", active=True, max_libraries=5)
+    user = User(email="photo@test.com", active=True)
     user.set_password("PhotoPass123!")
     user.roles.append(photographer_role)
     db.session.add(user)

@@ -2,7 +2,8 @@
 Tests for database models (User, Role) and the password handler module.
 """
 import pytest
-from models import db, User, Role
+from config import SUBSCRIPTION_LIMITS
+from models import db, User, Role, SubscriptionType
 from password_handler import hash_password, verify_password
 
 
@@ -151,3 +152,14 @@ class TestUserModel:
 
         saved = db.session.get(User, user.id)
         assert saved.roles == []
+
+
+class TestUserEffectiveLimits:
+    @pytest.mark.parametrize("tier", list(SubscriptionType))
+    def test_effective_limits_match_subscription_tier(self, tier):
+        user = User(email=f"{tier.value}@example.com", active=True, subscription=tier)
+        assert user.effective_limits == SUBSCRIPTION_LIMITS[tier.value]
+
+    def test_user_has_no_legacy_quota_columns(self):
+        assert not hasattr(User, "max_libraries")
+        assert not hasattr(User, "max_images_per_library")

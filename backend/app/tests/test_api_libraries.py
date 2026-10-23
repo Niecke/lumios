@@ -8,6 +8,8 @@ Coverage targets:
   DELETE /api/v1/libraries/<id>      soft-delete library
 """
 
+from unittest.mock import PropertyMock, patch
+
 import pytest
 
 from models import db, User, Role, Library, SubscriptionType
@@ -29,6 +31,19 @@ def make_token(user: User) -> str:
     return create_token(user.id, user.email, [r.name for r in user.roles])
 
 
+def _patch_library_limit(max_libraries: int):
+    return patch.object(
+        User,
+        "effective_limits",
+        new_callable=PropertyMock,
+        return_value={
+            "max_libraries": max_libraries,
+            "max_images_per_library": 5000,
+            "max_storage_bytes": 10**9,
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -45,7 +60,7 @@ def photographer_role():
 @pytest.fixture
 def photographer(photographer_role):
     user = User(
-        email="photo@test.com", active=True, max_libraries=5,
+        email="photo@test.com", active=True,
         subscription=SubscriptionType.premium,
     )
     user.set_password("PhotoPass123!")
@@ -58,7 +73,7 @@ def photographer(photographer_role):
 @pytest.fixture
 def other_photographer(photographer_role):
     user = User(
-        email="other@test.com", active=True, max_libraries=5,
+        email="other@test.com", active=True,
         subscription=SubscriptionType.premium,
     )
     user.set_password("OtherPass123!")
@@ -104,7 +119,7 @@ class TestListLibraries:
     def test_returns_max_libraries(self, client, photographer):
         token = make_token(photographer)
         res = client.get(BASE, headers=auth_header(token))
-        assert res.get_json()["max_libraries"] == 5
+        assert res.get_json()["max_libraries"] == 1000
 
     def test_does_not_return_deleted_libraries(self, client, photographer, library):
         from datetime import datetime, timezone
@@ -175,23 +190,29 @@ class TestCreateLibrary:
 
     def test_library_limit_returns_422(self, client, photographer):
         token = make_token(photographer)
-        # Fill up to max_libraries (5)
-        for i in range(5):
-            client.post(BASE, json={"name": f"Lib {i}"}, headers=auth_header(token))
-        res = client.post(
-            BASE, json={"name": "One Too Many"}, headers=auth_header(token)
-        )
+        with _patch_library_limit(5):
+            # Fill up to max_libraries (5)
+            for i in range(5):
+                client.post(BASE, json={"name": f"Lib {i}"}, headers=auth_header(token))
+            res = client.post(
+                BASE, json={"name": "One Too Many"}, headers=auth_header(token)
+            )
         assert res.status_code == 422
 
     def test_deleted_libraries_do_not_count_toward_limit(self, client, photographer):
         token = make_token(photographer)
-        for i in range(5):
-            r = client.post(BASE, json={"name": f"Lib {i}"}, headers=auth_header(token))
-            lib_id = r.get_json()["id"]
-        # Delete one
-        client.delete(f"{BASE}/{lib_id}", headers=auth_header(token))
-        # Should now be able to create again
-        res = client.post(BASE, json={"name": "New Lib"}, headers=auth_header(token))
+        with _patch_library_limit(5):
+            for i in range(5):
+                r = client.post(
+                    BASE, json={"name": f"Lib {i}"}, headers=auth_header(token)
+                )
+                lib_id = r.get_json()["id"]
+            # Delete one
+            client.delete(f"{BASE}/{lib_id}", headers=auth_header(token))
+            # Should now be able to create again
+            res = client.post(
+                BASE, json={"name": "New Lib"}, headers=auth_header(token)
+            )
         assert res.status_code == 201
 
     def test_no_auth_returns_401(self, client):
