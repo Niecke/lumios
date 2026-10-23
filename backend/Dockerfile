@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=ghcr.io/astral-sh/uv:0.8.17 /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.8.17@sha256:e4644cb5bd56fdc2c5ea3ee0525d9d21eed1603bccd6a21f887a938be7e85be1 /uv /usr/local/bin/uv
 
 ENV UV_PROJECT_ENVIRONMENT=/venv \
     UV_PYTHON_DOWNLOADS=never
