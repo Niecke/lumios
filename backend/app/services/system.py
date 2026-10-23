@@ -2,6 +2,7 @@
 
 import platform
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import gunicorn
@@ -22,7 +23,8 @@ from services.redis_client import get_redis
 
 JOB_NAMES = ["purge-deleted-accounts", "purge-audit-logs"]
 JOB_OVERDUE_SECONDS = 36 * 3600
-REMOTE_TIMEOUT_SECONDS = 2.0
+REMOTE_TIMEOUT_SECONDS = 1.5
+DETAIL_MAX_LENGTH = 200
 
 
 def _timed(name: str, func) -> dict:
@@ -34,7 +36,7 @@ def _timed(name: str, func) -> dict:
             "name": name,
             "status": "failed",
             "ms": round((time.perf_counter() - start) * 1000, 1),
-            "detail": f"{type(ex).__name__}: {ex}",
+            "detail": f"{type(ex).__name__}: {ex}"[:DETAIL_MAX_LENGTH],
         }
     return {
         "name": name,
@@ -112,32 +114,58 @@ def _job_status(name: str, now: datetime) -> dict:
         .limit(1)
     ).scalar_one_or_none()
     if run is None:
-        return {"name": name, "run": None, "age_hours": None, "is_overdue": True}
+        return {"name": name, "run": None, "age_hours": None,
+                "last_failed": False, "is_overdue": True}
     ran_at = run.ran_at if run.ran_at.tzinfo else run.ran_at.replace(tzinfo=timezone.utc)
     age_seconds = (now - ran_at).total_seconds()
+    last_failed = run.status != "success"
     return {
         "name": name,
         "run": run,
         "age_hours": round(age_seconds / 3600, 1),
-        "is_overdue": age_seconds > JOB_OVERDUE_SECONDS,
+        "last_failed": last_failed,
+        "is_overdue": last_failed or age_seconds > JOB_OVERDUE_SECONDS,
     }
 
 
-def get_system_status() -> dict:
-    checks = [_check_database(), _check_redis(), _check_storage()]
-
-    backend = {
+def _backend_build() -> dict:
+    return {
         "name": "Backend",
         "reachable": True,
         "commit": GIT_HASH,
         "version": APP_VERSION,
         "built_at": BUILD_TIMESTAMP,
     }
-    builds = [
-        backend,
-        _remote_build("Frontend", FRONTEND_URL),
-        _remote_build("Landing page", LANDINGPAGE_URL),
-    ]
+
+
+def _verdict(checks: list, commit_mismatch: bool, jobs: list) -> tuple[str, str]:
+    if any(c["status"] == "failed" for c in checks):
+        return "degraded", "A dependency is failing"
+    if commit_mismatch:
+        return "warning", "Components run different commits"
+    if any(j["is_overdue"] for j in jobs):
+        return "warning", "A scheduled job is overdue"
+    return "ok", "Everything is running"
+
+
+def get_dashboard_status() -> dict:
+    """Cheap local checks only (DB, jobs); no network calls, safe on every dashboard load."""
+    checks = [_check_database()]
+    jobs = [_job_status(name, datetime.now(timezone.utc)) for name in JOB_NAMES]
+    verdict, summary = _verdict(checks, False, jobs)
+    return {"verdict": verdict, "summary": summary, "backend": _backend_build()}
+
+
+def get_system_status() -> dict:
+    checks = [_check_database(), _check_redis()]
+    # Storage and the remote version fetches are network-bound: run them concurrently.
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        storage_f = pool.submit(_check_storage)
+        frontend_f = pool.submit(_remote_build, "Frontend", FRONTEND_URL)
+        landing_f = pool.submit(_remote_build, "Landing page", LANDINGPAGE_URL)
+        checks.append(storage_f.result())
+        builds = [_backend_build(), frontend_f.result(), landing_f.result()]
+    backend = builds[0]
     commits = {b["commit"] for b in builds if b["reachable"] and b["commit"]}
     commit_mismatch = len(commits) > 1
 
@@ -149,14 +177,7 @@ def get_system_status() -> dict:
         "migration": _alembic_revision(),
     }
 
-    if any(c["status"] == "failed" for c in checks):
-        verdict, summary = "degraded", "A dependency is failing"
-    elif commit_mismatch:
-        verdict, summary = "warning", "Components run different commits"
-    elif any(j["is_overdue"] for j in jobs):
-        verdict, summary = "warning", "A scheduled job is overdue"
-    else:
-        verdict, summary = "ok", "Everything is running"
+    verdict, summary = _verdict(checks, commit_mismatch, jobs)
 
     return {
         "verdict": verdict,

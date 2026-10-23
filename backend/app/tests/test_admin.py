@@ -689,6 +689,16 @@ def _remote_response(commit):
 
 
 class TestAdminSystem:
+    @pytest.fixture(autouse=True)
+    def _no_network(self):
+        from unittest.mock import patch
+
+        with patch("services.system.storage._client"), patch(
+            "services.system.requests.get", side_effect=OSError("down")
+        ) as get:
+            self.http_get = get
+            yield
+
     def test_system_requires_login(self, client):
         response = client.get("/admin/system", follow_redirects=False)
         assert response.status_code == 302
@@ -787,15 +797,35 @@ class TestAdminSystem:
         assert html.count(">overdue<") == 1
         assert "on time" in html
 
+    def test_system_flags_failed_job(self, client, admin_user):
+        from datetime import datetime, timezone
+        from unittest.mock import patch
+        from models import db, JobRun
+
+        db.session.add(
+            JobRun(
+                job_name="purge-audit-logs",
+                ran_at=datetime.now(timezone.utc),
+                status="failed",
+                error_message="boom",
+            )
+        )
+        db.session.commit()
+        login_admin(client, admin_user)
+        with patch("services.system.storage._client"), patch(
+            "services.system.requests.get", side_effect=OSError("down")
+        ):
+            html = html_text(client.get("/admin/system"))
+        assert ">failed<" in html
+        assert "boom" in html
+
     def test_dashboard_status_card(self, client, admin_user):
         from unittest.mock import patch
         from config import GIT_HASH
 
         login_admin(client, admin_user)
-        with patch("services.system.storage._client"), patch(
-            "services.system.requests.get", side_effect=OSError("down")
-        ):
-            response = client.get("/")
+        response = client.get("/")
+        self.http_get.assert_not_called()
         html = response.get_data(as_text=True)
         assert 'id="system-status-card"' in html
         assert "status-dot" in html

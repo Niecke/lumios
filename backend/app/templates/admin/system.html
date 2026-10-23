@@ -84,7 +84,8 @@
                 <td colspan="2"><span class="text-muted">Never run</span></td>
                 {% endif %}
                 <td>
-                    {% if j.is_overdue %}<span class="badge badge-warning">overdue</span>
+                    {% if j.last_failed %}<span class="badge badge-warning">failed</span> <span class="text-muted">{{ (j.run.error_message or '')[:200] }}</span>
+                    {% elif j.is_overdue %}<span class="badge badge-warning">overdue</span>
                     {% else %}<span class="badge badge-success">on time</span>{% endif %}
                 </td>
             </tr>
