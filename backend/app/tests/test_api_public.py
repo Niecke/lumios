@@ -411,6 +411,9 @@ class TestDownloadLibraryZip:
         assert names == ["img-0.jpg", "img-1.jpg", "img-2.jpg"]
         contents = zf.read("img-0.jpg")
         assert contents.startswith(b"DATA-photos/")
+        for info in zf.infolist():
+            assert info.date_time != (1980, 1, 1, 0, 0, 0)
+            assert info.date_time[0] >= 1980
 
     def test_duplicate_filenames_are_disambiguated(self, client, public_library):
         public_library.download_enabled = True
