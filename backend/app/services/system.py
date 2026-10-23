@@ -23,7 +23,7 @@ from services.redis_client import get_redis
 
 JOB_NAMES = ["purge-deleted-accounts", "purge-audit-logs"]
 JOB_OVERDUE_SECONDS = 36 * 3600
-REMOTE_TIMEOUT_SECONDS = 1.5
+REMOTE_TIMEOUT_SECONDS = 2.0
 DETAIL_MAX_LENGTH = 200
 
 
@@ -138,9 +138,13 @@ def _backend_build() -> dict:
     }
 
 
-def _verdict(checks: list, commit_mismatch: bool, jobs: list) -> tuple[str, str]:
+def _verdict(
+    checks: list, commit_mismatch: bool, jobs: list, unreachable: bool = False
+) -> tuple[str, str]:
     if any(c["status"] == "failed" for c in checks):
         return "degraded", "A dependency is failing"
+    if unreachable:
+        return "warning", "A component is unreachable"
     if commit_mismatch:
         return "warning", "Components run different commits"
     if any(j["is_overdue"] for j in jobs):
@@ -177,7 +181,9 @@ def get_system_status() -> dict:
         "migration": _alembic_revision(),
     }
 
-    verdict, summary = _verdict(checks, commit_mismatch, jobs)
+    verdict, summary = _verdict(
+        checks, commit_mismatch, jobs, any(not b["reachable"] for b in builds)
+    )
 
     return {
         "verdict": verdict,

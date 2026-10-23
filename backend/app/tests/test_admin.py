@@ -748,6 +748,34 @@ class TestAdminSystem:
         assert "A dependency is failing" in html
         assert "bucket gone" in html
 
+    def test_system_handles_failing_database(self, client, admin_user):
+        from unittest.mock import patch
+
+        login_admin(client, admin_user)
+        real_execute = db.session.execute
+
+        def fail_select_one(stmt, *a, **kw):
+            if str(stmt) == "SELECT 1":
+                raise RuntimeError("db gone")
+            return real_execute(stmt, *a, **kw)
+
+        with patch("services.system.storage._client"), patch(
+            "services.system.requests.get", side_effect=OSError("down")
+        ), patch.object(db.session, "execute", side_effect=fail_select_one):
+            response = client.get("/admin/system")
+        assert response.status_code == 200
+        assert "A dependency is failing" in html_text(response)
+
+    def test_system_unreachable_component_warns(self, client, admin_user):
+        from unittest.mock import patch
+
+        login_admin(client, admin_user)
+        with patch("services.system.storage._client"), patch(
+            "services.system.requests.get", side_effect=OSError("down")
+        ):
+            html = html_text(client.get("/admin/system"))
+        assert "A component is unreachable" in html
+
     def test_system_detects_commit_mismatch(self, client, admin_user):
         from unittest.mock import patch
 
