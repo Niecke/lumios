@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}System{% endblock %}
+
+{% block content %}
+{% set dot = {'ok': 'ok', 'warning': 'warning', 'degraded': 'error'}[system.verdict] %}
+<div class="page-header">
+    <h1>System</h1>
+    <span id="system-verdict"><span class="status-dot status-dot-{{ dot }}"></span>{{ system.summary }}</span>
+</div>
+
+{% if system.commit_mismatch %}
+<div class="alert alert-warning" id="commit-mismatch">
+    Backend, frontend and landing page are not on the same commit. A rollout may be half done.
+</div>
+{% endif %}
+
+<h2>Dependencies</h2>
+<div class="table-container">
+    <table class="table">
+        <thead>
+            <tr><th>Service</th><th>Status</th><th>Response time</th><th>Details</th></tr>
+        </thead>
+        <tbody>
+            {% for c in system.checks %}
+            <tr>
+                <td>{{ c.name }}</td>
+                <td>
+                    <span class="badge {{ 'badge-success' if c.status == 'ok' else ('badge-error' if c.status == 'failed' else 'badge-warning') }}">{{ c.status }}</span>
+                </td>
+                <td>{% if c.ms is not none %}{{ c.ms }} ms{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td>{{ c.detail }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h2>Builds</h2>
+<div class="table-container">
+    <table class="table">
+        <thead>
+            <tr><th>Component</th><th>Status</th><th>Version</th><th>Commit</th><th>Built at</th></tr>
+        </thead>
+        <tbody>
+            {% for b in system.builds %}
+            <tr>
+                <td>{{ b.name }}</td>
+                {% if b.reachable %}
+                <td><span class="badge badge-success">ok</span></td>
+                <td class="text-mono">{{ b.version or '—' }}</td>
+                <td class="text-mono">{{ (b.commit or '—')[:8] }}</td>
+                <td>{{ b.built_at or '—' }}</td>
+                {% else %}
+                <td><span class="badge badge-warning">unreachable</span></td>
+                <td colspan="3"><span class="text-muted">—</span></td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h2>Runtime</h2>
+<div class="card">
+    <p>Python: <span class="text-mono">{{ system.runtime.python }}</span></p>
+    <p>Gunicorn: <span class="text-mono">{{ system.runtime.gunicorn }}</span></p>
+    <p>Database migration: <span class="text-mono">{{ system.runtime.migration or '—' }}</span></p>
+</div>
+
+<h2>Scheduled Jobs</h2>
+<div class="table-container">
+    <table class="table">
+        <thead>
+            <tr><th>Job</th><th>Last Run</th><th>Age</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+            {% for j in system.jobs %}
+            <tr>
+                <td class="text-mono">{{ j.name }}</td>
+                {% if j.run %}
+                <td>{{ j.run.ran_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+                <td>{{ j.age_hours }} h</td>
+                {% else %}
+                <td colspan="2"><span class="text-muted">Never run</span></td>
+                {% endif %}
+                <td>
+                    {% if j.is_overdue %}<span class="badge badge-warning">overdue</span>
+                    {% else %}<span class="badge badge-success">on time</span>{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

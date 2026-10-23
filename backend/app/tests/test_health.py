@@ -28,3 +28,23 @@ class TestHealthEndpoint:
         # Health check must be publicly accessible for load balancer probes
         response = client.get("/health")
         assert response.status_code == 200
+
+
+class TestVersionEndpoint:
+    def test_version_returns_200(self, client):
+        response = client.get("/version")
+        assert response.status_code == 200
+        assert response.content_type.startswith("application/json")
+
+    def test_version_contains_fields(self, client):
+        data = json.loads(client.get("/version").data)
+        assert "commit" in data
+        assert "version" in data
+        assert "built_at" in data
+
+    def test_version_exposes_nothing_else(self, client):
+        data = json.loads(client.get("/version").data)
+        assert set(data) == {"commit", "version", "built_at"}
+
+    def test_version_json_alias(self, client):
+        assert client.get("/version.json").data == client.get("/version").data

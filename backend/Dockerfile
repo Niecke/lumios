@@ -35,6 +35,8 @@ WORKDIR /app
 
 ARG GIT_SHA=dev
 ENV GIT_HASH=${GIT_SHA}
+ARG BUILD_TIMESTAMP=unknown
+ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=main:create_app()
 # Point distroless Python at the packages installed in the builder stage.

@@ -159,6 +159,8 @@ Defined and validated in `backend/app/config.py`. The app **refuses to start** i
 | `REDIS_URL` | `None` | Falls back to filesystem sessions if unset |
 | `DEBUG` | `false` | Enables hot-reload, disables HTTPS enforcement |
 | `GIT_HASH` | `dev` | Injected at Docker build time |
+| `APP_VERSION` | `dev` | Release version, set at runtime by the Helm chart from the image tag |
+| `BUILD_TIMESTAMP` | `unknown` | Build time, injected as a Docker build arg |
 | `GOOGLE_CLIENT_ID` | — | Google OAuth client ID (backend / Jinja2 login) |
 | `GOOGLE_CLIENT_SECRET` | — | Google OAuth client secret |
 | `GOOGLE_FRONTEND_CLIENT_ID` | — | Separate OAuth client for React frontend (GIS flow) |
@@ -413,6 +415,7 @@ URL: https://lumios-app.niecke-it.de/library/<uuid>
 
 ```
 GET  /health                                        # DB ping, returns {status, database, git_hash}
+GET  /version                                       # Public build identity {commit, version, built_at}
 
 # Auth (template-based, session)
 GET  /login                                         # Login page
@@ -502,6 +505,7 @@ POST /admin/support/<ticket_id>/close
 GET  /admin/feedback
 POST /admin/feedback/<feedback_id>/note
 GET/POST /admin/notify_agb
+GET  /admin/system                                  # Build info, dependency checks, job recency
 GET  /admin/auditlogs
 ```
 

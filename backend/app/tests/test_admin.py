@@ -673,3 +673,142 @@ class TestUserCreateAgbFields:
         assert user is not None
         assert user.agb_accepted_at is not None
         assert user.agb_version is not None
+
+
+# ---------------------------------------------------------------------------
+# System page
+# ---------------------------------------------------------------------------
+
+
+def _remote_response(commit):
+    from unittest.mock import MagicMock
+
+    resp = MagicMock()
+    resp.json.return_value = {"commit": commit, "version": "v1", "built_at": "t"}
+    return resp
+
+
+class TestAdminSystem:
+    def test_system_requires_login(self, client):
+        response = client.get("/admin/system", follow_redirects=False)
+        assert response.status_code == 302
+        assert "/login" in response.location
+
+    def test_system_requires_admin_role(self, client, regular_user):
+        login_regular(client, regular_user)
+        response = client.get("/admin/system", follow_redirects=True)
+        assert response.status_code == 200
+        assert "Access denied." in html_text(response)
+
+    def test_system_accessible_to_admin(self, client, admin_user):
+        login_admin(client, admin_user)
+        assert client.get("/admin/system").status_code == 200
+
+    def test_system_renders_checks_and_builds(self, client, admin_user):
+        import platform
+        from unittest.mock import patch
+
+        login_admin(client, admin_user)
+        with patch("services.system.storage._client") as s3, patch(
+            "services.system.requests.get", side_effect=OSError("down")
+        ):
+            s3.head_bucket.return_value = {}
+            html = html_text(client.get("/admin/system"))
+        assert "PostgreSQL" in html
+        assert "Redis" in html
+        assert "Object storage" in html
+        assert " ms" in html
+        assert platform.python_version() in html
+        assert "Gunicorn" in html
+        assert "Backend" in html
+        assert "Frontend" in html
+        assert "unreachable" in html
+
+    def test_system_handles_failing_dependency(self, client, admin_user):
+        from unittest.mock import patch
+
+        login_admin(client, admin_user)
+        with patch("services.system.storage._client") as s3, patch(
+            "services.system.requests.get", side_effect=OSError("down")
+        ):
+            s3.head_bucket.side_effect = RuntimeError("bucket gone")
+            response = client.get("/admin/system")
+        assert response.status_code == 200
+        html = html_text(response)
+        assert "A dependency is failing" in html
+        assert "bucket gone" in html
+
+    def test_system_detects_commit_mismatch(self, client, admin_user):
+        from unittest.mock import patch
+
+        login_admin(client, admin_user)
+        with patch("services.system.storage._client"), patch(
+            "services.system.requests.get", return_value=_remote_response("other")
+        ):
+            html = html_text(client.get("/admin/system"))
+        assert "not on the same commit" in html
+
+    def test_system_matching_commits_show_no_warning(self, client, admin_user):
+        from unittest.mock import patch
+        from config import GIT_HASH
+
+        login_admin(client, admin_user)
+        with patch("services.system.storage._client"), patch(
+            "services.system.requests.get", return_value=_remote_response(GIT_HASH)
+        ):
+            html = html_text(client.get("/admin/system"))
+        assert "not on the same commit" not in html
+
+    def test_system_flags_overdue_job(self, client, admin_user):
+        from datetime import datetime, timedelta, timezone
+        from unittest.mock import patch
+        from models import db, JobRun
+
+        db.session.add(
+            JobRun(
+                job_name="purge-audit-logs",
+                ran_at=datetime.now(timezone.utc) - timedelta(hours=40),
+                status="success",
+            )
+        )
+        db.session.add(
+            JobRun(
+                job_name="purge-deleted-accounts",
+                ran_at=datetime.now(timezone.utc) - timedelta(hours=1),
+                status="success",
+            )
+        )
+        db.session.commit()
+        login_admin(client, admin_user)
+        with patch("services.system.storage._client"), patch(
+            "services.system.requests.get", side_effect=OSError("down")
+        ):
+            html = html_text(client.get("/admin/system"))
+        assert html.count(">overdue<") == 1
+        assert "on time" in html
+
+    def test_dashboard_status_card(self, client, admin_user):
+        from unittest.mock import patch
+        from config import GIT_HASH
+
+        login_admin(client, admin_user)
+        with patch("services.system.storage._client"), patch(
+            "services.system.requests.get", side_effect=OSError("down")
+        ):
+            response = client.get("/")
+        html = response.get_data(as_text=True)
+        assert 'id="system-status-card"' in html
+        assert "status-dot" in html
+        assert GIT_HASH[:8] in html
+        assert "/admin/system" in html
+
+    def test_footer_shows_version_and_commit(self, client, admin_user):
+        from unittest.mock import patch
+        from config import APP_VERSION, GIT_HASH
+
+        login_admin(client, admin_user)
+        with patch("services.system.storage._client"), patch(
+            "services.system.requests.get", side_effect=OSError("down")
+        ):
+            html = html_text(client.get("/admin/system"))
+        assert f"{APP_VERSION} · {GIT_HASH[:8]}" in html

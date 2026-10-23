@@ -37,6 +37,7 @@ from models import (
 from config import MAX_USERS, CURRENT_AGB_VERSION
 from security import login_required, require_role
 from services.audit import write_audit_log
+from services.system import get_system_status
 from services.mail import (
     notify_agb_change,
     notify_account_cancellation,
@@ -90,7 +91,15 @@ def index():
         beta_slots_used=beta_slots_used,
         beta_slots_max=MAX_USERS,
         job_runs=job_runs,
+        system=get_system_status(),
     )
+
+
+@admin.route("/admin/system")
+@login_required
+@require_role("admin")
+def system_view():
+    return render_template("admin/system.html", system=get_system_status())
 
 
 @admin.route("/admin/users", methods=["GET", "POST"])

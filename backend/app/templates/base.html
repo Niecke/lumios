@@ -21,6 +21,7 @@
                 <a href="{{ url_for('admin.users_view') }}">Users</a>
                 <a href="{{ url_for('admin.support_list') }}">Support</a>
                 <a href="{{ url_for('admin.feedback_list') }}">Feedback</a>
+                <a href="{{ url_for('admin.system_view') }}">System</a>
                 <a href="{{ url_for('admin.audit_logs') }}">Audit Logs</a>
                 <a href="{{ url_for('admin.notify_agb') }}">AGB-Mail</a>
                 {% endif %}
@@ -48,7 +49,7 @@
     </main>
 
     <footer class="footer">
-        <p>&copy; 2026 Lumios &middot; <span class="text-muted">{{ GIT_HASH[:8] }}</span></p>
+        <p>&copy; 2026 Lumios &middot; <span class="text-muted">{{ APP_VERSION }} &middot; {{ GIT_HASH[:8] }}</span></p>
     </footer>
 
     <div id="cookie-banner" class="cookie-banner" role="region" aria-label="Cookie notice">

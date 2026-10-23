@@ -7,6 +7,8 @@ import secrets, string
 
 DEBUG = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes")
 GIT_HASH = os.getenv("GIT_HASH", "dev")
+APP_VERSION = os.getenv("APP_VERSION", "dev")
+BUILD_TIMESTAMP = os.getenv("BUILD_TIMESTAMP", "unknown")
 INIT_ADMIN_PASSWORD = str(os.getenv("INIT_ADMIN_PASSWORD", ""))
 INIT_ADMIN_LENGTH = int(os.getenv("INIT_ADMIN_LENGTH", 16))
 INIT_ADMIN_SPECIAL_CHARS = str(os.getenv("INIT_ADMIN_SPECIAL_CHARS", r"!@#\$%&*"))

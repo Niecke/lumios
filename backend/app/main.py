@@ -18,6 +18,7 @@ from config import (
     GOOGLE_CLIENT_SECRET,
     MAX_CONTENT_LENGTH,
     GIT_HASH,
+    APP_VERSION,
     CLOUD_TRACE_ENABLED,
     GOOGLE_CLOUD_PROJECT,
     CLOUD_TRACE_SERVICE,
@@ -218,7 +219,11 @@ def create_app(test_config=None):
 
     @app.context_processor
     def inject_config():
-        return dict(MIN_PASSWORD_LENGTH=MIN_PASSWORD_LENGTH, GIT_HASH=GIT_HASH)
+        return dict(
+            MIN_PASSWORD_LENGTH=MIN_PASSWORD_LENGTH,
+            GIT_HASH=GIT_HASH,
+            APP_VERSION=APP_VERSION,
+        )
 
     # Register blueprints
     from blueprints.auth import auth
