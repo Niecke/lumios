@@ -33,6 +33,14 @@ podman-compose up -d --build --force-recreate
 
 #### Testing
 
+The tests need a PostgreSQL server (they create and use the `lumios_test` database). Start a throwaway one on tmpfs first:
+
+```
+./scripts/test-db.sh start    # or: podman compose --profile test up -d postgres-test
+# port 5432 taken? POSTGRES_TEST_PORT=55432 ./scripts/test-db.sh start, then run pytest with POSTGRES_PORT=55432
+./scripts/test-db.sh stop     # when done
+```
+
 ```
 cd backend
 

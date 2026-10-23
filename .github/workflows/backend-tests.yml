@@ -8,6 +8,22 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: lumios
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: lumios_test
+        ports:
+          - 5432:5432
+        options: >-
+          --tmpfs /var/lib/postgresql:rw
+          --health-cmd "pg_isready -U lumios -d lumios_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -21,10 +37,25 @@ jobs:
         working-directory: backend
         run: uv sync --frozen --group test
 
+      # Service containers cannot take a command override, so switch the
+      # durability settings off at runtime (all three only need a reload).
+      - name: Disable PostgreSQL durability
+        run: |
+          cid=$(docker ps --filter ancestor=postgres:18-alpine --format '{{.ID}}' | head -n1)
+          docker exec "$cid" psql -U lumios -d lumios_test \
+            -c "ALTER SYSTEM SET fsync = off" \
+            -c "ALTER SYSTEM SET synchronous_commit = off" \
+            -c "ALTER SYSTEM SET full_page_writes = off" \
+            -c "SELECT pg_reload_conf()"
+
       - name: Run tests
         working-directory: backend
         env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5432"
+          POSTGRES_USER: lumios
           POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: lumios_test
           SECRET_KEY: test-secret-key-at-least-32-chars-long!
           JWT_SECRET: test-jwt-secret-key-at-least-32-chars-long!
           DEBUG: "true"

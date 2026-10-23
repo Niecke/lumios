@@ -9,7 +9,11 @@ import os
 import sys
 
 # --- Env vars must come first, before any app imports ---
+os.environ.setdefault("POSTGRES_HOST", "localhost")
+os.environ.setdefault("POSTGRES_PORT", "5432")
+os.environ.setdefault("POSTGRES_USER", "lumios")
 os.environ.setdefault("POSTGRES_PASSWORD", "test_password")
+os.environ.setdefault("POSTGRES_DB", "lumios_test")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-at-least-32-chars-long!")
 os.environ.setdefault("JWT_SECRET", "test-secret-key-at-least-32-chars-long!")
 os.environ.setdefault("DEBUG", "true")  # disables Talisman HTTPS enforcement
@@ -24,31 +28,63 @@ os.environ.setdefault("PASSWORD_HASHER_PARALLELISM", "1")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
 # --- Now it is safe to import from the app ---
+import psycopg
 import pytest
-from sqlalchemy.pool import StaticPool
+from flask_migrate import upgrade
+from psycopg import sql
 
 from main import create_app
 from models import db as _db, User, Role
+
+
+def _ensure_test_database_exists():
+    """Create the test database if the PostgreSQL server does not have it yet."""
+    params = dict(
+        host=os.environ["POSTGRES_HOST"],
+        port=int(os.environ["POSTGRES_PORT"]),
+        user=os.environ["POSTGRES_USER"],
+        password=os.environ["POSTGRES_PASSWORD"],
+        connect_timeout=5,
+    )
+    dbname = os.environ["POSTGRES_DB"]
+    try:
+        psycopg.connect(dbname=dbname, **params).close()
+        return
+    except psycopg.OperationalError as exc:
+        if "does not exist" not in str(exc):
+            raise RuntimeError(
+                f"Cannot reach PostgreSQL at {params['host']}:{params['port']} "
+                f"({exc}).\nStart the throwaway test database with "
+                "`./scripts/test-db.sh start` (or `podman compose --profile test "
+                "up -d postgres-test`), or point POSTGRES_HOST/POSTGRES_PORT at a "
+                "running server."
+            ) from exc
+    with psycopg.connect(dbname="postgres", autocommit=True, **params) as conn:
+        conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(dbname)))
+
+
+def _reset_schema():
+    _db.session.remove()
+    _db.engine.dispose()
+    with _db.engine.begin() as conn:
+        conn.exec_driver_sql("DROP SCHEMA public CASCADE")
+        conn.exec_driver_sql("CREATE SCHEMA public")
 
 
 @pytest.fixture(scope="session")
 def app():
     """Create and configure the Flask application once for the entire test session.
 
-    - SQLite in-memory database replaces MySQL (no external service needed)
-    - StaticPool ensures all connections share the same in-memory database
+    - Connects to a real PostgreSQL (see scripts/test-db.sh); the database is
+      created on demand and the schema is built by running the Alembic migrations
     - CSRF and rate limiting are disabled for test convenience
     """
+    _ensure_test_database_exists()
+
+    # The database URI comes from config.py (POSTGRES_* env vars set above).
     test_app = create_app(
         test_config={
             "TESTING": True,
-            # Replace MySQL with an in-memory SQLite database (no external service needed).
-            # StaticPool ensures all connections share the same in-memory database.
-            "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
-            "SQLALCHEMY_ENGINE_OPTIONS": {
-                "connect_args": {"check_same_thread": False},
-                "poolclass": StaticPool,
-            },
             "WTF_CSRF_ENABLED": False,
             "RATELIMIT_ENABLED": False,
             # Use filesystem sessions in /tmp – no Redis needed
@@ -60,11 +96,12 @@ def app():
     # Push a permanent app context so fixtures can access db.session directly
     ctx = test_app.app_context()
     ctx.push()
-    _db.create_all()
+    _reset_schema()
+    upgrade(directory=os.path.join(os.path.dirname(__file__), "..", "migrations"))
 
     yield test_app
 
-    _db.drop_all()
+    _reset_schema()
     ctx.pop()
 
 

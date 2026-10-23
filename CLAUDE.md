@@ -114,7 +114,12 @@ podman-compose up -d --build --force-recreate
 podman exec -e FLASK_APP="main:create_app()" lumios-backend /usr/bin/python3 -m flask db migrate -m "description"
 podman exec -e FLASK_APP="main:create_app()" lumios-backend /usr/bin/python3 -m flask db upgrade
 
-# Backend tests (run from backend/ — uses SQLite in-memory, no services needed)
+# Backend tests run against a real PostgreSQL 18 on tmpfs (fsync off), schema built by the Alembic migrations.
+# Start the throwaway test database first (set POSTGRES_TEST_PORT / POSTGRES_PORT if 5432 is taken):
+./scripts/test-db.sh start               # or: podman compose --profile test up -d postgres-test
+./scripts/test-db.sh stop                # remove it again
+
+# Backend tests (run from backend/)
 # only for test setup (uv manages the virtualenv itself, no manual activation needed)
 cd backend
 uv sync --group test
@@ -513,11 +518,15 @@ GET  /admin/auditlogs
 
 ## Testing Conventions
 
-Tests use SQLite in-memory — no external services required. Follow `tests/conftest.py` exactly:
+Tests run against a real PostgreSQL (same major version as production) whose data directory is on tmpfs with `fsync`, `synchronous_commit` and `full_page_writes` off. Start it with `./scripts/test-db.sh start` (CI uses a `postgres` service container). The `app` fixture creates the `lumios_test` database if missing, rebuilds the schema by running the Alembic migrations once per session, and fails with startup instructions if PostgreSQL is unreachable. `clean_db` deletes all rows after each test. `tests/test_migrations.py` fails when the migrations and the models disagree (including enum values). Follow `tests/conftest.py` exactly:
 
 ```python
 # Always set env vars before any app import
+os.environ.setdefault("POSTGRES_HOST", "localhost")
+os.environ.setdefault("POSTGRES_PORT", "5432")
+os.environ.setdefault("POSTGRES_USER", "lumios")
 os.environ.setdefault("POSTGRES_PASSWORD", "test_password")
+os.environ.setdefault("POSTGRES_DB", "lumios_test")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-at-least-32-chars-long!")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-key-at-least-32-chars-long!")
 os.environ.setdefault("DEBUG", "true")  # disables Talisman HTTPS enforcement
@@ -527,14 +536,9 @@ os.environ.setdefault("PASSWORD_HASHER_TIME_COST", "1")
 os.environ.setdefault("PASSWORD_HASHER_MEMORY_COST", "8")
 os.environ.setdefault("PASSWORD_HASHER_PARALLELISM", "1")
 
-# SQLite replaces PostgreSQL in tests
+# The database URI comes from config.py (POSTGRES_* above); no override needed
 test_config = {
     "TESTING": True,
-    "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
-    "SQLALCHEMY_ENGINE_OPTIONS": {
-        "connect_args": {"check_same_thread": False},
-        "poolclass": StaticPool,
-    },
     "WTF_CSRF_ENABLED": False,
     "RATELIMIT_ENABLED": False,
     "SESSION_TYPE": "filesystem",
@@ -557,6 +561,7 @@ tests/
 ├── test_commands.py
 ├── test_feedback.py
 ├── test_health.py
+├── test_migrations.py
 ├── test_models.py
 ├── test_redis_client.py
 ├── test_security.py

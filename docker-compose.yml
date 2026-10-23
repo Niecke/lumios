@@ -18,6 +18,25 @@ services:
       retries: 5
     restart: unless-stopped
 
+  postgres-test:
+    profiles: ["test"]
+    image: docker.io/library/postgres:18-alpine
+    container_name: lumios-postgres-test
+    command: ["-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
+    environment:
+      POSTGRES_USER: lumios
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: lumios_test
+    ports:
+      - "127.0.0.1:${POSTGRES_TEST_PORT:-5432}:5432"
+    tmpfs:
+      - /var/lib/postgresql:rw
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lumios -d lumios_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: docker.io/library/redis:8-alpine@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
     container_name: lumios-redis
