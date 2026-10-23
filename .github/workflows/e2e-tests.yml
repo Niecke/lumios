@@ -57,11 +57,9 @@ jobs:
           cache: "npm"
           cache-dependency-path: e2e/package.json
 
-      - name: Install Playwright and dependencies
+      - name: Install dependencies
         working-directory: e2e
-        run: |
-          npm ci
-          npx playwright install chromium --with-deps
+        run: npm ci
 
       - name: Run integration tests
         working-directory: e2e
