@@ -40,14 +40,14 @@ spec:
       image:
         # Written by release.yml from a vX.Y.Z tag — a merge to main never
         # moves production. Rolling back is reverting that Deploy commit.
-        tag: 0.1.0
+        tag: 0.2.0
     frontend:
       # Stateless nginx: two pods so a restart or a rolling update never takes
       # the app down. Both run on the one node, so this is not node redundancy.
       replicas: 2
       image:
-        tag: 0.1.0
+        tag: 0.2.0
     landingpage:
       replicas: 2
       image:
-        tag: 0.1.0
+        tag: 0.2.0
