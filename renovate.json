@@ -17,5 +17,22 @@
     "labels": [
       "security"
     ]
-  }
+  },
+  "packageRules": [
+    {
+      "description": "OpenTelemetry core and instrumentation packages are released in lockstep, so they must be updated together.",
+      "matchPackageNames": [
+        "opentelemetry-*"
+      ],
+      "groupName": "opentelemetry"
+    },
+    {
+      "description": "Digest-only updates of already-pinned images carry no new version, so the age gate does not apply.",
+      "matchUpdateTypes": [
+        "digest",
+        "pinDigest"
+      ],
+      "minimumReleaseAge": null
+    }
+  ]
 }
