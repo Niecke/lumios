@@ -47,11 +47,17 @@ def _ensure_test_database_exists():
         connect_timeout=5,
     )
     dbname = os.environ["POSTGRES_DB"]
+    if not dbname.endswith("_test"):
+        raise RuntimeError(
+            f"Refusing to run tests against database {dbname!r}: the suite drops "
+            "the whole public schema, so POSTGRES_DB must end in '_test' "
+            "(default: lumios_test)."
+        )
     try:
         psycopg.connect(dbname=dbname, **params).close()
         return
     except psycopg.OperationalError as exc:
-        if "does not exist" not in str(exc):
+        if exc.sqlstate != "3D000":  # invalid_catalog_name: database missing
             raise RuntimeError(
                 f"Cannot reach PostgreSQL at {params['host']}:{params['port']} "
                 f"({exc}).\nStart the throwaway test database with "
