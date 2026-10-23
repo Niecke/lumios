@@ -28,6 +28,14 @@ server {
         add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-gC+Lq+aSUf7/B7bXjhoLOl7bar2RUmxKsQ6Dlzn9byQ=' https://challenges.cloudflare.com; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self' ${BACKEND_URL}; frame-src https://challenges.cloudflare.com" always;
     }
 
+    # Build identity written at container start; never cached.
+    location = /version.json {
+        add_header Cache-Control "no-store" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    }
+
     # SPA fallback
     location / {
         try_files $uri $uri/ /index.html;

@@ -51,6 +51,8 @@ spec:
           env:
             # Substituted into index.html and registration.js at container
             # start, so the same image serves staging and production.
+            - name: APP_VERSION
+              value: {{ .Values.landingpage.image.tag | quote }}
             - name: APP_URL
               value: {{ printf "https://%s" .Values.ingress.hosts.frontend | quote }}
             - name: BACKEND_URL

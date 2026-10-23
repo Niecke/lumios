@@ -52,6 +52,8 @@ spec:
           env:
             # Written to /config.js at container start; the image itself is
             # the same in every environment.
+            - name: APP_VERSION
+              value: {{ .Values.frontend.image.tag | quote }}
             - name: GOOGLE_CLIENT_ID
               value: {{ default .Values.backend.google.frontendClientId .Values.frontend.googleClientId | quote }}
             - name: LANDING_URL

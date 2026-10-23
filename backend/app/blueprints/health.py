@@ -2,6 +2,7 @@ from flask import Blueprint, current_app
 from models import db
 from sqlalchemy import text
 from services.redis_client import get_redis
+from config import GIT_HASH, APP_VERSION, BUILD_TIMESTAMP
 
 health = Blueprint("health", __name__)
 
@@ -32,3 +33,9 @@ def healthcheck():
     status = "healthy" if healthy else "unhealthy"
     code = 200 if healthy else 503
     return {"status": status}, code
+
+
+@health.route("/version")
+@health.route("/version.json")
+def version():
+    return {"commit": GIT_HASH, "version": APP_VERSION, "built_at": BUILD_TIMESTAMP}

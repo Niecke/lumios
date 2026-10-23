@@ -254,6 +254,17 @@ helm -n lumios history lumios                                 # rollback targets
 kubectl -n lumios logs deploy/lumios-backend                  # JSON lines, includes the migration run
 ```
 
+To confirm that the pods really run the new build, open `/admin/system` as an
+admin: it shows the version, commit and build time of the backend, frontend and
+landing page, warns when their commits differ (a half-done rollout), and checks
+PostgreSQL, Redis and the bucket. Without a login, `GET /version` on the backend
+returns the same `commit`, `version` and `built_at` as JSON (the frontend and
+landing page serve `/version.json`).
+
+```bash
+curl -s https://<backend-host>/version
+```
+
 A failed upgrade is retried three times and then rolled back
 (`remediateLastFailure`), so a bad merge leaves the previous release running
 rather than a half-applied one.

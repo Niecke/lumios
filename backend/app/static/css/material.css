@@ -58,6 +58,12 @@ input:focus { outline: none; border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(2
 }
 .badge-success { background: #e8f0fe; color: #1a73e8; }
 .badge-error { background: #fce8e6; color: #ea4335; }
+.badge-warning { background: #fef7e0; color: #b06000; }
+.status-dot { display: inline-block; width: 0.75rem; height: 0.75rem; border-radius: 50%; margin-right: 0.5rem; }
+.status-dot-ok { background: #34a853; }
+.status-dot-error { background: #ea4335; }
+.status-dot-warning { background: #fbbc04; }
+.alert-warning { background: #fef7e0; border-left: 4px solid #fbbc04; }
 .btn-sm { padding: 0.25rem 0.75rem; font-size: 0.875rem; }
 .roles { display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
 .text-muted { color: #5f6368; font-style: italic; }

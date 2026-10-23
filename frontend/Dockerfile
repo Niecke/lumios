@@ -1,20 +1,22 @@
 # ---- Stage 1: Build ----
 FROM docker.io/library/node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS builder
 
-ARG GIT_SHA
-
 WORKDIR /build
 
 COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
-ENV VITE_GIT_SHA=${GIT_SHA}
 RUN npm run build
 
 
 # ---- Stage 2: Runtime ----
 FROM docker.io/library/nginx:1.31-alpine@sha256:4a73073bd557c65b759505da037898b61f1be6cbcc3c2c3aeac22d2a470c1752
+
+ARG GIT_SHA=dev
+ARG BUILD_TIMESTAMP=unknown
+ENV GIT_SHA=${GIT_SHA}
+ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
 
 ENV NGINX_ENVSUBST_FILTER=^(BACKEND_URL|BACKEND_HOST|S3_ENDPOINT_URL)$
 

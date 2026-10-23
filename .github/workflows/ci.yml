@@ -139,6 +139,7 @@ jobs:
       commit: ${{ steps.id.outputs.commit }}
       tag: ${{ steps.id.outputs.tag }}
       app_version: ${{ steps.id.outputs.app_version }}
+      built_at: ${{ steps.id.outputs.built_at }}
     steps:
       # The manifest as the PR head has it, not the merge commit: on the release
       # pull request that is the version it is about to tag.
@@ -160,6 +161,7 @@ jobs:
           set -euo pipefail
           echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
           echo "tag=ci-${COMMIT}" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
 
           version="v$(jq -r '."."' .release-please-manifest.json)"
           case "$HEAD_REF" in
@@ -205,7 +207,9 @@ jobs:
           context: backend
           platforms: linux/amd64,linux/arm64
           push: true
-          build-args: GIT_SHA=${{ needs.meta.outputs.commit }}
+          build-args: |
+            GIT_SHA=${{ needs.meta.outputs.commit }}
+            BUILD_TIMESTAMP=${{ needs.meta.outputs.built_at }}
           # image.source is what makes GHCR link the package to this repository.
           # Without it the package is owned by whoever pushed first and
           # GITHUB_TOKEN loses write access on the next run.
@@ -246,6 +250,7 @@ jobs:
           push: true
           build-args: |
             GIT_SHA=${{ needs.meta.outputs.commit }}
+            BUILD_TIMESTAMP=${{ needs.meta.outputs.built_at }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ needs.meta.outputs.commit }}
@@ -283,6 +288,9 @@ jobs:
           context: landingpage
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            GIT_SHA=${{ needs.meta.outputs.commit }}
+            BUILD_TIMESTAMP=${{ needs.meta.outputs.built_at }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ needs.meta.outputs.commit }}

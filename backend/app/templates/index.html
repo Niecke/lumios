@@ -27,6 +27,12 @@
         <div class="stats-label">Beta Spots Used</div>
         <div class="stats-label" style="margin-top:0.25rem">{{ beta_slots_max - beta_slots_used }} left</div>
     </div>
+    <div class="card stats-card" id="system-status-card">
+        {% set dot = {'ok': 'ok', 'warning': 'warning', 'degraded': 'error'}[system.verdict] %}
+        <div class="stats-value"><span class="status-dot status-dot-{{ dot }}"></span>{{ {'ok': 'Operational', 'warning': 'Warning', 'degraded': 'Degraded'}[system.verdict] }}</div>
+        <div class="stats-label">{{ system.backend.version }} &middot; {{ system.backend.commit[:8] }}</div>
+        <div class="stats-label" style="margin-top:0.25rem"><a href="{{ url_for('admin.system_view') }}">System details</a></div>
+    </div>
 </div>
 
 <h2>Scheduled Jobs</h2>
