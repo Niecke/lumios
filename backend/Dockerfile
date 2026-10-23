@@ -1,6 +1,6 @@
 # ---- Stage 1: Build ----
 # Installs all dependencies (including C/Rust extensions) into a virtualenv.
-FROM python:3.13-slim@sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a AS builder
+FROM python:3.13-slim@sha256:57b29a7c050c4e679e4bea572e14b3965cf4b5839de2da49d55e49ffc4024f39 AS builder
 
 WORKDIR /build
 
