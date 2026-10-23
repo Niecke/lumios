@@ -348,7 +348,7 @@ class TestApplyAgbAcceptance:
 
         db.session.refresh(user)
         assert user.agb_accepted_at is not None
-        # SQLite returns naive datetimes; strip tz for comparison
+        # The column is timezone-naive; strip tz for comparison
         effective_naive = effective.replace(tzinfo=None)
         diff = abs((user.agb_accepted_at - effective_naive).total_seconds())
         assert diff < 2
