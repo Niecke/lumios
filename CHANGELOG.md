@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.3.0](https://github.com/Niecke/lumios/compare/v0.2.0...v0.3.0) (2026-10-25)
+
+
+### Features
+
+* add failed login protection via Redis cache lockout ([#490](https://github.com/Niecke/lumios/issues/490)) ([670ebec](https://github.com/Niecke/lumios/commit/670ebecdc93b5852d624ba7c56b30edc4e66baa5))
+* **admin:** add system page with build info and health checks ([#458](https://github.com/Niecke/lumios/issues/458)) ([696aa51](https://github.com/Niecke/lumios/commit/696aa518a3d872a3deb75c296f2b649735412389))
+* **deploy:** run frontend and landingpage nginx without root ([#498](https://github.com/Niecke/lumios/issues/498)) ([99cff64](https://github.com/Niecke/lumios/commit/99cff64031bd5a9bd14e238ed23dbea43ca547f9))
+* **deploy:** run migrations in a one-time Job and scale backend to 2 replicas ([#504](https://github.com/Niecke/lumios/issues/504)) ([1f7f42b](https://github.com/Niecke/lumios/commit/1f7f42b4a560d7db34a501afba5c4febee11aa21))
+* resend activation mail and activate pending accounts from the admin UI ([#503](https://github.com/Niecke/lumios/issues/503)) ([2c21161](https://github.com/Niecke/lumios/commit/2c21161dd8d86a1e677d9417f28e5ec6cdb20af9))
+
+
+### Bug Fixes
+
+* **backend:** remove legacy max library and photo user columns ([#204](https://github.com/Niecke/lumios/issues/204)) ([#486](https://github.com/Niecke/lumios/issues/486)) ([0f9c13f](https://github.com/Niecke/lumios/commit/0f9c13fc45b984cdebdd397bfc295e6b1bebcaea))
+* **deps:** group OpenTelemetry packages and exempt digest updates from age gate ([#457](https://github.com/Niecke/lumios/issues/457)) ([177b6b7](https://github.com/Niecke/lumios/commit/177b6b7fbefb0ee63aa231c8b1a535cdc3409ee2))
+* **deps:** update dependency authlib to v1.9.1 ([a213bb9](https://github.com/Niecke/lumios/commit/a213bb950be963fbb59fa0fec745a7bc6edfb772))
+* **deps:** update dependency authlib to v1.9.1 ([61c294e](https://github.com/Niecke/lumios/commit/61c294e99d1e2fd5b9531c11a047edefed33c1a4))
+* **deps:** update dependency boto3 to v1.43.117 ([#471](https://github.com/Niecke/lumios/issues/471)) ([d24b855](https://github.com/Niecke/lumios/commit/d24b85504a0ad7deef7d1fd4c71ca323351fb0a8))
+* **deps:** update dependency boto3 to v1.43.118 ([#501](https://github.com/Niecke/lumios/issues/501)) ([69c7625](https://github.com/Niecke/lumios/commit/69c76259e61b1e7d023b8a24b7738c2aaeba7d5b))
+* **deps:** update dependency cryptography to v50.0.2 ([8c3db3a](https://github.com/Niecke/lumios/commit/8c3db3aea78528c07b12ce58a74912c7cd259b84))
+* **deps:** update dependency cryptography to v50.0.2 ([f67e8bf](https://github.com/Niecke/lumios/commit/f67e8bf95f7a8976c2b7886eb423841ace44f605))
+* **deps:** update dependency google-cloud-tasks to v2.26.0 ([#483](https://github.com/Niecke/lumios/issues/483)) ([b4c75bf](https://github.com/Niecke/lumios/commit/b4c75bf2cb6d12650439e3809a87e2ad95e86aa6))
+* **deps:** update dependency pillow to v13 [security] ([19a33f9](https://github.com/Niecke/lumios/commit/19a33f975b27dc4bcf9946a86ff953e76229c26e))
+* **deps:** update dependency pillow to v13 [security] ([e538082](https://github.com/Niecke/lumios/commit/e53808275a553c322ada0bf168d3e5bc859518f4))
+* **deps:** update dependency psycopg to v3.3.6 ([#472](https://github.com/Niecke/lumios/issues/472)) ([47eb56f](https://github.com/Niecke/lumios/commit/47eb56ffe90ed0b9cc56e1018e0c9a7d8a3cfc34))
+* **deps:** update dependency pyjwt to v2.15.0 [security] ([4b07976](https://github.com/Niecke/lumios/commit/4b07976a99c67de8ee797ccd2615de3e8b812af8))
+* **deps:** update dependency pyjwt to v2.15.0 [security] ([934de1e](https://github.com/Niecke/lumios/commit/934de1ef03a73e22a4e3f2aadf014e5e2a7ad560))
+* **deps:** update dependency pyjwt to v2.15.1 ([#473](https://github.com/Niecke/lumios/issues/473)) ([d66765c](https://github.com/Niecke/lumios/commit/d66765c54dc7490cc2fb93f089c70519f7f83df4))
+* **deps:** update dependency python-dotenv to v1.2.4 ([#474](https://github.com/Niecke/lumios/issues/474)) ([89c12d1](https://github.com/Niecke/lumios/commit/89c12d19bf54f7b80ccec35152cc99ebac09605e))
+* **deps:** update dependency vite to v8.2.4 [security] ([3c3512a](https://github.com/Niecke/lumios/commit/3c3512a10d5e32b55a7a2f1b63542d40552edf19))
+* **deps:** update dependency vite to v8.2.4 [security] ([5f90d0a](https://github.com/Niecke/lumios/commit/5f90d0ae3f40aa37df0170b127cff67861958e60))
+* sanitize Content-Disposition filenames with RFC 5987 encoding ([#491](https://github.com/Niecke/lumios/issues/491)) ([9463591](https://github.com/Niecke/lumios/commit/946359105742bca34665aaa68937945a8a959773))
+* set file timestamps in library zip downloads ([#485](https://github.com/Niecke/lumios/issues/485)) ([ff408e7](https://github.com/Niecke/lumios/commit/ff408e7a61a45c75787668ad300a510d6a0f9659))
+
 ## [0.2.0](https://github.com/Niecke/lumios/compare/v0.1.0...v0.2.0) (2026-10-23)
 
 
