@@ -31,7 +31,9 @@ class FakeRedis:
         self.values[key] = self.values.get(key, 0) + 1
         return self.values[key]
 
-    def expire(self, key, seconds):
+    def expire(self, key, seconds, nx=False):
+        if nx and key in self.ttls:
+            return
         self.ttls[key] = seconds
 
     def ttl(self, key):
@@ -119,3 +121,20 @@ def test_redis_exception_fails_open_gracefully():
         assert is_login_blocked(IP)[0] is True
         clear_login_failures(IP)
         assert is_login_blocked(IP) == (False, 0)
+
+
+def test_spoofed_leading_forwarded_for_does_not_change_client_ip(app):
+    with app.test_request_context(
+        "/", headers={"X-Forwarded-For": "1.2.3.4, 198.51.100.9"}
+    ):
+        assert login_protection.get_client_ip() == "198.51.100.9"
+    with app.test_request_context(
+        "/", headers={"X-Forwarded-For": "5.6.7.8, 198.51.100.9"}
+    ):
+        assert login_protection.get_client_ip() == "198.51.100.9"
+
+
+def test_in_memory_prunes_expired_entries_of_other_ips(no_redis):
+    login_protection._in_memory_failures["198.51.100.1"] = (1, 0.0)
+    record_login_failure(IP)
+    assert "198.51.100.1" not in login_protection._in_memory_failures

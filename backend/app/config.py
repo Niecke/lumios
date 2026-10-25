@@ -156,6 +156,9 @@ MAX_USERS = int(os.getenv("MAX_USERS", 100))
 # for the given number of minutes.
 FAILED_LOGIN_MAX_ATTEMPTS = int(os.getenv("FAILED_LOGIN_MAX_ATTEMPTS", 5))
 FAILED_LOGIN_BLOCK_MINUTES = int(os.getenv("FAILED_LOGIN_BLOCK_MINUTES", 15))
+# Reverse proxies in front of the app that append to X-Forwarded-For; the client IP
+# is the entry this many positions from the right.
+TRUSTED_PROXY_COUNT = max(1, int(os.getenv("TRUSTED_PROXY_COUNT", 1)))
 
 # Current AGB (Terms of Service) + AVV (Data Processing Agreement) version.
 # Update this when publishing a new version of the legal documents.

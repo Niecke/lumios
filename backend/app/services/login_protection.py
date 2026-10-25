@@ -12,7 +12,11 @@ import time
 
 from flask import request
 
-from config import FAILED_LOGIN_BLOCK_MINUTES, FAILED_LOGIN_MAX_ATTEMPTS
+from config import (
+    FAILED_LOGIN_BLOCK_MINUTES,
+    FAILED_LOGIN_MAX_ATTEMPTS,
+    TRUSTED_PROXY_COUNT,
+)
 from services.redis_client import get_redis
 
 _KEY_PREFIX = "failed_logins:ip:"
@@ -23,9 +27,19 @@ _lock = threading.Lock()
 
 
 def get_client_ip() -> str:
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """Client IP as seen by the outermost trusted proxy.
+
+    Each proxy appends the peer address to the right of ``X-Forwarded-For``, so
+    the leading entries are client-controlled. Only the entry ``TRUSTED_PROXY_COUNT``
+    positions from the right is trustworthy.
+    """
+    entries = [
+        e.strip()
+        for e in request.headers.get("X-Forwarded-For", "").split(",")
+        if e.strip()
+    ]
+    if len(entries) >= TRUSTED_PROXY_COUNT:
+        return entries[-TRUSTED_PROXY_COUNT]
     return request.remote_addr or ""
 
 
@@ -75,12 +89,17 @@ def record_login_failure(ip: str | None = None) -> int:
     if r is not None:
         try:
             count = int(r.incr(_key(ip)))
-            if count == 1 or count == FAILED_LOGIN_MAX_ATTEMPTS:
+            # nx: never leave a counter without TTL, but keep the window start
+            r.expire(_key(ip), window, nx=True)
+            if count == FAILED_LOGIN_MAX_ATTEMPTS:
                 r.expire(_key(ip), window)
             return count
         except Exception:
             pass
     with _lock:
+        now = time.monotonic()
+        for stale in [k for k, (_, exp) in _in_memory_failures.items() if exp <= now]:
+            del _in_memory_failures[stale]
         count, _ = _memory_state(ip)
         count += 1
         previous = _in_memory_failures.get(ip)
@@ -93,7 +112,11 @@ def record_login_failure(ip: str | None = None) -> int:
 
 
 def clear_login_failures(ip: str | None = None) -> None:
-    """Reset the failure counter, e.g. after a successful login."""
+    """Reset the failure counter after a successful login.
+
+    Trade-off: an attacker owning a valid account can interleave a login to reset
+    the counter; the per-second rate limiter still bounds the guess rate.
+    """
     ip = get_client_ip() if ip is None else ip
     with _lock:
         _in_memory_failures.pop(ip, None)

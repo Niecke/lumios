@@ -112,7 +112,7 @@ def app():
 
 
 @pytest.fixture(autouse=True)
-def clean_db():
+def clean_db(app):
     """Delete all rows from every table between tests.
 
     Runs after every test function (autouse=True).
