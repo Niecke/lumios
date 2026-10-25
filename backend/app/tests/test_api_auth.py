@@ -303,6 +303,17 @@ class TestApiPasswordLogin:
         data = res.get_json()
         assert "photographer" in data["roles"]
 
+    def test_successful_login_returns_tier_max_libraries(
+        self, client, photographer_user
+    ):
+        res = client.post(
+            self.ENDPOINT, json={"email": "photo@test.com", "password": "PhotoPass123!"}
+        )
+        assert (
+            res.get_json()["max_libraries"]
+            == photographer_user.effective_limits["max_libraries"]
+        )
+
     def test_successful_login_returns_account_type(self, client, photographer_user):
         res = client.post(
             self.ENDPOINT, json={"email": "photo@test.com", "password": "PhotoPass123!"}

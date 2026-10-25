@@ -131,7 +131,7 @@ def google_verify():
             "token": token,
             "email": user.email,
             "roles": roles,
-            "max_libraries": user.max_libraries,
+            "max_libraries": user.effective_limits["max_libraries"],
         }
     )
 
@@ -249,7 +249,7 @@ def password_login():
             "token": token,
             "email": user.email,
             "roles": roles,
-            "max_libraries": user.max_libraries,
+            "max_libraries": user.effective_limits["max_libraries"],
             "account_type": user.account_type,
         }
     )
