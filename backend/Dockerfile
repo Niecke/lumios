@@ -1,6 +1,6 @@
 # ---- Stage 1: Build ----
 # Installs all dependencies (including C/Rust extensions) into a virtualenv.
-FROM python:3.13.17-slim@sha256:d98cc29d3266e535dd9da1099688d9cb3ca4753813571e071763d17725460962 AS builder
+FROM python:3.14.9-slim@sha256:35caba83af2fe6da9a5d922f9b0156f21d1246a48278c58a08bd253303ba42e8 AS builder
 
 WORKDIR /build
 
@@ -19,14 +19,20 @@ COPY pyproject.toml uv.lock .python-version .
 RUN uv sync --no-install-project --frozen
 
 
-# ---- Stage 2: Runtime (distroless) ----
-# Only the installed packages and app code are copied — no compiler, no apt cache,
-# no pip, no shell. The distroless image ships with Python 3.13.
-FROM gcr.io/distroless/python3-debian13:nonroot@sha256:64e54c4b1200da244d80181d98e86fc01d73c8101f107d5baf472152d8e119a2
+# ---- Stage 2: Runtime (python-slim, non-root) ----
+# Same interpreter as the builder, so the C extensions in the venv match. The
+# distroless image is frozen on the Python of Debian 13 (3.13) and cannot run them.
+FROM python:3.14.9-slim@sha256:35caba83af2fe6da9a5d922f9b0156f21d1246a48278c58a08bd253303ba42e8
 
-# Copy only the site-packages from the builder venv; distroless provides its
-# own Python 3.13 binary so we do not need /venv/bin.
-COPY --from=builder /venv/lib /venv/lib
+# The chart runs /usr/bin/python3 (migrate job, cleanup cronjob); python-slim
+# installs the interpreter in /usr/local/bin. pip is not needed at runtime.
+RUN ln -s /usr/local/bin/python3 /usr/bin/python3 \
+    && ln -s /usr/local/bin/python3 /usr/bin/python \
+    && python -m pip uninstall --yes --root-user-action=ignore pip \
+    && groupadd --gid 65532 nonroot \
+    && useradd --uid 65532 --gid 65532 --no-create-home --shell /usr/sbin/nologin nonroot
+
+COPY --from=builder /venv /venv
 
 COPY --chown=65532:65532 ./app /app
 COPY --chown=65532:65532 entrypoint.py /entrypoint.py
@@ -38,11 +44,13 @@ ENV GIT_HASH=${GIT_SHA}
 ARG BUILD_TIMESTAMP=unknown
 ENV BUILD_TIMESTAMP=${BUILD_TIMESTAMP}
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 ENV FLASK_APP=main:create_app()
-# Point distroless Python at the packages installed in the builder stage.
-ENV PYTHONPATH=/venv/lib/python3.13/site-packages
+ENV PATH="/venv/bin:$PATH"
+ENV PYTHONPATH=/venv/lib/python3.14/site-packages
+
+USER 65532:65532
 
 EXPOSE 8080
 
-# distroless has no shell, so entrypoint.py replaces entrypoint.sh.
 ENTRYPOINT ["/usr/bin/python3", "/entrypoint.py"]
