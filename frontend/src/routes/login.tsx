@@ -46,6 +46,9 @@ function LoginPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [notActivated, setNotActivated] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendDone, setResendDone] = useState(false);
   const [localPending, setLocalPending] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -125,14 +128,30 @@ function LoginPage() {
   async function handlePasswordLogin(e: { preventDefault(): void }) {
     e.preventDefault();
     setError(null);
+    setResendDone(false);
+    setNotActivated(false);
     setLocalPending(true);
     try {
       await authApi.loginPassword(email, password);
       await authApi.me();
       router.navigate({ to: "/", replace: true });
     } catch (err) {
-      setError((err as Error).message);
+      const message = (err as Error).message;
+      setError(message);
+      setNotActivated(/not yet activated/i.test(message));
       setLocalPending(false);
+    }
+  }
+
+  async function handleResendActivation() {
+    setResending(true);
+    try {
+      await authApi.resendActivation({ email });
+      setResendDone(true);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setResending(false);
     }
   }
 
@@ -141,6 +160,22 @@ function LoginPage() {
       <div className="login-box">
         <h2>Lumios</h2>
         {error && <div className="flash">{error}</div>}
+        {notActivated &&
+          (resendDone ? (
+            <p style={{ textAlign: "center", fontSize: "0.875rem" }}>
+              If an account exists and is pending activation, a new activation link has been sent.
+            </p>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-outlined"
+              style={{ width: "100%", justifyContent: "center", marginBottom: "1rem" }}
+              onClick={handleResendActivation}
+              disabled={resending}
+            >
+              {resending ? "Sending…" : "Resend activation email"}
+            </button>
+          ))}
         {pending ? (
           <p className="login-pending">Signing in…</p>
         ) : (
