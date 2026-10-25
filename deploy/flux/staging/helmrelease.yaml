@@ -17,6 +17,9 @@ spec:
       reconcileStrategy: Revision
   driftDetection:
     mode: enabled
+  # Longer than the 300 s deadline of the migrate hook Job (charts/lumios/
+  # templates/migrate-job.yaml), so a slow migration is not cut off by Helm.
+  timeout: 10m
   install:
     remediation:
       retries: 3

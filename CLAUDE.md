@@ -73,7 +73,7 @@ lumios/
 │   │   ├── tracing.py        # @traced decorator for OpenTelemetry spans
 │   │   └── gunicorn_logging.conf
 │   ├── Dockerfile            # Multi-stage: builder + distroless runtime
-│   ├── entrypoint.py         # Waits for DB, runs flask db upgrade, starts Gunicorn
+│   ├── entrypoint.py         # Waits for DB, runs flask db upgrade (unless RUN_MIGRATIONS=false), starts Gunicorn; `migrate` arg = migrate only
 │   ├── pyproject.toml        # Dependencies (managed via uv)
 │   └── uv.lock               # Locked dependency versions
 ├── frontend/                 # React SPA (TanStack Router file-based routing)
@@ -196,6 +196,7 @@ Defined and validated in `backend/app/config.py`. The app **refuses to start** i
 | `CURRENT_AGB_VERSION` | `1.0` | Current Terms of Service version |
 | `LANDINGPAGE_URL` | `https://lumios.niecke-it.de` | Landing page origin (CORS allowlist) |
 | `MAX_CONTENT_LENGTH` | `20MB` | Max upload size |
+| `RUN_MIGRATIONS` | `true` | Read by `entrypoint.py`: run `flask db upgrade` before starting Gunicorn. The Helm chart sets `false` on the backend Deployment; the `migrate` hook Job runs `entrypoint.py migrate` instead |
 
 ### Secondary configuration
 

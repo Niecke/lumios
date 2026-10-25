@@ -94,9 +94,14 @@ spec:
                 name: {{ include "lumios.fullname" . }}-backend
           env:
             {{- include "lumios.backendEnv" . | nindent 12 }}
-          # entrypoint.py waits for the database and runs `flask db upgrade`
-          # before it starts Gunicorn, so there is no separate migration Job and
-          # the pod is not ready until the schema is current.
+            # Migrations run once per release in the migrate-job.yaml hook, not
+            # in every pod: two replicas would race on a rolling update.
+            - name: RUN_MIGRATIONS
+              value: "false"
+          # entrypoint.py waits for the database and starts Gunicorn. It does
+          # not migrate (RUN_MIGRATIONS=false), so on a first install the pod
+          # becomes ready on the empty schema before the post-install Job has
+          # created it.
           #
           # The probes claim https: Talisman redirects plain-HTTP requests, and
           # the kubelet reaches the pod directly, not through Traefik.
@@ -121,7 +126,7 @@ spec:
               httpHeaders:
                 - name: X-Forwarded-Proto
                   value: https
-            # Migrations run before Gunicorn binds the port.
+            # Slack for a slow database start; the entrypoint waits for it.
             periodSeconds: 5
             failureThreshold: 60
           livenessProbe:
