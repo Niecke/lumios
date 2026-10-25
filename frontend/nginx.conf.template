@@ -31,6 +31,7 @@ server {
     # client id is not served stale. add_header in a location drops the
     # server-level headers, so they are repeated here.
     location = /config.js {
+        root /tmp;
         add_header Cache-Control "no-store" always;
         add_header X-Frame-Options "DENY" always;
         add_header X-Content-Type-Options "nosniff" always;
@@ -41,6 +42,7 @@ server {
     # Build identity written at container start; never cached so the System
     # page sees the running build. Server-level headers are repeated.
     location = /version.json {
+        root /tmp;
         add_header Cache-Control "no-store" always;
         add_header X-Frame-Options "DENY" always;
         add_header X-Content-Type-Options "nosniff" always;
