@@ -53,7 +53,7 @@ jobs:
     steps:
       # main, not the tag: the deploy commit is pushed to main. Over SSH with
       # DEPLOY_KEY when set (rulesets can exempt deploy keys), else GITHUB_TOKEN.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           fetch-depth: 0
@@ -108,13 +108,13 @@ jobs:
             echo "latest=$latest"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ${{ env.REGISTRY_HOST }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # promote.yml and release-please both run on the push of the release
       # merge, and release-please's tag can start this workflow before promote

@@ -1,4 +1,4 @@
-FROM docker.io/library/nginx:1.31-alpine@sha256:a3554c0d0b48177b1413c26e01f695334428020d9df01243fbae3e11cfd17417
+FROM docker.io/library/nginx:1.31.8-alpine@sha256:1ef7ca94d7879df82421428ce13bd1eaa412404953859cf7a5b6512c25e67a60
 
 ARG GIT_SHA=dev
 ARG BUILD_TIMESTAMP=unknown
