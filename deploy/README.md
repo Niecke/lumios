@@ -358,6 +358,33 @@ packages need the same.
 The tag that starts `release.yml` must come from `RELEASE_PLEASE_TOKEN`, not
 `GITHUB_TOKEN` — GitHub starts no workflows for a tag pushed with the latter.
 
+`DEPLOY_KEY` and `RELEASE_PLEASE_TOKEN` are secrets of the GitHub Environment
+`release`, not repository secrets. The `release-please`, `promote` and `release`
+jobs set `environment: release`, and the environment only admits runs from
+`main` and `v*` tags, so a workflow run from any other branch is rejected
+before it can read them. A repository admin sets it up once:
+
+```bash
+# Environment limited to the branch/tag policies below
+gh api -X PUT repos/Niecke/lumios/environments/release \
+  -F 'deployment_branch_policy[protected_branches]=false' \
+  -F 'deployment_branch_policy[custom_branch_policies]=true'
+gh api -X POST repos/Niecke/lumios/environments/release/deployment-branch-policies \
+  -f name=main -f type=branch
+gh api -X POST repos/Niecke/lumios/environments/release/deployment-branch-policies \
+  -f name='v*' -f type=tag
+
+# Move the secrets: set them in the environment first, then drop the
+# repository-level copies (until then the jobs fall back to those)
+gh secret set DEPLOY_KEY --env release --repo Niecke/lumios < deploy_key
+gh secret set RELEASE_PLEASE_TOKEN --env release --repo Niecke/lumios
+gh secret delete DEPLOY_KEY --repo Niecke/lumios
+gh secret delete RELEASE_PLEASE_TOKEN --repo Niecke/lumios
+```
+
+Pushes to the legacy `release/**` branches that `promote.yml` and
+`release-please.yml` still list as triggers are rejected by the environment.
+
 ## Local install, without Flux
 
 For a k3d cluster, or to test the chart before merging:

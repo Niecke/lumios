@@ -608,7 +608,7 @@ Image tagging: PR → `ci-<head_sha40>`, merge to `main` → `sha-<main_sha7>`, 
 
 PRs are squash-merged, so the **PR title** is the commit release-please reads (`feat:` → minor, `fix:` → patch, `feat!:` → major; `chore`, `docs`, `ci`, … → no release). Never bump versions or edit `CHANGELOG.md` by hand: release-please owns `.release-please-manifest.json`, `backend/pyproject.toml`, `backend/uv.lock` and `charts/lumios/Chart.yaml`.
 
-Optional secrets: `RELEASE_PLEASE_TOKEN` (PAT; without it the release PR and tag do not trigger further workflows) and `DEPLOY_KEY` (deploy key used by `promote.yml`/`release.yml` to push deploy commits to a protected `main`).
+Optional secrets: `RELEASE_PLEASE_TOKEN` (PAT; without it the release PR and tag do not trigger further workflows) and `DEPLOY_KEY` (deploy key used by `promote.yml`/`release.yml` to push deploy commits to a protected `main`). Both live as secrets of the GitHub Environment `release`, not as repository secrets; the environment admits only `main` and `v*` tags, so a run from another branch cannot read them. The `release-please`, `promote` and `release` jobs set `environment: release`. Setup: `deploy/README.md`.
 
 ### Git Hash
 The short git hash is injected at build time and available everywhere:

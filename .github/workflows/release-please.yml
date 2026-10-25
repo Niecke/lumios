@@ -21,6 +21,8 @@ concurrency:
 jobs:
   release-please:
     name: Release please
+    # Holds RELEASE_PLEASE_TOKEN; the environment only admits main and v* tags.
+    environment: release
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
