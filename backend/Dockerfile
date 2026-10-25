@@ -47,6 +47,7 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV FLASK_APP=main:create_app()
 ENV PATH="/venv/bin:$PATH"
+# The minor version must follow .python-version.
 ENV PYTHONPATH=/venv/lib/python3.14/site-packages
 
 USER 65532:65532
