@@ -41,7 +41,13 @@ jobs:
       # durability settings off at runtime (all three only need a reload).
       - name: Disable PostgreSQL durability
         run: |
-          cid=$(docker ps --filter ancestor=postgres:18-alpine --format '{{.ID}}' | head -n1)
+          # Match on the published port, not the image: the image reference
+          # changes when it is pinned by digest.
+          cid=$(docker ps --filter publish=5432 --format '{{.ID}}' | head -n1)
+          if [ -z "$cid" ]; then
+            echo "::error::PostgreSQL service container not found (no container publishing port 5432)" >&2
+            exit 1
+          fi
           docker exec "$cid" psql -U lumios -d lumios_test \
             -c "ALTER SYSTEM SET fsync = off" \
             -c "ALTER SYSTEM SET synchronous_commit = off" \
