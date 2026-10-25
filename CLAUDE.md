@@ -186,6 +186,8 @@ Defined and validated in `backend/app/config.py`. The app **refuses to start** i
 | `ADMIN_EMAIL` | — | Admin notification email |
 | `BREVO_WAITLIST_LIST_ID` | `0` | Brevo contact list for waitlist (0 = disabled) |
 | `MAX_USERS` | `100` | Max active users allowed to register |
+| `FAILED_LOGIN_MAX_ATTEMPTS` | `5` | Failed password logins per client IP before it is blocked |
+| `FAILED_LOGIN_BLOCK_MINUTES` | `15` | How long a client IP stays blocked (Redis TTL; in-memory fallback without Redis) |
 | `CURRENT_AGB_VERSION` | `1.0` | Current Terms of Service version |
 | `LANDINGPAGE_URL` | `https://lumios.niecke-it.de` | Landing page origin (CORS allowlist) |
 | `MAX_CONTENT_LENGTH` | `20MB` | Max upload size |

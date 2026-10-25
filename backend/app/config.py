@@ -152,6 +152,11 @@ BREVO_WAITLIST_LIST_ID = int(os.getenv("BREVO_WAITLIST_LIST_ID", 0))
 # Maximum number of active users allowed to register
 MAX_USERS = int(os.getenv("MAX_USERS", 100))
 
+# Failed password login protection: block an IP after this many failed attempts
+# for the given number of minutes.
+FAILED_LOGIN_MAX_ATTEMPTS = int(os.getenv("FAILED_LOGIN_MAX_ATTEMPTS", 5))
+FAILED_LOGIN_BLOCK_MINUTES = int(os.getenv("FAILED_LOGIN_BLOCK_MINUTES", 15))
+
 # Current AGB (Terms of Service) + AVV (Data Processing Agreement) version.
 # Update this when publishing a new version of the legal documents.
 CURRENT_AGB_VERSION = os.getenv("CURRENT_AGB_VERSION", "1.0")

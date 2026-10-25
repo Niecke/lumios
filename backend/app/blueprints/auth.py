@@ -11,6 +11,7 @@ from main import limiter, oauth
 from config import GOOGLE_CLIENT_ID, PUBLIC_BASE_URL
 from services.auth import login_password, login_google, set_session, logout, AuthError
 from services.audit import write_audit_log
+from services.login_protection import get_client_ip
 from models import db, AuditLogType
 
 auth = Blueprint("auth", __name__)
@@ -23,15 +24,23 @@ def login():
         email = request.form.get("email", "")
         password = request.form.get("password", "")
         try:
-            user = login_password(email, password)
+            user = login_password(email, password, get_client_ip())
             set_session(user)
             write_audit_log(AuditLogType.login_backend, creator_id=user.id)
             db.session.commit()
             return redirect(url_for("admin.index"))
-        except AuthError:
+        except AuthError as e:
             current_app.logger.warning("Failed login attempt for email=%s", email)
             write_audit_log(AuditLogType.login_failed)
             db.session.commit()
+            if e.status == 429:
+                flash(e.message)
+                return (
+                    render_template(
+                        "login.html", google_enabled=bool(GOOGLE_CLIENT_ID)
+                    ),
+                    429,
+                )
             flash("Invalid email or password")
 
     return render_template("login.html", google_enabled=bool(GOOGLE_CLIENT_ID))

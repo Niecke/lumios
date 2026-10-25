@@ -38,6 +38,15 @@ class TestLoginPost:
         html = response.data.decode()
         assert "Invalid email or password" in html
 
+    def test_ssr_login_blocked_after_max_failed_attempts(self, client, regular_user):
+        from config import FAILED_LOGIN_MAX_ATTEMPTS
+
+        for _ in range(FAILED_LOGIN_MAX_ATTEMPTS):
+            do_login(client, "user@test.com", "WrongPassword!")
+        response = do_login(client, "user@test.com", "UserPass123!")
+        assert response.status_code == 429
+        assert "Too many failed login attempts" in response.data.decode()
+
     def test_nonexistent_email_shows_error(self, client):
         response = do_login(client, "ghost@test.com", "SomePassword1!")
         assert response.status_code == 200
