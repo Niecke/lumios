@@ -622,7 +622,7 @@ def public_upload_image(library_uuid: str):
     file_data = file.read()
 
     try:
-        validate_upload(file_data, content_type, file.filename)
+        validate_upload(file_data, content_type)
     except ValueError as exc:
         msg = str(exc)
         if "Only JPEG" in msg:

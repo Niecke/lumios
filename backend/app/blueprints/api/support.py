@@ -1,9 +1,8 @@
 from flask import Blueprint, jsonify, request, g, current_app
 from security import require_api_auth
-from models import db, SupportTicket, SupportTicketStatus, SupportTicketComment, User
+from models import db, SupportTicket, SupportTicketStatus, User
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from datetime import datetime, timezone
 from services.mail import notify_new_support_ticket
 
 support_api = Blueprint("support_api", __name__, url_prefix="/support")
