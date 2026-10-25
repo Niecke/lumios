@@ -441,7 +441,7 @@ POST /api/v1/auth/register                          # Register new account
 POST /api/v1/auth/google/register                   # Register via Google
 POST /api/v1/auth/activate                          # Activate account with token
 POST /api/v1/auth/change_password                   # Change password
-POST /api/v1/auth/resend-activation                 # Resend activation email
+POST /api/v1/auth/resend-activation                 # Resend activation email by {email} (always 200, no enumeration; mailed in the background; limited per client IP and per address) or legacy {token}
 DELETE /api/v1/auth/account                         # Delete own account (soft-delete)
 
 # Libraries (/api/v1/libraries, JWT, photographer role)
@@ -504,6 +504,8 @@ GET/POST /admin/user_edit/<id>
 GET/POST /change_password
 GET/POST /admin/set_password/<id>
 POST /admin/user_delete/<id>
+POST /admin/user_activate/<id>                      # Activate a pending user (clears token, audit user_activated)
+POST /admin/user_resend_activation/<id>             # Fresh 72 h token + mail for a pending user (audit activation_token_resent)
 POST /admin/user_gdpr_export/<user_id>
 GET  /admin/support
 GET  /admin/support/<ticket_id>

@@ -11,8 +11,8 @@ from datetime import datetime, timezone, timedelta
 from html import unescape
 from unittest.mock import patch
 from conftest import do_login
-from models import db, User, AgbUpdate
-from sqlalchemy import select
+from models import db, User, AgbUpdate, AuditLog, AuditLogType
+from sqlalchemy import select, func
 
 
 def html_text(response):
@@ -890,3 +890,215 @@ class TestAdminSystem:
         ):
             html = html_text(client.get("/admin/system"))
         assert f"{APP_VERSION} · {GIT_HASH[:8]}" in html
+
+
+# ---------------------------------------------------------------------------
+# POST /admin/user_activate/<id>, /admin/user_resend_activation/<id>
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def pending_user():
+    user = User(
+        email="pending@test.com",
+        active=False,
+        activation_pending=True,
+        activation_token="old-token",
+        activation_token_created_at=datetime.now(timezone.utc),
+    )
+    user.set_password("PendingPass123!")
+    db.session.add(user)
+    db.session.commit()
+    return user
+
+
+def _beta_slots_used():
+    return db.session.scalar(
+        select(func.count(User.id)).where(
+            db.or_(User.active.is_(True), User.activation_pending.is_(True)),
+            User.deleted_at.is_(None),
+        )
+    )
+
+
+def _audit_entries(audit_type):
+    return (
+        db.session.execute(select(AuditLog).where(AuditLog.audit_type == audit_type))
+        .scalars()
+        .all()
+    )
+
+
+class TestAdminUserActivate:
+    def test_requires_login(self, client, pending_user):
+        response = client.post(f"/admin/user_activate/{pending_user.id}")
+        assert response.status_code == 302
+        assert "/login" in response.location
+
+    def test_requires_admin_role(self, client, regular_user, pending_user):
+        login_regular(client, regular_user)
+        response = client.post(
+            f"/admin/user_activate/{pending_user.id}", follow_redirects=True
+        )
+        assert "Access denied." in html_text(response)
+        assert db.session.get(User, pending_user.id).activation_pending is True
+
+    def test_requires_post(self, client, admin_user, pending_user):
+        login_admin(client, admin_user)
+        assert client.get(f"/admin/user_activate/{pending_user.id}").status_code == 405
+
+    def test_success(self, client, admin_user, pending_user):
+        login_admin(client, admin_user)
+        response = client.post(
+            f"/admin/user_activate/{pending_user.id}", follow_redirects=True
+        )
+        assert "activated!" in response.data.decode()
+        user = db.session.get(User, pending_user.id)
+        assert user.active is True
+        assert user.activation_pending is False
+        assert user.activation_token is None
+        (entry,) = _audit_entries(AuditLogType.user_activated)
+        assert entry.creator_id == admin_user.id
+        assert entry.related_object_id == str(pending_user.id)
+
+    def test_activated_user_can_log_in(self, client, admin_user, pending_user):
+        login_admin(client, admin_user)
+        client.post(f"/admin/user_activate/{pending_user.id}")
+        res = client.post(
+            "/api/v1/auth/login",
+            json={"email": "pending@test.com", "password": "PendingPass123!"},
+        )
+        assert res.status_code == 200
+
+    def test_already_active_rejected(self, client, admin_user, regular_user):
+        login_admin(client, admin_user)
+        response = client.post(
+            f"/admin/user_activate/{regular_user.id}", follow_redirects=True
+        )
+        assert "not pending activation" in response.data.decode()
+        assert _audit_entries(AuditLogType.user_activated) == []
+
+    def test_system_user_rejected(self, client, admin_user):
+        system = User(
+            email="system@test.com",
+            active=False,
+            activation_pending=True,
+            activation_token="sys-token",
+            is_system=True,
+        )
+        db.session.add(system)
+        db.session.commit()
+        login_admin(client, admin_user)
+        response = client.post(
+            f"/admin/user_activate/{system.id}", follow_redirects=True
+        )
+        assert "System users cannot be activated." in response.data.decode()
+        assert db.session.get(User, system.id).activation_pending is True
+
+    def test_unknown_user_shows_error(self, client, admin_user):
+        login_admin(client, admin_user)
+        response = client.post("/admin/user_activate/99999", follow_redirects=True)
+        assert "unknown" in response.data.decode()
+
+    def test_via_edit_form(self, client, admin_user, pending_user):
+        login_admin(client, admin_user)
+        client.post(
+            f"/admin/user_edit/{pending_user.id}",
+            data={"active": "on", "subscription": "free"},
+        )
+        user = db.session.get(User, pending_user.id)
+        assert user.active is True
+        assert user.activation_pending is False
+        assert user.activation_token is None
+        (entry,) = _audit_entries(AuditLogType.user_activated)
+        assert entry.creator_id == admin_user.id
+        assert _audit_entries(AuditLogType.user_reactivated) == []
+
+    def test_beta_slots_unchanged(self, client, admin_user, pending_user):
+        login_admin(client, admin_user)
+        before = _beta_slots_used()
+        client.post(f"/admin/user_activate/{pending_user.id}")
+        assert _beta_slots_used() == before
+
+    def test_token_never_shown(self, client, admin_user, pending_user):
+        login_admin(client, admin_user)
+        for url in ("/admin/users", f"/admin/user_edit/{pending_user.id}"):
+            html = client.get(url).data.decode()
+            assert "old-token" not in html
+            assert f"/admin/user_activate/{pending_user.id}" in html
+            assert f"/admin/user_resend_activation/{pending_user.id}" in html
+
+
+class TestAdminUserResendActivation:
+    def test_requires_login(self, client, pending_user):
+        response = client.post(f"/admin/user_resend_activation/{pending_user.id}")
+        assert response.status_code == 302
+        assert "/login" in response.location
+
+    def test_requires_admin_role(self, client, regular_user, pending_user):
+        login_regular(client, regular_user)
+        with patch("blueprints.admin.notify_activation_email") as mock_mail:
+            response = client.post(
+                f"/admin/user_resend_activation/{pending_user.id}",
+                follow_redirects=True,
+            )
+        assert "Access denied." in html_text(response)
+        mock_mail.assert_not_called()
+
+    def test_requires_post(self, client, admin_user, pending_user):
+        login_admin(client, admin_user)
+        response = client.get(f"/admin/user_resend_activation/{pending_user.id}")
+        assert response.status_code == 405
+
+    def test_success(self, client, admin_user, pending_user):
+        login_admin(client, admin_user)
+        with patch("blueprints.admin.notify_activation_email") as mock_mail:
+            client.post(f"/admin/user_resend_activation/{pending_user.id}")
+        user = db.session.get(User, pending_user.id)
+        assert user.activation_token not in (None, "old-token")
+        assert user.activation_pending is True
+        mock_mail.assert_called_once()
+        assert mock_mail.call_args.args[0] == "pending@test.com"
+        assert user.activation_token in mock_mail.call_args.args[1]
+        (entry,) = _audit_entries(AuditLogType.activation_token_resent)
+        assert entry.creator_id == admin_user.id
+
+    def test_old_token_stops_working(self, client, admin_user, pending_user):
+        login_admin(client, admin_user)
+        with patch("blueprints.admin.notify_activation_email"):
+            client.post(f"/admin/user_resend_activation/{pending_user.id}")
+        res = client.post("/api/v1/auth/activate", json={"token": "old-token"})
+        assert res.status_code != 200
+
+    def test_already_active_rejected(self, client, admin_user, regular_user):
+        login_admin(client, admin_user)
+        with patch("blueprints.admin.notify_activation_email") as mock_mail:
+            response = client.post(
+                f"/admin/user_resend_activation/{regular_user.id}",
+                follow_redirects=True,
+            )
+        assert "not pending activation" in response.data.decode()
+        mock_mail.assert_not_called()
+
+    def test_system_user_rejected(self, client, admin_user):
+        system = User(
+            email="system@test.com",
+            active=False,
+            activation_pending=True,
+            activation_token="sys-token",
+            is_system=True,
+        )
+        db.session.add(system)
+        db.session.commit()
+        login_admin(client, admin_user)
+        with patch("blueprints.admin.notify_activation_email") as mock_mail:
+            client.post(f"/admin/user_resend_activation/{system.id}")
+        mock_mail.assert_not_called()
+        assert db.session.get(User, system.id).activation_token == "sys-token"
+
+    def test_beta_slots_unchanged(self, client, admin_user, pending_user):
+        login_admin(client, admin_user)
+        before = _beta_slots_used()
+        with patch("blueprints.admin.notify_activation_email"):
+            client.post(f"/admin/user_resend_activation/{pending_user.id}")
+        assert _beta_slots_used() == before

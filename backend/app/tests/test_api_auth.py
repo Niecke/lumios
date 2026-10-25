@@ -11,7 +11,8 @@ from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone, timedelta
 import jwt as pyjwt
 
-from models import db, User, Role
+from models import db, User, Role, AuditLog, AuditLogType
+from sqlalchemy import select, func
 from services.token import create_token, decode_token
 
 BASE = "/api/v1/auth"
@@ -38,9 +39,14 @@ def make_token(user) -> str:
 
 @pytest.fixture
 def photographer_role():
-    role = Role(name="photographer", description="Photographer")
-    db.session.add(role)
-    db.session.commit()
+    # The migrations seed this role; it is gone only after another test's clean_db.
+    role = db.session.execute(
+        select(Role).where(Role.name == "photographer")
+    ).scalar_one_or_none()
+    if role is None:
+        role = Role(name="photographer", description="Photographer")
+        db.session.add(role)
+        db.session.commit()
     return role
 
 
@@ -577,6 +583,189 @@ class TestResendActivation:
     def test_missing_token_returns_400(self, client):
         res = client.post(self.ENDPOINT, json={})
         assert res.status_code == 400
+
+
+
+class TestResendActivationByEmail:
+    ENDPOINT = f"{BASE}/resend-activation"
+
+    @pytest.fixture(autouse=True)
+    def inline_background(self):
+        """Run the background job inline so the result is visible to the test."""
+        with patch(
+            "blueprints.api.auth._run_in_background", lambda fn, *a: fn(*a)
+        ) as p:
+            yield p
+
+    @pytest.fixture
+    def pending(self):
+        user = User(
+            email="Pending@Test.com",
+            active=False,
+            activation_pending=True,
+            activation_token="pending-token",
+            activation_token_created_at=datetime.now(timezone.utc),
+        )
+        db.session.add(user)
+        db.session.commit()
+        return user
+
+    @patch("blueprints.api.auth.notify_activation_email")
+    def test_pending_user_gets_new_token_and_mail(self, mock_mail, client, pending):
+        res = client.post(self.ENDPOINT, json={"email": " pending@test.com "})
+        assert res.status_code == 200
+        assert res.get_json() == {"ok": True}
+        user = db.session.get(User, pending.id)
+        assert user.activation_token not in (None, "pending-token")
+        mock_mail.assert_called_once()
+        assert user.activation_token in mock_mail.call_args.args[1]
+        entries = (
+            db.session.execute(
+                select(AuditLog).where(
+                    AuditLog.audit_type == AuditLogType.activation_token_resent
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(entries) == 1
+        assert entries[0].creator_id is None
+
+    @patch("blueprints.api.auth.notify_activation_email")
+    def test_unknown_address_same_answer_no_side_effects(self, mock_mail, client):
+        res = client.post(self.ENDPOINT, json={"email": "nobody@test.com"})
+        assert res.status_code == 200
+        assert res.get_json() == {"ok": True}
+        mock_mail.assert_not_called()
+        assert db.session.scalar(select(func.count(AuditLog.id))) == 0
+
+    @patch("blueprints.api.auth.notify_activation_email")
+    def test_active_user_same_answer_token_unchanged(
+        self, mock_mail, client, photographer_user
+    ):
+        res = client.post(self.ENDPOINT, json={"email": photographer_user.email})
+        assert res.status_code == 200
+        assert res.get_json() == {"ok": True}
+        mock_mail.assert_not_called()
+        assert db.session.scalar(select(func.count(AuditLog.id))) == 0
+
+    @patch("blueprints.api.auth.notify_activation_email")
+    def test_deleted_pending_user_ignored(self, mock_mail, client, pending):
+        pending.deleted_at = datetime.now(timezone.utc)
+        db.session.commit()
+        res = client.post(self.ENDPOINT, json={"email": "pending@test.com"})
+        assert res.status_code == 200
+        mock_mail.assert_not_called()
+
+    @patch("blueprints.api.auth.notify_activation_email")
+    def test_beta_slots_unchanged(self, mock_mail, client, pending):
+        def used():
+            return db.session.scalar(
+                select(func.count(User.id)).where(
+                    db.or_(User.active.is_(True), User.activation_pending.is_(True)),
+                    User.deleted_at.is_(None),
+                )
+            )
+
+        before = used()
+        client.post(self.ENDPOINT, json={"email": "pending@test.com"})
+        assert used() == before
+
+    def test_token_still_works(self, client, pending):
+        with patch("blueprints.api.auth.notify_activation_email") as mock_mail:
+            res = client.post(self.ENDPOINT, json={"token": "pending-token"})
+        assert res.status_code == 200
+        mock_mail.assert_called_once()
+
+    def test_missing_params_returns_400(self, client):
+        assert client.post(self.ENDPOINT, json={}).status_code == 400
+        assert client.post(self.ENDPOINT, json={"email": "  "}).status_code == 400
+
+    def test_request_does_no_lookup_itself(self, client, pending, photographer_user):
+        """Pending, active and unknown addresses take the identical in-request path.
+
+        The only work done before the response is handing the normalised
+        address to the background job; lookup, token, mail and audit entry all
+        happen afterwards, so response time cannot reveal the account state.
+        """
+        with patch("blueprints.api.auth._run_in_background") as bg:
+            answers = [
+                client.post(self.ENDPOINT, json={"email": email})
+                for email in (
+                    "pending@test.com",
+                    photographer_user.email,
+                    "nobody@test.com",
+                )
+            ]
+        assert {(r.status_code, r.get_data()) for r in answers} == {
+            (answers[0].status_code, answers[0].get_data())
+        }
+        assert bg.call_count == 3
+        assert all(c.args[0].__name__ == "_resend_activation_for_email" for c in bg.call_args_list)
+        assert db.session.get(User, pending.id).activation_token == "pending-token"
+
+
+class TestResendActivationRateLimit:
+    ENDPOINT = f"{BASE}/resend-activation"
+
+    @pytest.fixture
+    def client(self, app):
+        """Client of a second app with the limiter on; the shared test app has it off."""
+        from main import create_app, limiter
+
+        limited_app = create_app(
+            test_config={
+                "TESTING": True,
+                "WTF_CSRF_ENABLED": False,
+                "RATELIMIT_ENABLED": True,
+                "SESSION_TYPE": "filesystem",
+                "SESSION_FILE_DIR": "/tmp/flask_test_sessions",
+            }
+        )
+        try:
+            with patch("blueprints.api.auth._run_in_background"):
+                yield limited_app.test_client()
+        finally:
+            limiter.enabled = False
+
+    def test_per_ip_limit(self, client):
+        for i in range(3):
+            res = client.post(self.ENDPOINT, json={"email": f"u{i}@test.com"})
+            assert res.status_code == 200
+        res = client.post(self.ENDPOINT, json={"email": "u9@test.com"})
+        assert res.status_code == 429
+
+    def test_per_email_limit_independent_of_ip(self, client):
+        for i in range(3):
+            res = client.post(
+                self.ENDPOINT,
+                json={"email": "same@test.com"},
+                headers={"X-Forwarded-For": f"203.0.113.{i}"},
+            )
+            assert res.status_code == 200
+        res = client.post(
+            self.ENDPOINT,
+            json={"email": "SAME@test.com"},
+            headers={"X-Forwarded-For": "203.0.113.99"},
+        )
+        assert res.status_code == 429
+
+    def test_ip_limit_uses_trusted_proxy_entry(self, client):
+        # Only the rightmost entry (TRUSTED_PROXY_COUNT=1) counts; a spoofed
+        # leading entry must not give a fresh bucket.
+        for i in range(3):
+            res = client.post(
+                self.ENDPOINT,
+                json={"email": f"v{i}@test.com"},
+                headers={"X-Forwarded-For": f"10.0.0.{i}, 198.51.100.7"},
+            )
+            assert res.status_code == 200
+        res = client.post(
+            self.ENDPOINT,
+            json={"email": "v9@test.com"},
+            headers={"X-Forwarded-For": "10.9.9.9, 198.51.100.7"},
+        )
+        assert res.status_code == 429
 
 
 # ---------------------------------------------------------------------------
