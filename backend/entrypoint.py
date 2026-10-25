@@ -36,17 +36,57 @@ def _flask_db_current() -> bool:
     return result.returncode == 0
 
 
-def main() -> None:
-    _log("Starting Lumios Backend...")
+MIGRATE_ATTEMPTS = 30
+MIGRATE_RETRY_SECONDS = 5
 
+
+def wait_for_db() -> None:
     _log("Testing database connection...")
     while not _flask_db_current():
         _log("Database not ready - waiting...", level="warning")
         time.sleep(5)
 
+
+def migrate_db() -> None:
     _log("Running database migrations...")
     subprocess.run([PYTHON, "-m", "flask", "db", "upgrade"], check=True)
     _log("Migrations complete!")
+
+
+def migrate_with_retry() -> int:
+    # The migration Job of a first install starts while PostgreSQL is still
+    # coming up. `flask db upgrade` is idempotent, so retry it instead of
+    # polling the database first; a real migration error shows in the logs on
+    # every attempt before the Job gives up.
+    for attempt in range(1, MIGRATE_ATTEMPTS + 1):
+        result = subprocess.run([PYTHON, "-m", "flask", "db", "upgrade"])
+        if result.returncode == 0:
+            _log("Migrations complete!")
+            return 0
+        _log(
+            f"Migration attempt {attempt}/{MIGRATE_ATTEMPTS} failed - "
+            f"retrying in {MIGRATE_RETRY_SECONDS}s",
+            level="warning",
+        )
+        if attempt < MIGRATE_ATTEMPTS:
+            time.sleep(MIGRATE_RETRY_SECONDS)
+    _log(f"Migration did not succeed after {MIGRATE_ATTEMPTS} attempts", level="error")
+    return 1
+
+
+def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "migrate":
+        _log("Running migrations only...")
+        sys.exit(migrate_with_retry())
+
+    _log("Starting Lumios Backend...")
+
+    wait_for_db()
+
+    if os.environ.get("RUN_MIGRATIONS", "true").lower() in ("true", "1", "yes"):
+        migrate_db()
+    else:
+        _log("Skipping database migrations (RUN_MIGRATIONS is not true).")
 
     if os.environ.get("SEED_TEST_DATA") == "true":
         _log("Seeding test data (SEED_TEST_DATA=true)...")
