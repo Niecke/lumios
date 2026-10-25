@@ -10,6 +10,8 @@
 import "./index.css";
 import { initErrorReporting } from "./errorReporting";
 initErrorReporting();
+import { initSentry } from "./sentry";
+initSentry();
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider, createRouter } from "@tanstack/react-router";

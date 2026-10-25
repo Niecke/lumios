@@ -9,7 +9,10 @@ cat > /tmp/config.js <<CONF
 window.__CONFIG__ = {
   GOOGLE_CLIENT_ID: "$(esc "${GOOGLE_CLIENT_ID:-}")",
   LANDING_URL: "$(esc "${LANDING_URL:-}")",
-  APP_URL: "$(esc "${APP_URL:-}")"
+  APP_URL: "$(esc "${APP_URL:-}")",
+  SENTRY_DSN: "$(esc "${SENTRY_DSN:-}")",
+  SENTRY_ENVIRONMENT: "$(esc "${SENTRY_ENVIRONMENT:-}")",
+  APP_VERSION: "$(esc "${APP_VERSION:-}")"
 };
 CONF
 cat > /tmp/version.json <<VERSION
