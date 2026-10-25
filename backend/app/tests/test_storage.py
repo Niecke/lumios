@@ -66,3 +66,54 @@ def test_set_bucket_cors_swallows_errors(fake_client):
     fake_client.put_bucket_cors.side_effect = RuntimeError("not supported")
 
     storage._set_bucket_cors_for_dev()  # must not raise
+
+
+def test_format_content_disposition_ascii():
+    assert storage.format_content_disposition("photo.jpg") == 'attachment; filename="photo.jpg"'
+
+
+def test_format_content_disposition_with_quotes():
+    value = storage.format_content_disposition('my "photo".jpg')
+    assert value == 'attachment; filename="my photo.jpg"; filename*=UTF-8\'\'my%20%22photo%22.jpg'
+
+
+def test_format_content_disposition_unicode():
+    value = storage.format_content_disposition("schöne küche.jpg")
+    assert value.startswith('attachment; filename="schone kuche.jpg"; ')
+    assert "filename*=UTF-8''sch%C3%B6ne%20k%C3%BCche.jpg" in value
+
+    value = storage.format_content_disposition("日本語.png")
+    assert value.startswith('attachment; filename="download.png"; ')
+    assert "filename*=UTF-8''%E6%97%A5%E6%9C%AC%E8%AA%9E.png" in value
+
+
+def test_format_content_disposition_crlf_and_path_traversal():
+    value = storage.format_content_disposition("photo\r\nInjected: true.jpg")
+    assert "\r" not in value and "\n" not in value
+    assert 'filename="photoInjected: true.jpg"' in value
+
+    assert storage.format_content_disposition("../../etc/passwd") == 'attachment; filename="passwd"'
+    assert storage.format_content_disposition("C:\\evil\\photo.jpg") == 'attachment; filename="photo.jpg"'
+    assert storage.format_content_disposition("/abs/photo.jpg") == 'attachment; filename="photo.jpg"'
+    assert "\x00" not in storage.format_content_disposition("a\x00b.jpg")
+
+
+@pytest.mark.parametrize("name", ["", "   ", "..", "...", "a/", None])
+def test_format_content_disposition_empty_fallback(name):
+    assert storage.format_content_disposition(name) == 'attachment; filename="download"'
+
+
+def test_format_content_disposition_keeps_extension_fallback():
+    assert storage.format_content_disposition(".jpg").startswith('attachment; filename="download.jpg"')
+
+
+def test_get_presigned_download_url_formats_disposition(app, monkeypatch):
+    public = MagicMock()
+    public.generate_presigned_url.return_value = "https://signed"
+    monkeypatch.setattr(storage, "_public_client", public)
+    monkeypatch.setattr("services.redis_client.cache_get", lambda k: None)
+    monkeypatch.setattr("services.redis_client.cache_set", lambda *a, **kw: None)
+
+    assert storage.get_presigned_download_url("k", 'a "b".jpg') == "https://signed"
+    params = public.generate_presigned_url.call_args.kwargs["Params"]
+    assert params["ResponseContentDisposition"] == storage.format_content_disposition('a "b".jpg')

@@ -6,6 +6,9 @@ Uses boto3 — works with Versity Gateway locally and any S3-compatible backend 
 import hashlib
 import logging
 import os
+import re
+import unicodedata
+from urllib.parse import quote
 
 import boto3
 from botocore.config import Config
@@ -106,6 +109,29 @@ def get_presigned_url(key: str, expires_in: int = 3600) -> str:
     return url
 
 
+def format_content_disposition(filename: str, disposition: str = "attachment") -> str:
+    """Build a safe Content-Disposition value (RFC 6266 / RFC 8187).
+
+    Control characters and path components are dropped, ``filename`` carries an
+    ASCII-only fallback and ``filename*`` the percent-encoded UTF-8 original."""
+    clean = re.sub(r"[\x00-\x1f\x7f]", "", filename or "")
+    clean = os.path.basename(clean.replace("\\", "/")).strip()
+    if not clean.strip("."):
+        clean = ""
+
+    ascii_name = unicodedata.normalize("NFKD", clean).encode("ascii", "ignore").decode("ascii")
+    ascii_name = ascii_name.replace('"', "").replace("\\", "").strip()
+    if not ascii_name.strip("."):
+        ascii_name = "download"
+    elif ascii_name.startswith("."):
+        ascii_name = "download" + ascii_name
+
+    value = f'{disposition}; filename="{ascii_name}"'
+    if clean and clean != ascii_name:
+        value += f"; filename*=UTF-8''{quote(clean, safe='!#$&+-.^_`|~')}"
+    return value
+
+
 def get_presigned_download_url(key: str, filename: str, expires_in: int = 3600) -> str:
     """Presigned URL that sets Content-Disposition: attachment so the browser
     saves the file directly instead of opening it in a new tab."""
@@ -122,7 +148,7 @@ def get_presigned_download_url(key: str, filename: str, expires_in: int = 3600) 
         Params={
             "Bucket": S3_BUCKET,
             "Key": key,
-            "ResponseContentDisposition": f'attachment; filename="{filename}"',
+            "ResponseContentDisposition": format_content_disposition(filename),
         },
         ExpiresIn=expires_in,
     )
