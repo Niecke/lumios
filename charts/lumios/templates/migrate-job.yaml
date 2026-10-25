@@ -54,7 +54,13 @@ metadata:
     helm.sh/hook-weight: "-5"
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
-  backoffLimit: 2
+  # Worst case: the entrypoint waits up to 30 x 5 s = 150 s for PostgreSQL,
+  # then runs `flask db upgrade` once. A failed upgrade is not retried, so
+  # backoffLimit is 0, and a hung one (lock wait) is killed after 300 s. The
+  # HelmReleases set timeout: 10m, above this deadline, so Helm never gives up
+  # and starts a rollback while the Job still runs.
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
   template:
     metadata:
       labels:

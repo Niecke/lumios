@@ -42,7 +42,7 @@ keeps running the previous release.
 | Workload | Kind | Notes |
 |---|---|---|
 | `backend` | Deployment + Service `:8080` | Distroless, runs `entrypoint.py` with `RUN_MIGRATIONS=false`: waits for the database, starts Gunicorn, never migrates. 2 replicas in production, 1 in staging. |
-| `migrate` | Helm hook Job (`post-install,pre-upgrade`) | The backend image, `entrypoint.py migrate`: runs `flask db upgrade` once per release, retrying for up to 2.5 minutes while PostgreSQL starts. Has its own hook Secret. A failed Job fails the release, and `remediateLastFailure` rolls it back. |
+| `migrate` | Helm hook Job (`post-install,pre-upgrade`) | The backend image, `entrypoint.py migrate`: runs `flask db upgrade` once per release, waiting up to 2.5 minutes for PostgreSQL first. A failed upgrade is not retried; the Job has `backoffLimit: 0` and a 300 s deadline, and the HelmReleases set `timeout: 10m`. Has its own hook Secret. A failed Job fails the release, and `remediateLastFailure` rolls it back. |
 | `frontend` | Deployment + Service `:8080` | nginx; proxies `/api/` to the backend Service inside the cluster. |
 | `landingpage` | Deployment + Service `:8080` | nginx; `APP_URL` and `BACKEND_URL` are substituted at start. |
 | `postgres` | StatefulSet + Service `:5432` | One replica, PVC on `local-path`. |

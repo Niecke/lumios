@@ -42,17 +42,19 @@ def test_migrate_command_runs_upgrade_without_gunicorn(entrypoint, calls, monkey
         entrypoint.main()
 
     assert exc.value.code == 0
-    assert calls["run"] == [["db", "upgrade"]]
+    assert calls["run"] == [["db", "current"], ["db", "upgrade"]]
     assert calls["execv"] == []
 
 
 def test_migrate_command_retries_until_database_is_ready(entrypoint, monkeypatch):
-    results = [1, 1, 0]
+    results = {"current": [1, 1, 0], "upgrade": [0]}
     runs = []
 
     def fake_run(cmd, **kwargs):
-        runs.append(cmd)
-        return subprocess.CompletedProcess(cmd, results[len(runs) - 1])
+        runs.append(cmd[4])
+        return subprocess.CompletedProcess(
+            cmd, results[cmd[4]].pop(0), stdout=b"", stderr=b""
+        )
 
     monkeypatch.setattr(entrypoint.subprocess, "run", fake_run)
     monkeypatch.setattr(entrypoint.sys, "argv", ["entrypoint.py", "migrate"])
@@ -61,15 +63,16 @@ def test_migrate_command_retries_until_database_is_ready(entrypoint, monkeypatch
         entrypoint.main()
 
     assert exc.value.code == 0
-    assert len(runs) == 3
+    assert runs == ["current", "current", "current", "upgrade"]
 
 
-def test_migrate_command_fails_after_all_attempts(entrypoint, monkeypatch):
+def test_migrate_command_does_not_retry_failed_upgrade(entrypoint, monkeypatch):
     runs = []
 
     def fake_run(cmd, **kwargs):
-        runs.append(cmd)
-        return subprocess.CompletedProcess(cmd, 1)
+        runs.append(cmd[4])
+        code = 1 if cmd[4] == "upgrade" else 0
+        return subprocess.CompletedProcess(cmd, code, stdout=b"", stderr=b"")
 
     monkeypatch.setattr(entrypoint.subprocess, "run", fake_run)
     monkeypatch.setattr(entrypoint.sys, "argv", ["entrypoint.py", "migrate"])
@@ -78,7 +81,24 @@ def test_migrate_command_fails_after_all_attempts(entrypoint, monkeypatch):
         entrypoint.main()
 
     assert exc.value.code == 1
-    assert len(runs) == entrypoint.MIGRATE_ATTEMPTS
+    assert runs == ["current", "upgrade"]
+
+
+def test_migrate_command_fails_when_database_never_ready(entrypoint, monkeypatch):
+    runs = []
+
+    def fake_run(cmd, **kwargs):
+        runs.append(cmd[4])
+        return subprocess.CompletedProcess(cmd, 1, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(entrypoint.subprocess, "run", fake_run)
+    monkeypatch.setattr(entrypoint.sys, "argv", ["entrypoint.py", "migrate"])
+
+    with pytest.raises(SystemExit) as exc:
+        entrypoint.main()
+
+    assert exc.value.code == 1
+    assert runs == ["current"] * entrypoint.MIGRATE_ATTEMPTS
 
 
 @pytest.mark.parametrize("value", [None, "true", "TRUE", "1", "yes"])
