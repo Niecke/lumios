@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 import sentry_sdk
+from sentry_sdk.transport import Transport
 
 import sentry
 from sentry import scrub_event, scrub_string
@@ -29,6 +30,7 @@ def test_init_with_dsn_disables_pii_and_scrubs():
         sentry.init_sentry(Flask("t"))
     kwargs = init.call_args.kwargs
     assert kwargs["send_default_pii"] is False
+    assert kwargs["include_local_variables"] is False
     assert kwargs["before_send"] is scrub_event
 
 
@@ -84,6 +86,49 @@ def test_scrubber_user_data():
 def test_scrubber_request_body():
     event = {"request": {"data": {"password": "hunter2", "file": b"\xff\xd8\xff"}}}
     assert scrub_event(event)["request"]["data"] == "[REDACTED]"
+
+
+def test_scrubber_contexts_extra_tags():
+    event = {
+        "contexts": {"x": {"url": f"/library/{UUID}"}},
+        "extra": {"to": "a.b@example.com"},
+        "tags": {"route": f"/library/{UUID}"},
+    }
+    out = scrub_event(event)
+    assert out["contexts"]["x"]["url"] == "/library/[REDACTED_UUID]"
+    assert out["extra"]["to"] == "[REDACTED_EMAIL]"
+    assert out["tags"]["route"] == "/library/[REDACTED_UUID]"
+
+
+class _NullTransport(Transport):
+    def capture_envelope(self, envelope):
+        pass
+
+
+def test_real_event_has_no_frame_locals():
+    """An exception captured through the SDK carries no local variables."""
+    events = []
+    sentry_sdk.init(
+        dsn="https://key@o1.ingest.de.sentry.io/1",
+        include_local_variables=False,
+        before_send=lambda e, h: events.append(scrub_event(e)),
+        transport=_NullTransport(),
+    )
+    try:
+
+        def send(to_email):
+            raise RuntimeError("boom")
+
+        try:
+            send("victim@example.com")
+        except RuntimeError as exc:
+            sentry_sdk.capture_exception(exc)
+    finally:
+        sentry_sdk.get_client().close()
+        sentry_sdk.init()
+    assert events
+    frames = events[0]["exception"]["values"][0]["stacktrace"]["frames"]
+    assert frames and all("vars" not in frame for frame in frames)
 
 
 def test_system_check_reports_sentry_status():

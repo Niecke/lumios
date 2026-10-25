@@ -39,7 +39,7 @@ export function scrubEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent {
       event.request.headers = Object.fromEntries(
         Object.entries(headers).map(([k, v]) => [
           k,
-          SENSITIVE_HEADERS.has(k.toLowerCase()) ? "[REDACTED]" : scrubString(v),
+          SENSITIVE_HEADERS.has(k.toLowerCase()) ? "[REDACTED]" : typeof v === "string" ? scrubString(v) : v,
         ]),
       );
     }
@@ -47,6 +47,9 @@ export function scrubEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent {
     if (url) event.request.url = scrubString(url);
     if (typeof query_string === "string") event.request.query_string = scrubString(query_string);
   }
+  if (event.transaction) event.transaction = scrubString(event.transaction);
+  if (event.tags) event.tags = scrubValue(event.tags) as typeof event.tags;
+  if (event.extra) event.extra = scrubValue(event.extra) as typeof event.extra;
   if (event.message) event.message = scrubString(event.message);
   for (const exception of event.exception?.values ?? []) {
     if (exception.value) exception.value = scrubString(exception.value);

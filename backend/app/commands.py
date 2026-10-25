@@ -99,6 +99,7 @@ def purge_deleted_accounts() -> None:
             "purge-deleted-accounts: failed", extra={"log_type": "cleanup"}
         )
         sentry_sdk.capture_exception(exc)
+        sentry_sdk.flush(timeout=2.0)
         db.session.rollback()
         db.session.add(
             JobRun(
@@ -109,7 +110,6 @@ def purge_deleted_accounts() -> None:
             )
         )
         db.session.commit()
-        sentry_sdk.flush(timeout=2.0)
         raise SystemExit(1) from exc
 
 
@@ -147,6 +147,7 @@ def purge_audit_logs() -> None:
             "purge-audit-logs: failed", extra={"log_type": "cleanup"}
         )
         sentry_sdk.capture_exception(exc)
+        sentry_sdk.flush(timeout=2.0)
         db.session.rollback()
         db.session.add(
             JobRun(
@@ -157,7 +158,6 @@ def purge_audit_logs() -> None:
             )
         )
         db.session.commit()
-        sentry_sdk.flush(timeout=2.0)
         raise SystemExit(1) from exc
 
 
@@ -244,6 +244,7 @@ def apply_agb_acceptance() -> None:
             "apply-agb-acceptance: failed", extra={"log_type": "cleanup"}
         )
         sentry_sdk.capture_exception(exc)
+        sentry_sdk.flush(timeout=2.0)
         db.session.rollback()
         db.session.add(
             JobRun(
@@ -254,7 +255,6 @@ def apply_agb_acceptance() -> None:
             )
         )
         db.session.commit()
-        sentry_sdk.flush(timeout=2.0)
         raise SystemExit(1) from exc
 
 

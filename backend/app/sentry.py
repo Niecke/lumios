@@ -82,6 +82,10 @@ def scrub_event(event, hint=None):
                 k: v for k, v in request["env"].items() if k not in ("REMOTE_ADDR",)
             }
 
+    for key in ("contexts", "extra", "tags"):
+        if event.get(key):
+            event[key] = _scrub_value(event[key])
+
     for key in ("message", "transaction"):
         if isinstance(event.get(key), str):
             event[key] = scrub_string(event[key])
@@ -115,6 +119,8 @@ def init_sentry(app) -> None:
         release=SENTRY_RELEASE,
         traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
         send_default_pii=False,
+        # Frame locals carry recipients, tokens and form input.
+        include_local_variables=False,
         before_send=scrub_event,
         # Failures are reported explicitly (mail, jobs). Logged errors stay
         # breadcrumbs, otherwise every logger.exception() is reported twice.
