@@ -12,7 +12,7 @@ export interface Notification {
   ticket_subject?: string;
 }
 
-export interface NotificationList {
+interface NotificationList {
   notifications: Notification[];
   unseen_count: number;
 }
