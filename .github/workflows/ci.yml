@@ -119,10 +119,12 @@ jobs:
 
           # The nginx workloads must stay non-root with a read-only root fs.
           for comp in frontend landingpage; do
-            yq -e "select(.kind == \"Deployment\" and .metadata.labels[\"app.kubernetes.io/component\"] == \"$comp\")
+            ok=$(yq -e "select(.kind == \"Deployment\" and .metadata.labels[\"app.kubernetes.io/component\"] == \"$comp\")
               | .spec.template.spec.securityContext.runAsNonRoot == true
               and .spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem == true" \
-              "$RUNNER_TEMP/default.yaml" | grep -qx true
+              "$RUNNER_TEMP/default.yaml")
+            # Not `| grep -q`: it exits early and yq dies of SIGPIPE under pipefail.
+            [ "$ok" = true ]
           done
 
           # The environments' own values, so a Flux edit that breaks the chart
