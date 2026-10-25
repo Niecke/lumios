@@ -5,7 +5,7 @@ the CurrentUser proxy.
 
 import pytest
 from html import unescape
-from conftest import do_login, do_logout
+from conftest import do_login
 from models import db, User, Role
 from current_user import CurrentUser
 

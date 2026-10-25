@@ -18,7 +18,6 @@ from unittest.mock import patch
 from sqlalchemy import select
 
 from models import db, User, Role, Library, Image, CustomerState, SubscriptionType
-from services.token import create_token
 
 BASE = "/api/v1/public"
 

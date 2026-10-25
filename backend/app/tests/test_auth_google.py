@@ -55,7 +55,7 @@ class TestGoogleLogin:
         )
         with patch("blueprints.auth.GOOGLE_CLIENT_ID", "fake-client-id"), \
              patch("blueprints.auth.oauth.google.authorize_redirect", mock_redirect):
-            res = client.get("/auth/google")
+            client.get("/auth/google")
         mock_redirect.assert_called_once()
 
     def test_authorize_redirect_uses_correct_callback_uri(self, client):
