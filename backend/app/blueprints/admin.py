@@ -1,4 +1,5 @@
 import io
+import secrets
 import json
 import zipfile
 
@@ -34,11 +35,12 @@ from models import (
     AgbUpdate,
     Feedback,
 )
-from config import MAX_USERS, CURRENT_AGB_VERSION
+from config import MAX_USERS, CURRENT_AGB_VERSION, FRONTEND_URL
 from security import login_required, require_role
 from services.audit import write_audit_log
 from services.system import get_dashboard_status, get_system_status
 from services.mail import (
+    notify_activation_email,
     notify_agb_change,
     notify_account_cancellation,
     notify_registration,
@@ -247,9 +249,14 @@ def user_edit(id):
                 )
             changes.append("password")
 
+        activated_pending = active and user.activation_pending and not user.is_system
         if active != user.active:
             changes.append(f"active={active}")
         user.active = active
+        if activated_pending:
+            user.activation_pending = False
+            user.activation_token = None
+            changes.append("activated")
 
         new_roles = [r for r in all_roles if r.id in selected_role_ids]
         if set(r.id for r in user.roles) != selected_role_ids:
@@ -278,7 +285,14 @@ def user_edit(id):
                 related_object_type="user",
                 related_object_id=str(user.id),
             )
-        if f"active={True}" in changes:
+        if "activated" in changes:
+            write_audit_log(
+                AuditLogType.user_activated,
+                creator_id=current_user.id,
+                related_object_type="user",
+                related_object_id=str(user.id),
+            )
+        elif f"active={True}" in changes:
             write_audit_log(
                 AuditLogType.user_reactivated,
                 creator_id=current_user.id,
@@ -428,6 +442,76 @@ def user_delete(id):
     )
     notify_account_cancellation(deleted_email)
     flash(f'User "{deleted_email}" deleted!', "success")
+    return redirect(url_for("admin.users_view"))
+
+
+def _pending_user_or_redirect(id):
+    """Return (user, None) for a pending, non-system user, else (None, redirect)."""
+    user = db.session.get(User, id)
+    if not user or user.deleted_at is not None:
+        flash(f'User ID "{id}" unknown!', "error")
+    elif user.is_system:
+        flash("System users cannot be activated.", "error")
+    elif not user.activation_pending:
+        flash(f'User "{user.email}" is not pending activation.', "error")
+    else:
+        return user, None
+    return None, redirect(url_for("admin.users_view"))
+
+
+@admin.route("/admin/user_activate/<int:id>", methods=["POST"])
+@login_required
+@require_role("admin")
+def user_activate(id):
+    user, error = _pending_user_or_redirect(id)
+    if error:
+        return error
+
+    user.active = True
+    user.activation_pending = False
+    user.activation_token = None
+    write_audit_log(
+        AuditLogType.user_activated,
+        creator_id=current_user.id,
+        related_object_type="user",
+        related_object_id=str(user.id),
+    )
+    db.session.commit()
+
+    current_app.logger.info(
+        "User activated by admin: %s", user.email, extra={"log_type": "audit"}
+    )
+    flash(f'User "{user.email}" activated!', "success")
+    return redirect(url_for("admin.users_view"))
+
+
+@admin.route("/admin/user_resend_activation/<int:id>", methods=["POST"])
+@login_required
+@require_role("admin")
+def user_resend_activation(id):
+    user, error = _pending_user_or_redirect(id)
+    if error:
+        return error
+
+    user.activation_token = secrets.token_urlsafe(32)
+    user.activation_token_created_at = datetime.now(timezone.utc)
+    write_audit_log(
+        AuditLogType.activation_token_resent,
+        creator_id=current_user.id,
+        related_object_type="user",
+        related_object_id=str(user.id),
+    )
+    db.session.commit()
+
+    notify_activation_email(
+        user.email, f"{FRONTEND_URL}/activate?token={user.activation_token}"
+    )
+    current_app.logger.info(
+        "Activation email resent by admin: %s",
+        user.email,
+        extra={"log_type": "audit"},
+    )
+    flash(f'Activation email sent to "{user.email}".', "success")
     return redirect(url_for("admin.users_view"))
 
 

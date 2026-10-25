@@ -1,4 +1,5 @@
 import secrets
+import threading
 from flask import Blueprint, current_app, request, jsonify, g, redirect
 from jwt import PyJWKClient
 import jwt
@@ -21,7 +22,7 @@ from services.mail import (
 )
 from services.audit import write_audit_log
 from security import require_api_auth, require_api_role
-from models import db, User, Role, Library, Image, AuditLogType
+from models import db, User, Role, Library, Image, AuditLog, AuditLogType
 from sqlalchemy import select, func, or_
 from datetime import datetime, timedelta, timezone
 
@@ -532,14 +533,82 @@ def activate_account():
     return jsonify({"ok": True, "email": user.email})
 
 
-@auth_api.route("/resend-activation", methods=["POST"])
-@limiter.limit("3 per hour")
-def resend_activation():
-    """Resend the activation email with a fresh token."""
+def _resend_email_key() -> str:
+    """Rate-limit key for resend-activation: the submitted address, independent of the IP."""
     data = request.get_json(silent=True) or {}
-    token = (data.get("token") or "").strip()
+    email = data.get("email")
+    if isinstance(email, str) and email.strip():
+        return f"resend_email:{email.strip().lower()}"
+    return f"resend_noemail:{get_client_ip()}"
+
+
+def _run_in_background(fn, *args) -> None:
+    """Run ``fn(*args)`` in a daemon thread inside an app context."""
+    app = current_app._get_current_object()
+
+    def runner():
+        with app.app_context():
+            try:
+                fn(*args)
+            except Exception:
+                current_app.logger.exception("Background resend-activation failed")
+
+    threading.Thread(target=runner, daemon=True).start()
+
+
+def _resend_activation_for_email(email: str, ip: str) -> None:
+    """Issue a fresh token and mail it, but only for a pending account.
+
+    Runs after the response was sent, so the request takes the same time for
+    pending, active and unknown addresses.
+    """
+    user = db.session.execute(
+        select(User).where(func.lower(User.email) == email, User.deleted_at.is_(None))
+    ).scalar_one_or_none()
+    if not user or not user.activation_pending or user.is_system:
+        return
+
+    user.activation_token = secrets.token_urlsafe(32)
+    user.activation_token_created_at = datetime.now(timezone.utc)
+    db.session.add(
+        AuditLog(
+            audit_type=AuditLogType.activation_token_resent,
+            ip_address=ip,
+            related_object_type="user",
+            related_object_id=str(user.id),
+        )
+    )
+    db.session.commit()
+
+    notify_activation_email(
+        user.email, f"{FRONTEND_URL}/activate?token={user.activation_token}"
+    )
+    current_app.logger.info(
+        "Activation email resent: %s", user.email, extra={"log_type": "audit"}
+    )
+
+
+@auth_api.route("/resend-activation", methods=["POST"])
+@limiter.limit("3 per hour", key_func=get_client_ip)
+@limiter.limit("3 per hour", key_func=_resend_email_key)
+def resend_activation():
+    """Resend the activation email with a fresh token.
+
+    Accepts ``email`` (answers 200 whether or not the address is a pending
+    account) or the legacy ``token`` of an expired link.
+    """
+    data = request.get_json(silent=True) or {}
+    email = data.get("email")
+    if isinstance(email, str) and email.strip():
+        _run_in_background(
+            _resend_activation_for_email, email.strip().lower(), get_client_ip()
+        )
+        return jsonify({"ok": True}), 200
+
+    token = data.get("token")
+    token = token.strip() if isinstance(token, str) else ""
     if not token:
-        return jsonify({"error": "Missing token"}), 400
+        return jsonify({"error": "Email is required"}), 400
 
     user = db.session.execute(
         select(User).where(User.activation_token == token)
