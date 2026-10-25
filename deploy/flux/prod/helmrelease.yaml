@@ -37,6 +37,9 @@ spec:
         frontend: lumios-app.niecke-it.de
         backend: lumios-api.niecke-it.de
     backend:
+      # Two pods so a rolling update never takes the API down. Migrations run
+      # once per release in the migrate hook Job, so they cannot race.
+      replicas: 2
       image:
         # Written by release.yml from a vX.Y.Z tag — a merge to main never
         # moves production. Rolling back is reverting that Deploy commit.

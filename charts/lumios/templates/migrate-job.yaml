@@ -1,0 +1,99 @@
+{{- /*
+Schema migration, run once per release instead of in every backend pod.
+
+entrypoint.py used to run `flask db upgrade` on each start, which races itself
+as soon as a rolling update overlaps two pods. As a hook it runs exactly once,
+and an upgrade does not touch the backend Deployment until it has succeeded; a
+failed Job fails the release and remediateLastFailure rolls it back while the
+old pods keep serving.
+
+post-install, not pre-install: on a first install PostgreSQL is part of this
+same release, so a pre-install hook would run before any database exists. The
+Job retries the migration itself (see `entrypoint.py migrate`) because Helm
+starts it as soon as the StatefulSet exists, not when PostgreSQL accepts
+connections. The backend Deployment starts on the empty schema meanwhile: its
+readiness probe only pings the database, so Helm's wait does not deadlock on
+the hook.
+
+The hook carries its own Secret rather than reading the backend's. A
+pre-upgrade hook runs before the release's regular manifests are applied, so on
+a release that changes the backend Secret the Job would start against a Secret
+that is not there yet. The lower hook weight orders this Secret ahead of the
+Job. The app refuses to start without SECRET_KEY and JWT_SECRET, so they are
+repeated, although a migration signs nothing.
+*/ -}}
+{{- $pw := required "postgres.password is required — generate one with `openssl rand -base64 24`" .Values.postgres.password }}
+{{- $secretKey := required "backend.secretKey is required — generate one with `openssl rand -hex 32`" .Values.backend.secretKey }}
+{{- $jwt := required "backend.jwtSecret is required — generate one with `openssl rand -hex 32`" .Values.backend.jwtSecret }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "lumios.fullname" . }}-migrate
+  labels:
+    {{- include "lumios.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: {{ $pw | quote }}
+  SECRET_KEY: {{ $secretKey | quote }}
+  JWT_SECRET: {{ $jwt | quote }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "lumios.fullname" . }}-migrate
+  labels:
+    {{- include "lumios.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        {{- include "lumios.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      securityContext:
+        # The distroless nonroot user.
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          image: {{ include "lumios.image" (list "backend" .Values.backend.image) | quote }}
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          # Distroless: no shell, so the command is the interpreter itself.
+          command: ["/usr/bin/python3", "/entrypoint.py", "migrate"]
+          envFrom:
+            - secretRef:
+                name: {{ include "lumios.fullname" . }}-migrate
+          env:
+            {{- include "lumios.backendEnv" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migration.resources | nindent 12 }}
+          volumeMounts:
+            # create_app() writes filesystem sessions here: there is no REDIS_URL.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

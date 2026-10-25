@@ -148,6 +148,18 @@ ingress:
     secretName: ""
 
 # ---------------------------------------------------------------------------
+# Migration — the Helm hook Job that runs `flask db upgrade` once per release,
+# on the backend image. The backend pods themselves never migrate.
+# ---------------------------------------------------------------------------
+migration:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+# ---------------------------------------------------------------------------
 # Cleanup — the flask maintenance commands, one CronJob each, on the backend
 # image. Replaces the Cloud Scheduler + Cloud Run Job.
 # ---------------------------------------------------------------------------
