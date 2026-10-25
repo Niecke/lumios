@@ -22,7 +22,7 @@ Domain: **lumios.niecke-it.de** (landing page), **lumios-app.niecke-it.de** (app
 | Email | Brevo (formerly Sendinblue) transactional API |
 | Observability | OpenTelemetry → Cloud Trace (prod) / Jaeger (local dev) |
 | CDN / SSL / Domain | Cloudflare free plan (proxy, SSL termination, edge caching) |
-| IaC | Terraform + GitHub Actions |
+| IaC | Managed in the separate `Niecke/infrastructure` repo |
 | Local dev | Podman + podman-compose |
 
 ---
@@ -86,9 +86,6 @@ lumios/
 │   ├── nginx.conf.template
 │   └── package.json
 ├── landingpage/              # Static landing page (separate Cloud Run service)
-├── terraform/                # All GCP infrastructure
-│   ├── environments/prod/    # Production environment (main.tf, variables.tf, backend.tf)
-│   └── modules/              # apis, network, storage, secrets, vm, artifact_registry, cloudrun, cleanup, monitoring
 ├── charts/lumios/            # Helm chart (published as OCI chart on release)
 ├── deploy/                   # Flux GitOps manifests for k3s staging/prod (see deploy/README.md)
 ├── e2e/                      # Playwright end-to-end tests (run by e2e-tests.yml)
@@ -588,7 +585,7 @@ Some workflow triggers below still list `dev` (and `release/**`); those entries 
 
 ### GitHub Actions workflows
 
-Container images live in **GHCR** (`ghcr.io/niecke/lumios/{backend,frontend,landingpage}`) and are pushed with `GITHUB_TOKEN`. Workload Identity Federation (no service account keys) is still used for GCP: Terraform, and reading the frontend Google client ID from Secret Manager. Direct Cloud Run deploys from workflows are gone.
+Container images live in **GHCR** (`ghcr.io/niecke/lumios/{backend,frontend,landingpage}`) and are pushed with `GITHUB_TOKEN`. Direct Cloud Run deploys from workflows are gone.
 
 | Workflow | Trigger | Actions |
 |---|---|---|
@@ -599,7 +596,6 @@ Container images live in **GHCR** (`ghcr.io/niecke/lumios/{backend,frontend,land
 | `promote.yml` | Push to `main`/`release/**` | retag the tested `ci-<sha40>` digests to `sha-<main_sha7>` (no rebuild); update `deploy/flux/staging/helmrelease.yaml` if it exists |
 | `release-please.yml` | Push to `main`/`release/**` | keep a release PR open (version bumps + `CHANGELOG.md`); merging it tags `vX.Y.Z` and creates the GitHub Release |
 | `release.yml` | Tag `vX.Y.Z` | retag images `vX.Y.Z` + `stable`/`X.Y`/`X` by digest, publish Helm chart to `oci://ghcr.io/niecke/lumios/charts` (if `charts/lumios` exists), cosign-sign, Syft SBOM attestations, digests table in release notes |
-| `terraform.yml` | Push/PR to `terraform/` or `main` | fmt → init → validate → plan → apply (main only) |
 
 Image tagging: PR → `ci-<head_sha40>`, merge to `main` → `sha-<main_sha7>`, release → `vX.Y.Z` (+ floating tags).
 
@@ -624,25 +620,9 @@ def inject_config():
 
 ---
 
-## Infrastructure (Terraform)
+## Infrastructure
 
-All in `terraform/`. State in GCS bucket. Applied on merge to `main`.
-
-```
-GCP region:        europe-west1 (Belgium)
-VM region/zone:    europe-west1-b
-```
-
-### Modules
-- **apis** — Enable required GCP APIs
-- **network** — VPC `lumios`, subnet `lumios-{region}` (10.0.0.0/24)
-- **artifact_registry** — Docker image registry in europe-west1
-- **storage** — GCS photos bucket with lifecycle rules (365d → Nearline, 730d → delete)
-- **secrets** — Secret Manager resources
-- **vm** — e2-small VM with 50 GB attached disk at `/data` for Postgres + Redis; firewall allows 5432/6379 from subnet only; SSH via IAP only
-- **cloudrun** — Three Cloud Run services (backend, frontend, landingpage) with Serverless VPC connector
-- **cleanup** — Cloud Scheduler + Cloud Run Job for daily cleanup
-- **monitoring** — Uptime checks and email alerting
+Infrastructure (GCP, Cloudflare, cluster) is managed in the separate `Niecke/infrastructure` repository; this repo holds no Terraform. Deployment to k3s is Flux GitOps, see `deploy/README.md`.
 
 ---
 

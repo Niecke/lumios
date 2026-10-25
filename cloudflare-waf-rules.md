@@ -1,5 +1,9 @@
 # Cloudflare WAF Rules for Lumios
 
+> The Cloudflare WAF and edge configuration is managed in the
+> [Niecke/infrastructure](https://github.com/Niecke/infrastructure) repository
+> (tracked in #178). This file documents the intent of the rules.
+
 Create these under **Security → WAF → Custom rules** for the `niecke-it.de` zone.
 
 ---

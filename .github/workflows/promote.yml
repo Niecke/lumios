@@ -94,7 +94,7 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       # ci.yml only builds images when application code changed, so a pull
-      # request touching just workflows, Terraform or documentation merges
+      # request touching just workflows or documentation merges
       # without ever producing a ci-<sha> tag. There is nothing to promote then.
       #
       # A build that genuinely failed cannot reach here: those are required

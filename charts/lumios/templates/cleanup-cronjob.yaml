@@ -1,6 +1,6 @@
 {{- if .Values.cleanup.enabled }}
 {{- /*
-The two retention jobs from terraform/modules/cleanup, one CronJob each so a
+The two retention jobs (purge-deleted-accounts, purge-audit-logs), one CronJob each so a
 failure in one does not hide the other. The backend image is distroless: there
 is no shell, so the command is the interpreter itself.
 */}}
