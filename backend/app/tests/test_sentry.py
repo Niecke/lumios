@@ -32,6 +32,7 @@ def test_init_with_dsn_disables_pii_and_scrubs():
     assert kwargs["send_default_pii"] is False
     assert kwargs["include_local_variables"] is False
     assert kwargs["before_send"] is scrub_event
+    assert kwargs["before_send_transaction"] is scrub_event
 
 
 def test_scrubber_headers_and_cookies():
@@ -72,6 +73,27 @@ def test_scrubber_emails_jwts_and_uuids():
         "library [REDACTED_UUID] for [REDACTED_EMAIL]"
     )
     assert out["breadcrumbs"]["values"][0]["message"] == "GET /libraries/[REDACTED_UUID]"
+
+
+def test_scrub_string_redacts_token_and_code_query_params():
+    assert (
+        scrub_string("/activate?token=abc123&x=1") == "/activate?token=[REDACTED]&x=1"
+    )
+    assert scrub_string("/login?a=1&code=4%2F0Ab#f") == "/login?a=1&code=[REDACTED]#f"
+    assert scrub_string("/library?tokens=keep") == "/library?tokens=keep"
+
+
+def test_scrubber_transaction_event():
+    event = {
+        "type": "transaction",
+        "transaction": f"/api/v1/public/libraries/{UUID}",
+        "request": {"url": f"https://x.test/activate?token=abc&uuid={UUID}"},
+    }
+    out = scrub_event(event)
+    assert UUID not in str(out)
+    assert out["request"]["url"] == (
+        "https://x.test/activate?token=[REDACTED]&uuid=[REDACTED_UUID]"
+    )
 
 
 def test_scrub_string_leaves_plain_text():

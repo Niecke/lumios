@@ -23,12 +23,14 @@ _JWT_RE = re.compile(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]*")
 _UUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
+_QUERY_SECRET_RE = re.compile(r"([?&](?:token|code)=)[^&#\s]*")
 
 _SENSITIVE_HEADERS = {"authorization", "cookie", "x-forwarded-for", "x-real-ip"}
 
 
 def scrub_string(value: str) -> str:
-    """Redact JWTs, email addresses and UUIDs (share links) in free text."""
+    """Redact JWTs, emails, UUIDs (share links) and token/code query values."""
+    value = _QUERY_SECRET_RE.sub(r"\1[REDACTED]", value)
     value = _JWT_RE.sub("[REDACTED_JWT]", value)
     value = _EMAIL_RE.sub("[REDACTED_EMAIL]", value)
     return _UUID_RE.sub("[REDACTED_UUID]", value)
@@ -122,6 +124,7 @@ def init_sentry(app) -> None:
         # Frame locals carry recipients, tokens and form input.
         include_local_variables=False,
         before_send=scrub_event,
+        before_send_transaction=scrub_event,
         # Failures are reported explicitly (mail, jobs). Logged errors stay
         # breadcrumbs, otherwise every logger.exception() is reported twice.
         integrations=[LoggingIntegration(event_level=None)],

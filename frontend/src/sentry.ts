@@ -9,12 +9,14 @@ import { config } from "./config.ts";
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 const JWT_RE = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g;
 const UUID_RE = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/g;
+const QUERY_SECRET_RE = /([?&](?:token|code)=)[^&#\s]*/g;
 
 const SENSITIVE_HEADERS = new Set(["authorization", "cookie", "x-forwarded-for", "x-real-ip"]);
 const PROD_ENVIRONMENT = "lumios";
 
 export function scrubString(value: string): string {
   return value
+    .replace(QUERY_SECRET_RE, "$1[REDACTED]")
     .replace(JWT_RE, "[REDACTED_JWT]")
     .replace(EMAIL_RE, "[REDACTED_EMAIL]")
     .replace(UUID_RE, "[REDACTED_UUID]");
@@ -49,6 +51,7 @@ export function scrubEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent {
   }
   if (event.transaction) event.transaction = scrubString(event.transaction);
   if (event.tags) event.tags = scrubValue(event.tags) as typeof event.tags;
+  if (event.contexts) event.contexts = scrubValue(event.contexts) as typeof event.contexts;
   if (event.extra) event.extra = scrubValue(event.extra) as typeof event.extra;
   if (event.message) event.message = scrubString(event.message);
   for (const exception of event.exception?.values ?? []) {
