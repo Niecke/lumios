@@ -554,14 +554,18 @@ def download_library_zip(library_uuid: str):
     variant = "originals" if library.use_original_as_preview else "previews"
     snapshots = []
     for img in images:
-        snapshots.append((img.original_filename, img.storage_path(variant)))
+        snapshots.append(
+            (img.original_filename, img.storage_path(variant), img.created_at)
+        )
         write_audit_log(
             AuditLogType.picture_downloaded,
             related_object_type="image",
             related_object_id=img.uuid,
         )
     for vid in videos:
-        snapshots.append((vid.original_filename, vid.storage_path("originals")))
+        snapshots.append(
+            (vid.original_filename, vid.storage_path("originals"), vid.created_at)
+        )
         write_audit_log(
             AuditLogType.video_downloaded,
             related_object_type="video",
@@ -573,8 +577,8 @@ def download_library_zip(library_uuid: str):
     zip_filename = f"{safe_name}.zip"
 
     def entries():
-        for filename, key in snapshots:
-            yield filename, lambda k=key: storage.iter_object_chunks(k)
+        for filename, key, created_at in snapshots:
+            yield filename, lambda k=key: storage.iter_object_chunks(k), created_at
 
     response = Response(
         stream_with_context(stream_zip(entries())),
