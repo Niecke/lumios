@@ -5,6 +5,7 @@
 # local development without email credentials.
 
 import requests
+import sentry_sdk
 from flask import current_app
 from config import (
     ADMIN_EMAIL,
@@ -92,13 +93,21 @@ def _send(to_email: str, subject: str, html: str) -> None:
                 subject,
                 extra={"log_type": "mail"},
             )
-    except Exception:
+            # No recipient in the event: only the status code.
+            with sentry_sdk.new_scope() as scope:
+                scope.set_tag("brevo_status", resp.status_code)
+                sentry_sdk.capture_message(
+                    f"Brevo email delivery failed with status {resp.status_code}",
+                    level="error",
+                )
+    except Exception as exc:
         current_app.logger.exception(
             "MAIL delivery failed: to=%s subject=%r",
             to_email,
             subject,
             extra={"log_type": "mail"},
         )
+        sentry_sdk.capture_exception(exc)
 
 
 # ---------------------------------------------------------------------------

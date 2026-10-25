@@ -10,6 +10,7 @@ Covers the purge-deleted-accounts command:
 - GCS failures do not abort DB deletion
 """
 
+import pytest
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch
 
@@ -352,3 +353,32 @@ class TestApplyAgbAcceptance:
         effective_naive = effective.replace(tzinfo=None)
         diff = abs((user.agb_accepted_at - effective_naive).total_seconds())
         assert diff < 2
+
+
+# ---------------------------------------------------------------------------
+# Sentry reporting on failure
+# ---------------------------------------------------------------------------
+
+
+class TestFailureReportedToSentry:
+    @pytest.mark.parametrize(
+        "command,target",
+        [
+            ("purge-deleted-accounts", "commands._purge_user"),
+            ("purge-audit-logs", "commands.delete"),
+            ("apply-agb-acceptance", "commands.select"),
+        ],
+    )
+    def test_failure_captures_and_flushes(self, app, command, target):
+        if command == "purge-deleted-accounts":
+            _soft_deleted_user("sentryfail@test.com", deleted_days_ago=31)
+        boom = RuntimeError("boom")
+        with (
+            patch(target, side_effect=boom),
+            patch("commands.sentry_sdk") as sentry,
+        ):
+            result = app.test_cli_runner().invoke(args=[command])
+
+        assert result.exit_code == 1
+        sentry.capture_exception.assert_called_once_with(boom)
+        sentry.flush.assert_called_once_with(timeout=2.0)
