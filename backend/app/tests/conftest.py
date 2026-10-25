@@ -112,7 +112,7 @@ def app():
 
 
 @pytest.fixture(autouse=True)
-def clean_db():
+def clean_db(app):
     """Delete all rows from every table between tests.
 
     Runs after every test function (autouse=True).
@@ -123,6 +123,16 @@ def clean_db():
     for table in reversed(_db.metadata.sorted_tables):
         _db.session.execute(table.delete())
     _db.session.commit()
+
+
+@pytest.fixture(autouse=True)
+def reset_login_failures():
+    """Forget failed-login counters so tests do not block each other."""
+    from services import login_protection
+
+    login_protection._in_memory_failures.clear()
+    yield
+    login_protection._in_memory_failures.clear()
 
 
 @pytest.fixture

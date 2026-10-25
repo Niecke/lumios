@@ -281,6 +281,52 @@ class TestApiPasswordLogin:
         )
         assert res.status_code == 401
 
+    def _fail(self, client):
+        return client.post(
+            self.ENDPOINT, json={"email": "photo@test.com", "password": "wrong"}
+        )
+
+    def test_failed_logins_trigger_429_after_max_attempts(
+        self, client, photographer_user
+    ):
+        from config import FAILED_LOGIN_MAX_ATTEMPTS
+
+        for _ in range(FAILED_LOGIN_MAX_ATTEMPTS):
+            assert self._fail(client).status_code == 401
+        res = self._fail(client)
+        assert res.status_code == 429
+        assert "Too many failed login attempts" in res.get_json()["error"]
+        assert int(res.headers["Retry-After"]) > 0
+
+    def test_successful_login_clears_failure_counter(self, client, photographer_user):
+        from config import FAILED_LOGIN_MAX_ATTEMPTS
+        from services import login_protection
+
+        for _ in range(FAILED_LOGIN_MAX_ATTEMPTS - 1):
+            self._fail(client)
+        ok = client.post(
+            self.ENDPOINT, json={"email": "photo@test.com", "password": "PhotoPass123!"}
+        )
+        assert ok.status_code == 200
+        assert login_protection._in_memory_failures == {}
+        assert self._fail(client).status_code == 401
+
+    def test_blocked_login_short_circuits_before_password_check(
+        self, client, photographer_user
+    ):
+        from config import FAILED_LOGIN_MAX_ATTEMPTS
+
+        for _ in range(FAILED_LOGIN_MAX_ATTEMPTS):
+            self._fail(client)
+        with patch.object(User, "verify_password") as verify:
+            res = client.post(
+                self.ENDPOINT,
+                json={"email": "photo@test.com", "password": "PhotoPass123!"},
+            )
+        assert res.status_code == 429
+        assert "token" not in res.get_json()
+        verify.assert_not_called()
+
     def test_successful_login_returns_200(self, client, photographer_user):
         res = client.post(
             self.ENDPOINT, json={"email": "photo@test.com", "password": "PhotoPass123!"}

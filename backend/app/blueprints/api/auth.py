@@ -12,6 +12,7 @@ from config import (
 )
 from services.redis_client import get_redis, cache_get, cache_set, cache_delete
 from services.auth import login_google, login_password, AuthError
+from services.login_protection import get_client_ip
 from services.token import create_token
 from services.mail import (
     notify_activation_email,
@@ -234,11 +235,14 @@ def password_login():
         return jsonify({"error": "Email and password are required"}), 400
 
     try:
-        user = login_password(email, password)
+        user = login_password(email, password, get_client_ip())
     except AuthError as e:
         write_audit_log(AuditLogType.login_failed)
         db.session.commit()
-        return jsonify({"error": e.message}), e.status
+        response = jsonify({"error": e.message})
+        if e.status == 429 and e.retry_after:
+            response.headers["Retry-After"] = str(e.retry_after)
+        return response, e.status
 
     roles = [r.name for r in user.roles]
     token = create_token(user.id, user.email, roles)

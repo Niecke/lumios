@@ -6,17 +6,39 @@ from datetime import datetime, timezone
 from flask import session, current_app
 from sqlalchemy import select
 from models import db, User
+from services.login_protection import (
+    clear_login_failures,
+    is_login_blocked,
+    record_login_failure,
+)
 
 
 class AuthError(Exception):
-    def __init__(self, message: str, status: int = 401):
+    def __init__(
+        self, message: str, status: int = 401, retry_after: int | None = None
+    ):
         super().__init__(message)
         self.message = message
         self.status = status
+        self.retry_after = retry_after
 
 
-def login_password(email: str, password: str) -> User:
-    """Verify credentials and return the User. Caller decides what to do with the session."""
+def login_password(email: str, password: str, ip: str | None = None) -> User:
+    """Verify credentials and return the User. Caller decides what to do with the session.
+
+    Raises a 429 ``AuthError`` before any DB lookup or password hashing when the
+    client IP is blocked after too many failed attempts.
+    """
+    blocked, remaining = is_login_blocked(ip)
+    if blocked:
+        minutes = max(1, (remaining + 59) // 60)
+        raise AuthError(
+            f"Too many failed login attempts. Please try again in {minutes} "
+            f"minute{'s' if minutes > 1 else ''}.",
+            status=429,
+            retry_after=remaining,
+        )
+
     user = db.session.execute(select(User).filter_by(email=email)).scalar_one_or_none()
 
     if user and user.deleted_at is None:
@@ -31,8 +53,10 @@ def login_password(email: str, password: str) -> User:
             current_app.logger.info("Login: %s", email, extra={"log_type": "audit"})
             user.last_login = datetime.now(timezone.utc)
             db.session.commit()
+            clear_login_failures(ip)
             return user
 
+    record_login_failure(ip)
     current_app.logger.warning(
         "Login failed: %s", email or "<none>", extra={"log_type": "audit"}
     )
