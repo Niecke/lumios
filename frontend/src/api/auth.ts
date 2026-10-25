@@ -115,11 +115,11 @@ export const authApi = {
       body: JSON.stringify({ token }),
     }),
 
-  // Request a fresh activation email (when the original token expired).
-  resendActivation: (token: string) =>
+  // Request a fresh activation email by address, or by the token of an expired link.
+  resendActivation: (target: { email: string } | { token: string }) =>
     apiFetch<{ ok: boolean }>("/api/v1/auth/resend-activation", {
       method: "POST",
-      body: JSON.stringify({ token }),
+      body: JSON.stringify(target),
     }),
 
   // Exchange a Google ID token for a lumios JWT.

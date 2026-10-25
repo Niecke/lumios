@@ -67,6 +67,16 @@
                             {% if user.account_type == 'local' %}
                             <a href="{{ url_for('admin.set_password', id=user.id) }}" class="btn btn-secondary btn-sm">Set Password</a>
                             {% endif %}
+                            {% if user.activation_pending and not user.is_system %}
+                            <form method="POST" action="{{ url_for('admin.user_activate', id=user.id) }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-secondary btn-sm">Activate</button>
+                            </form>
+                            <form method="POST" action="{{ url_for('admin.user_resend_activation', id=user.id) }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-secondary btn-sm">Resend Activation</button>
+                            </form>
+                            {% endif %}
                             <form method="POST" action="{{ url_for('admin.user_delete', id=user.id) }}">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-danger btn-sm">Delete</button>

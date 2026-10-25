@@ -20,6 +20,7 @@ function ActivatePage() {
   const [resending, setResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
   const [resendError, setResendError] = useState<string | null>(null);
+  const [resendEmail, setResendEmail] = useState("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -47,13 +48,12 @@ function ActivatePage() {
       });
   }, []);
 
-  const handleResend = () => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get("token") ?? "";
+  const handleResend = (e: { preventDefault(): void }) => {
+    e.preventDefault();
     setResending(true);
     setResendError(null);
     authApi
-      .resendActivation(token)
+      .resendActivation({ email: resendEmail })
       .then(() => setResendSuccess(true))
       .catch((err) => setResendError((err as Error).message))
       .finally(() => setResending(false));
@@ -84,45 +84,45 @@ function ActivatePage() {
             </Link>
           </>
         )}
-        {state === "expired" && (
+        {(state === "expired" || state === "error") && (
           <>
-            <h2>Link expired</h2>
-            <p style={{ textAlign: "center", lineHeight: 1.6 }}>
-              Your activation link has expired. Click below to receive a new one.
+            <h2>{state === "expired" ? "Link expired" : "Activation failed"}</h2>
+            {state === "error" && <div className="flash">{errorMsg ?? "Unknown error"}</div>}
+            <p style={{ textAlign: "center", lineHeight: 1.6, marginTop: "1rem" }}>
+              {state === "expired"
+                ? "Your activation link has expired. "
+                : "The link may have already been used or is invalid. "}
+              Enter your email address to receive a new one.
             </p>
             {resendSuccess ? (
               <p style={{ textAlign: "center", marginTop: "0.75rem", color: "var(--color-success, green)" }}>
-                A new activation email has been sent. Please check your inbox.
+                If an account exists and is pending activation, a new activation link has been sent.
               </p>
             ) : (
-              <button
-                className="btn btn-contained"
-                style={{ width: "100%", justifyContent: "center", marginTop: "1rem" }}
-                onClick={handleResend}
-                disabled={resending}
-              >
-                {resending ? "Sending…" : "Resend activation email"}
-              </button>
+              <form className="login-form" onSubmit={handleResend}>
+                <div className="text-field">
+                  <label htmlFor="resend-email">Email</label>
+                  <input
+                    id="resend-email"
+                    autoComplete="email"
+                    value={resendEmail}
+                    onChange={(e) => setResendEmail(e.target.value)}
+                    required
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="btn btn-contained"
+                  style={{ width: "100%", justifyContent: "center" }}
+                  disabled={resending}
+                >
+                  {resending ? "Sending…" : "Resend activation email"}
+                </button>
+              </form>
             )}
             {resendError && (
               <div className="flash" style={{ marginTop: "0.75rem" }}>{resendError}</div>
             )}
-            <Link
-              to="/login"
-              className="btn btn-outlined"
-              style={{ width: "100%", justifyContent: "center", marginTop: "1rem" }}
-            >
-              Back to sign in
-            </Link>
-          </>
-        )}
-        {state === "error" && (
-          <>
-            <h2>Activation failed</h2>
-            <div className="flash">{errorMsg ?? "Unknown error"}</div>
-            <p style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.875rem" }}>
-              The link may have already been used or is invalid.
-            </p>
             <Link
               to="/login"
               className="btn btn-outlined"
