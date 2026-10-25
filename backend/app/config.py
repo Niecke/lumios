@@ -137,6 +137,12 @@ SUBSCRIPTION_LIMITS = {
     },
 }
 
+# Sentry error tracking (disabled while SENTRY_DSN is empty)
+SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+SENTRY_ENVIRONMENT = os.getenv("SENTRY_ENVIRONMENT", "")
+SENTRY_RELEASE = os.getenv("SENTRY_RELEASE", APP_VERSION)
+SENTRY_TRACES_SAMPLE_RATE = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0"))
+
 # Brevo transactional email
 BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
 MAIL_SENDER_EMAIL = os.getenv("MAIL_SENDER_EMAIL", "lumios@niecke-it.de")
