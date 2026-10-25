@@ -37,13 +37,22 @@ spec:
       {{- with .Values.priorityClassName }}
       priorityClassName: {{ . | quote }}
       {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: frontend
-          # No runAsNonRoot or read-only root: the nginx entrypoint renders its
-          # config template into /etc/nginx/conf.d as root, and the master then
-          # drops to the nginx user.
+          # Non-root nginx-unprivileged (UID 101) with a read-only root: the
+          # entrypoint renders into the /tmp and /etc/nginx/conf.d emptyDirs.
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           image: {{ include "lumios.image" (list "frontend" .Values.frontend.image) | quote }}
           imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
           ports:
@@ -86,3 +95,13 @@ spec:
             periodSeconds: 20
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: conf-d
+              mountPath: /etc/nginx/conf.d
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: conf-d
+          emptyDir: {}
