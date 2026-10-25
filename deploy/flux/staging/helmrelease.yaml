@@ -69,7 +69,7 @@ spec:
       image:
         # Managed by .github/workflows/promote.yml — do not edit by hand.
         # Placeholder until the first promotion after this lands.
-        tag: sha-eca00c6
+        tag: sha-99cff64
       resources:
         requests:
           cpu: 50m
@@ -78,7 +78,7 @@ spec:
           memory: 384Mi
     frontend:
       image:
-        tag: sha-eca00c6
+        tag: sha-99cff64
       resources:
         requests:
           cpu: 5m
@@ -87,7 +87,7 @@ spec:
           memory: 64Mi
     landingpage:
       image:
-        tag: sha-eca00c6
+        tag: sha-99cff64
       resources:
         requests:
           cpu: 5m
