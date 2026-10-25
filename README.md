@@ -69,7 +69,8 @@ files by hand.
 
 Merges to `main` deploy to staging and release tags deploy to production through
 Flux GitOps on k3s. See [`deploy/README.md`](deploy/README.md) for the full flow.
-The remaining GCP infrastructure is described in `terraform/`.
+Infrastructure is managed in the separate
+[Niecke/infrastructure](https://github.com/Niecke/infrastructure) repository.
 
 ## Development workflow
 
