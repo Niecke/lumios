@@ -22,7 +22,7 @@ RUN uv sync --no-install-project --frozen
 # ---- Stage 2: Runtime (distroless) ----
 # Only the installed packages and app code are copied — no compiler, no apt cache,
 # no pip, no shell. The distroless image ships with Python 3.13.
-FROM gcr.io/distroless/python3-debian13:nonroot@sha256:727eccc5d83f11273c954652667b5b5a1c66120bd4cfb884e879ab77dcdf966a
+FROM gcr.io/distroless/python3-debian13:nonroot@sha256:64e54c4b1200da244d80181d98e86fc01d73c8101f107d5baf472152d8e119a2
 
 # Copy only the site-packages from the builder venv; distroless provides its
 # own Python 3.13 binary so we do not need /venv/bin.
