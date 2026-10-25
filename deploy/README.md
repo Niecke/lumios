@@ -41,7 +41,8 @@ keeps running the previous release.
 
 | Workload | Kind | Notes |
 |---|---|---|
-| `backend` | Deployment + Service `:8080` | Distroless, runs `entrypoint.py`: waits for the database, runs `flask db upgrade`, starts Gunicorn. No separate migration Job. |
+| `backend` | Deployment + Service `:8080` | Distroless, runs `entrypoint.py` with `RUN_MIGRATIONS=false`: waits for the database, starts Gunicorn, never migrates. 2 replicas in production, 1 in staging. |
+| `migrate` | Helm hook Job (`post-install,pre-upgrade`) | The backend image, `entrypoint.py migrate`: runs `flask db upgrade` once per release, retrying for up to 2.5 minutes while PostgreSQL starts. Has its own hook Secret. A failed Job fails the release, and `remediateLastFailure` rolls it back. |
 | `frontend` | Deployment + Service `:8080` | nginx; proxies `/api/` to the backend Service inside the cluster. |
 | `landingpage` | Deployment + Service `:8080` | nginx; `APP_URL` and `BACKEND_URL` are substituted at start. |
 | `postgres` | StatefulSet + Service `:5432` | One replica, PVC on `local-path`. |
@@ -240,7 +241,8 @@ flux -n lumios reconcile helmrelease lumios --with-source
 To freeze the cluster where it stands: `flux -n lumios suspend helmrelease lumios`.
 
 > [!WARNING]
-> Migrations run when the backend starts and do not roll back with the image.
+> Migrations run in the `migrate` hook Job before an upgrade touches the backend,
+> and do not roll back with the image.
 > Every Alembic migration has to work with release N−1: add and backfill in one
 > release, stop writing the old column in the next, drop it in a third.
 
@@ -251,7 +253,8 @@ flux -n lumios get helmrelease lumios                         # what is deployed
 flux -n lumios reconcile helmrelease lumios --with-source     # don't wait for the interval
 flux -n lumios events --for HelmRelease/lumios                # why an upgrade failed
 helm -n lumios history lumios                                 # rollback targets
-kubectl -n lumios logs deploy/lumios-backend                  # JSON lines, includes the migration run
+kubectl -n lumios logs deploy/lumios-backend                  # JSON lines
+kubectl -n lumios logs job/lumios-migrate                     # the last release's migration run
 ```
 
 To confirm that the pods really run the new build, open `/admin/system` as an
