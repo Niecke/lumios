@@ -1,6 +1,6 @@
 // Runtime configuration, written to /config.js by the container at startup.
 // The VITE_* variables remain as an optional override for `npm run dev`.
-export interface AppConfig {
+interface AppConfig {
   GOOGLE_CLIENT_ID: string;
   LANDING_URL: string;
   APP_URL: string;

@@ -24,17 +24,7 @@ export interface UserInfo {
   picture?: string;
 }
 
-// Google profile fields decoded from the ID token (display only)
-export interface GoogleProfile {
-  name: string;
-  email: string;
-  picture: string;
-  given_name?: string;
-  family_name?: string;
-}
-
 const TOKEN_KEY = "lumios_token";
-const PROFILE_KEY = "lumios_google_profile";
 
 // GIS must only be initialized once per session. This flag is reset on logout
 // so that a fresh initialize() call happens on the next login page visit.
@@ -55,33 +45,11 @@ export const tokenStore = {
   clear: () => sessionStorage.removeItem(TOKEN_KEY),
 };
 
-export const googleProfileStore = {
-  get: (): GoogleProfile | null => {
-    const raw = sessionStorage.getItem(PROFILE_KEY);
-    return raw ? (JSON.parse(raw) as GoogleProfile) : null;
-  },
-  set: (p: GoogleProfile) =>
-    sessionStorage.setItem(PROFILE_KEY, JSON.stringify(p)),
-  clear: () => sessionStorage.removeItem(PROFILE_KEY),
-};
-
 // Drop every piece of client-side session state. Used on logout and when the
 // backend rejects the stored token, so the login page can initialise GIS again.
-export function clearAuthSession() {
+function clearAuthSession() {
   tokenStore.clear();
-  googleProfileStore.clear();
   resetGsiInitialized();
-}
-
-// Decode the base64url-encoded JWT payload without verifying the signature.
-// Used only to extract display fields from the Google ID token.
-function decodeJwtPayload(token: string): Record<string, unknown> {
-  try {
-    const b64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(b64)) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
 }
 
 // Internal helper: fetch JSON from the API, attaching the Bearer token.
@@ -155,24 +123,13 @@ export const authApi = {
     }),
 
   // Exchange a Google ID token for a lumios JWT.
-  // Also extracts and stores Google profile data for the info page.
   googleVerify: async (credential: string): Promise<UserInfo> => {
-    const idPayload = decodeJwtPayload(credential);
-    const profile: GoogleProfile = {
-      name: String(idPayload.name ?? ""),
-      email: String(idPayload.email ?? ""),
-      picture: String(idPayload.picture ?? ""),
-      given_name: idPayload.given_name ? String(idPayload.given_name) : undefined,
-      family_name: idPayload.family_name ? String(idPayload.family_name) : undefined,
-    };
-
     const data = await apiFetch<UserInfo & { token: string }>(
       "/api/v1/auth/google/verify",
       { method: "POST", body: JSON.stringify({ credential }) }
     );
 
     tokenStore.set(data.token);
-    googleProfileStore.set(profile);
     return authApi.me();
   },
 

@@ -1,6 +1,6 @@
 // Build identity of the running frontend, written to /version.json by the
 // container at startup (generate-config.sh).
-export interface VersionInfo {
+interface VersionInfo {
   commit: string;
   version: string;
   built_at: string;

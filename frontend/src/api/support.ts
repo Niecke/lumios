@@ -18,7 +18,7 @@ export interface SupportTicket {
   comments: SupportComment[];
 }
 
-export interface SupportTicketList {
+interface SupportTicketList {
   tickets: SupportTicket[];
 }
 

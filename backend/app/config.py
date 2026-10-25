@@ -10,14 +10,10 @@ GIT_HASH = os.getenv("GIT_HASH", "dev")
 APP_VERSION = os.getenv("APP_VERSION", "dev")
 BUILD_TIMESTAMP = os.getenv("BUILD_TIMESTAMP", "unknown")
 INIT_ADMIN_PASSWORD = str(os.getenv("INIT_ADMIN_PASSWORD", ""))
-INIT_ADMIN_LENGTH = int(os.getenv("INIT_ADMIN_LENGTH", 16))
-INIT_ADMIN_SPECIAL_CHARS = str(os.getenv("INIT_ADMIN_SPECIAL_CHARS", r"!@#\$%&*"))
 
 if not INIT_ADMIN_PASSWORD:
-    chars = string.ascii_letters + string.digits + INIT_ADMIN_SPECIAL_CHARS
-    INIT_ADMIN_PASSWORD = "".join(
-        secrets.choice(chars) for _ in range(INIT_ADMIN_LENGTH)
-    )
+    chars = string.ascii_letters + string.digits + r"!@#\$%&*"
+    INIT_ADMIN_PASSWORD = "".join(secrets.choice(chars) for _ in range(16))
 
 MIN_PASSWORD_LENGTH = int(os.getenv("MIN_PASSWORD_LENGTH", 8))
 

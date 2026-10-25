@@ -2,7 +2,6 @@
 Tests for authentication routes: /login, /logout, and the protected index /.
 """
 
-import pytest
 from conftest import do_login, do_logout
 
 

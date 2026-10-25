@@ -37,6 +37,10 @@ jobs:
         working-directory: backend
         run: uv sync --frozen --group test
 
+      - name: Check for unused imports and variables
+        working-directory: backend
+        run: uv run ruff check app/
+
       # Service containers cannot take a command override, so switch the
       # durability settings off at runtime (all three only need a reload).
       - name: Disable PostgreSQL durability
