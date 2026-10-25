@@ -1,4 +1,6 @@
-FROM docker.io/library/nginx:1.31.8-alpine@sha256:1ef7ca94d7879df82421428ce13bd1eaa412404953859cf7a5b6512c25e67a60
+FROM docker.io/nginx/nginx-unprivileged:1.31.8-alpine@sha256:a2545a4b4fdebc62bd6a624ba64bea3a1b8bb6e71deabe973ceec621349d5301
+
+USER root
 
 ARG GIT_SHA=dev
 ARG BUILD_TIMESTAMP=unknown
@@ -12,5 +14,9 @@ COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY src/ /usr/share/nginx/html/
 COPY substitute-env.sh /docker-entrypoint.d/40-substitute-env.sh
 RUN chmod +x /docker-entrypoint.d/40-substitute-env.sh
+
+# Unprivileged image: nginx runs as UID 101 and the chart mounts a read-only
+# root filesystem. The rendered site is assembled in /tmp/html at start.
+USER 101
 
 EXPOSE 8080

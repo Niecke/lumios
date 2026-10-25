@@ -115,7 +115,19 @@ jobs:
             --set backend.jwtSecret=ci-jwt-secret-ci-jwt-secret-ci-jwt-secret
           )
           helm lint charts/lumios "${args[@]}"
-          helm template lumios charts/lumios "${args[@]}" > /dev/null
+          helm template lumios charts/lumios "${args[@]}" > "$RUNNER_TEMP/default.yaml"
+
+          # The nginx workloads must stay non-root with a read-only root fs.
+          for comp in frontend landingpage; do
+            ok=$(yq -e "select(.kind == \"Deployment\" and .metadata.labels[\"app.kubernetes.io/component\"] == \"$comp\")
+              | (.spec.template.spec.securityContext.runAsNonRoot == true
+              and .spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem == true)" \
+              "$RUNNER_TEMP/default.yaml")
+            # The parentheses matter: without them yq reads `(select | A) and B` and
+            # prints `false` for every other document too.
+            # Not `| grep -q`: it exits early and yq dies of SIGPIPE under pipefail.
+            [ "$ok" = true ]
+          done
 
           # The environments' own values, so a Flux edit that breaks the chart
           # fails here and not on the cluster.
