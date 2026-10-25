@@ -123,6 +123,10 @@ uv sync --group test
 # for each test run
 uv run python -m pytest app/tests/ -v
 
+# Dead code checks (CI runs the ruff check; knip is run manually, it needs npx to bring its own TypeScript 6 because the project uses TypeScript 7)
+cd backend && uv run ruff check app/        # F401 / F841, configured in pyproject.toml
+cd frontend && npm run knip
+
 # Add/update a backend dependency
 cd backend
 uv add <package>==<version>          # adds to pyproject.toml + uv.lock
@@ -205,9 +209,7 @@ Also read in `backend/app/config.py`, `backend/entrypoint.py` or `services/stora
 | `BACKEND_INTERNAL_URL` | `http://localhost:8080` | URL Cloud Tasks calls back to |
 | `CLOUD_TRACE_SERVICE` | `lumios-backend` | Service name reported to tracing |
 | `CLOUD_TRACE_SERVICE_VERSION` | `$GIT_HASH` | Service version reported to tracing |
-| `INIT_ADMIN_PASSWORD` | random | Password of the seeded admin; generated if empty |
-| `INIT_ADMIN_LENGTH` | `16` | Length of the generated admin password |
-| `INIT_ADMIN_SPECIAL_CHARS` | `!@#\$%&*` | Special characters used in the generated admin password |
+| `INIT_ADMIN_PASSWORD` | random | Password of the seeded admin; generated (16 chars, letters, digits and `!@#\$%&*`) if empty |
 | `MIN_PASSWORD_LENGTH` | `8` | Minimum password length |
 | `PASSWORD_HASHER_TIME_COST` | `2` | Argon2id time cost |
 | `PASSWORD_HASHER_MEMORY_COST` | `65536` | Argon2id memory cost (KiB) |
@@ -296,7 +298,7 @@ Quota limits come solely from the subscription tier (`SUBSCRIPTION_LIMITS` in `c
 
 ### Rules
 - `deleted_at` is set when a user/library/image is soft-deleted. Hard delete runs after 1 year via `flask purge-deleted-accounts`.
-- `archived_at` on libraries is currently not set by any lifecycle job (the column exists, nothing populates it; cleanup is tracked in the dead-code issue). The GCS lifecycle rule (365d → Nearline) works on object age, not on this column.
+- `archived_at` on libraries is currently not set by any lifecycle job (the column exists, nothing populates it; the lifecycle job is tracked in issue #435). The GCS lifecycle rule (365d → Nearline) works on object age, not on this column.
 - Audit logs retain for 90 days then are purged via `flask purge-audit-logs` (IP address is personal data under GDPR).
 
 ---

@@ -10,8 +10,8 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from html import unescape
 from unittest.mock import patch
-from conftest import do_login, do_logout
-from models import db, User, Role, AgbUpdate
+from conftest import do_login
+from models import db, User, AgbUpdate
 from sqlalchemy import select
 
 
@@ -869,7 +869,6 @@ class TestAdminSystem:
         assert "boom" in html
 
     def test_dashboard_status_card(self, client, admin_user):
-        from unittest.mock import patch
         from config import GIT_HASH
 
         login_admin(client, admin_user)

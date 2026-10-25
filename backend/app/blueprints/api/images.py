@@ -10,9 +10,6 @@ from services.redis_client import cache_delete, cache_delete_pattern
 from services.images import (
     validate_upload,
     process_and_store_image,
-    ALLOWED_CONTENT_TYPES,
-    MAX_FILE_SIZE,
-    MAGIC_BYTES,
 )
 
 
@@ -167,7 +164,7 @@ def upload_image(library_id: int):
     file_data = file.read()
 
     try:
-        validate_upload(file_data, content_type, file.filename)
+        validate_upload(file_data, content_type)
     except ValueError as exc:
         msg = str(exc)
         if "Only JPEG" in msg:

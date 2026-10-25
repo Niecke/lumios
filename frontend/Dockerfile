@@ -1,5 +1,5 @@
 # ---- Stage 1: Build ----
-FROM docker.io/library/node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS builder
+FROM docker.io/library/node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS builder
 
 WORKDIR /build
 
@@ -11,7 +11,7 @@ RUN npm run build
 
 
 # ---- Stage 2: Runtime ----
-FROM docker.io/nginx/nginx-unprivileged:1.31-alpine@sha256:a2545a4b4fdebc62bd6a624ba64bea3a1b8bb6e71deabe973ceec621349d5301
+FROM docker.io/nginx/nginx-unprivileged:1.31.8-alpine@sha256:a2545a4b4fdebc62bd6a624ba64bea3a1b8bb6e71deabe973ceec621349d5301
 
 ARG GIT_SHA=dev
 ARG BUILD_TIMESTAMP=unknown

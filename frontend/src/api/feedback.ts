@@ -2,7 +2,7 @@
 
 import { tokenStore } from "./auth";
 
-export interface FeedbackResponse {
+interface FeedbackResponse {
   id: number;
   rating: number;
   body: string | null;

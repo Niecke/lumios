@@ -22,12 +22,12 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-export interface VideoInitResponse {
+interface VideoInitResponse {
   uuid: string;
   upload_url: string;
 }
 
-export interface VideoStatusResponse {
+interface VideoStatusResponse {
   uuid: string;
   processing_status: "uploading" | "processing" | "ready" | "failed";
   hevc_warning?: boolean;

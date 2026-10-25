@@ -2,9 +2,9 @@
 
 from flask import Blueprint, request, jsonify, g, current_app
 from security import require_api_auth, require_api_role
-from models import db, Library, Image, Video, VideoProcessingStatus, AuditLogType
+from models import db, Library, Video, VideoProcessingStatus, AuditLogType
 from services.audit import write_audit_log
-from sqlalchemy import select, func
+from sqlalchemy import select
 from datetime import datetime, timezone
 from services import storage
 from services.quota import check_upload_allowed

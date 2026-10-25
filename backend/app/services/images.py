@@ -53,7 +53,7 @@ _PRIVATE_EXIF_TAGS = {
 }
 
 
-def validate_upload(file_data: bytes, content_type: str, filename: str) -> None:
+def validate_upload(file_data: bytes, content_type: str) -> None:
     """Raise ValueError with a user-facing message on any rejection."""
     if content_type not in ALLOWED_CONTENT_TYPES:
         raise ValueError("Only JPEG and PNG images are allowed")

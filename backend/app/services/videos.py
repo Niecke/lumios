@@ -8,7 +8,6 @@ import re
 import subprocess
 import tempfile
 import uuid as uuid_module
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from flask import current_app
@@ -23,7 +22,6 @@ from config import (
 from models import db, Video, VideoProcessingStatus, AuditLogType
 from services.audit import write_audit_log
 from services import storage
-from services.images import _load_library_logo, _create_watermarked_preview
 from services.redis_client import cache_delete, cache_delete_pattern
 
 if TYPE_CHECKING:
@@ -151,16 +149,6 @@ def process_video(video_uuid: str) -> None:
 
     try:
         pil_frame: PilImage.Image = info["frame"]
-        logo = _load_library_logo(video.library)
-        preview_buf = _create_watermarked_preview(
-            pil_frame,
-            original_file_size=pil_frame.size[0] * pil_frame.size[1] * 3,
-            logo=logo,
-            logo_scale=video.library.watermark_scale or 0.2,
-            logo_position=video.library.watermark_position or "bottom_right",
-        )
-        if logo is not None:
-            logo.close()
 
         # Resize to THUMB_SIZE for thumbnail
         thumb_img = pil_frame.copy()

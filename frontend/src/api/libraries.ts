@@ -18,7 +18,7 @@ export interface Library {
   watermark_position: string | null;
 }
 
-export interface LibraryPage {
+interface LibraryPage {
   libraries: Library[];
   total: number;
   page: number;
