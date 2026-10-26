@@ -1,0 +1,11 @@
+# The video worker runs ffmpeg and can use a lot of memory for a while. Pods
+# without a class run at priority 0, so under memory pressure the kubelet evicts
+# this one before the backend or PostgreSQL. Never preempts a running pod.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: lumios-video
+value: -50
+preemptionPolicy: Never
+globalDefault: false
+description: Lumios video worker — evicted before the backend and the database.

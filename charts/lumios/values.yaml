@@ -125,6 +125,56 @@ landingpage:
       memory: 64Mi
 
 # ---------------------------------------------------------------------------
+# Workers — background jobs (Procrastinate on PostgreSQL), one Deployment per
+# pipeline on the backend image: `entrypoint.py worker --queue <name>`. Each has
+# its own queue, concurrency and limits, so heavy work cannot starve light work.
+#   default  short jobs; the stalled-job recovery runs here, keep it enabled
+#   video    ffmpeg thumbnail extraction, one job at a time
+#   photo    image thumbnails/previews: prepared, off until a follow-up moves them
+# priorityClassName falls back to the chart-wide one.
+# ---------------------------------------------------------------------------
+workers:
+  default:
+    enabled: true
+    replicas: 1
+    concurrency: 4
+    terminationGracePeriodSeconds: 30
+    priorityClassName: ""
+    resources:
+      requests:
+        cpu: 25m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+  video:
+    enabled: true
+    replicas: 1
+    concurrency: 1
+    # Room for the running ffmpeg job and the thumbnail upload.
+    terminationGracePeriodSeconds: 120
+    # A PriorityClass that must exist in the cluster (production:
+    # deploy/flux/prod/priorityclass.yaml), below the backend and Postgres.
+    priorityClassName: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
+  photo:
+    enabled: false
+    replicas: 1
+    concurrency: 2
+    terminationGracePeriodSeconds: 30
+    priorityClassName: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+
+# ---------------------------------------------------------------------------
 # Ingress — Traefik, with cert-manager issuing one certificate per host.
 # ---------------------------------------------------------------------------
 ingress:

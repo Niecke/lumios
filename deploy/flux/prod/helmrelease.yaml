@@ -47,6 +47,11 @@ spec:
         # Written by release.yml from a vX.Y.Z tag — a merge to main never
         # moves production. Rolling back is reverting that Deploy commit.
         tag: 0.3.0
+    workers:
+      video:
+        # Below the backend and Postgres (priority 0): under memory pressure the
+        # kubelet evicts the ffmpeg worker first.
+        priorityClassName: lumios-video
     frontend:
       # Stateless nginx: two pods so a restart or a rolling update never takes
       # the app down. Both run on the one node, so this is not node redundancy.

@@ -43,6 +43,8 @@ keeps running the previous release.
 |---|---|---|
 | `backend` | Deployment + Service `:8080` | Distroless, runs `entrypoint.py` with `RUN_MIGRATIONS=false`: waits for the database, starts Gunicorn, never migrates. 2 replicas in production, 1 in staging. |
 | `migrate` | Helm hook Job (`post-install,pre-upgrade`) | The backend image, `entrypoint.py migrate`: runs `flask db upgrade` once per release, waiting up to 2.5 minutes for PostgreSQL first. A failed upgrade is not retried; the Job has `backoffLimit: 0` and a 300 s deadline, and the HelmReleases set `timeout: 10m`. Has its own hook Secret. A failed Job fails the release, and `remediateLastFailure` rolls it back. |
+| `worker-default`, `worker-video` | one Deployment each | The backend image, `entrypoint.py worker --queue <name> --concurrency <n>`: background jobs from the Procrastinate queue in PostgreSQL. `default` (4 jobs at once, small) runs short jobs and the stalled-job recovery; `video` (one job at a time, 512Mi limit, `lumios-video` priority class in production) runs the ffmpeg thumbnail extraction. Liveness is `entrypoint.py worker-health` (database and queue schema reachable). Values: `workers.<name>` in `charts/lumios/values.yaml`. |
+| `worker-photo` | Deployment, **off** (`workers.photo.enabled: false`) | Prepared for image thumbnails and previews; switched on by the follow-up that moves them. |
 | `frontend` | Deployment + Service `:8080` | nginx; proxies `/api/` to the backend Service inside the cluster. |
 | `landingpage` | Deployment + Service `:8080` | nginx; `APP_URL` and `BACKEND_URL` are substituted at start. |
 | `postgres` | StatefulSet + Service `:5432` | One replica, PVC on `local-path`. |
@@ -255,7 +257,17 @@ flux -n lumios events --for HelmRelease/lumios                # why an upgrade f
 helm -n lumios history lumios                                 # rollback targets
 kubectl -n lumios logs deploy/lumios-backend                  # JSON lines
 kubectl -n lumios logs job/lumios-migrate                     # the last release's migration run
+kubectl -n lumios logs deploy/lumios-worker-video             # a pipeline's worker (worker-default, worker-photo)
+kubectl -n lumios exec deploy/lumios-worker-default -- /usr/bin/python3 -m procrastinate --app=worker.worker_app shell   # list/retry/cancel jobs
 ```
+
+Jobs live in PostgreSQL (`procrastinate_jobs`), so a restarted backend or worker
+loses none. A job that fails is retried with backoff; after its last attempt it
+stays in status `failed` (the dead letter) and, for a video, the video is marked
+`failed`. A job whose worker died is retried by the recovery task of the
+`default` worker within about 5 minutes. To run a failed job again, retry it from
+the shell above (`retry <job id>`). Postgres is the queue: a Postgres restart
+pauses the workers, nothing is lost.
 
 To confirm that the pods really run the new build, open `/admin/system` as an
 admin: it shows the version, commit and build time of the backend, frontend and
