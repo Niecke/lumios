@@ -1279,6 +1279,20 @@ class TestAdminWorkers:
         assert f"/admin/workers/jobs/{job_id}/retry" in row
         assert f"/admin/workers/jobs/{job_id}/discard" in row
 
+    def test_workers_page_has_no_inline_handlers(self, client, admin_user):
+        # The CSP has no 'unsafe-inline': inline handlers are blocked, so the
+        # discard confirmation is a data attribute handled by static/js/confirm.js.
+        import re
+
+        job_id = _add_job(status="failed", attempts=2)
+        login_admin(client, admin_user)
+
+        html = html_text(client.get("/admin/workers"))
+
+        assert not re.search(r"\son[a-z]+\s*=", html)
+        assert f'data-confirm="Discard job {job_id}?' in html
+        assert "js/confirm.js" in html
+
     def test_workers_page_shows_no_payload_beyond_ids(self, client, admin_user):
         from sqlalchemy import text
 

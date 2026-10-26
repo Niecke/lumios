@@ -98,7 +98,7 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-secondary btn-sm">Retry</button>
                     </form>
-                    <form method="POST" action="{{ url_for('admin.worker_job_discard', id=job.id) }}" onsubmit="return confirm('Discard job {{ job.id }}? It cannot be retried afterwards.')">
+                    <form method="POST" action="{{ url_for('admin.worker_job_discard', id=job.id) }}" data-confirm="Discard job {{ job.id }}? It cannot be retried afterwards.">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-danger btn-sm">Discard</button>
                     </form>
