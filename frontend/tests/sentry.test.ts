@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 (globalThis as any).window = { __CONFIG__: { GOOGLE_CLIENT_ID: "x", LANDING_URL: "x", APP_URL: "x" } };
 
 const { scrubString, scrubEvent, initSentry } = await import("../src/sentry.ts");
+const { config } = await import("../src/config.ts");
+const Sentry = await import("@sentry/react");
 
 const UUID = "123e4567-e89b-12d3-a456-426614174000";
 const JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl";
@@ -56,4 +58,24 @@ test("scrubEvent redacts token in request URL, breadcrumbs and contexts", () => 
 test("initSentry does nothing without a DSN", () => {
   initSentry();
   assert.equal((globalThis as any).window.sendSentryTestEvent, undefined);
+});
+
+test("initSentry configures Sentry with dataCollection privacy options when DSN is set", () => {
+  config.SENTRY_DSN = "https://key@o0.ingest.sentry.io/0";
+  try {
+    initSentry();
+    const options = Sentry.getClient()?.getOptions() as any;
+    assert.deepEqual(options.dataCollection, {
+      userInfo: false,
+      cookies: false,
+      httpHeaders: false,
+      httpBodies: [],
+      urlQueryParams: false,
+    });
+    assert.equal(options.tracesSampleRate, 0.0);
+    assert.equal(options.beforeSend, scrubEvent);
+  } finally {
+    config.SENTRY_DSN = "";
+    void Sentry.close();
+  }
 });
