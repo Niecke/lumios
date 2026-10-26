@@ -463,6 +463,8 @@ class AuditLogType(enum.Enum):
     login_frontend = "login_frontend"
     login_failed = "login_failed"
     activation_token_resent = "activation_token_resent"
+    worker_job_retried = "worker_job_retried"
+    worker_job_discarded = "worker_job_discarded"
     # Photographer actions
     library_created = "library_created"
     library_edited = "library_edited"
@@ -508,6 +510,41 @@ class JobRun(db.Model):
     status = db.Column(db.String(16), nullable=False)
     records_affected = db.Column(db.Integer(), nullable=True)
     error_message = db.Column(db.Text(), nullable=True)
+
+
+class WorkerHeartbeat(db.Model):
+    """Last sign of life of a worker pod, per pipeline (written by entrypoint.py worker)."""
+
+    __tablename__ = "worker_heartbeats"
+
+    hostname = db.Column(db.String(255), primary_key=True)
+    queue_name = db.Column(db.String(128), nullable=False, index=True)
+    started_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    last_heartbeat = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
+class WorkerJobError(db.Model):
+    """Last error line of a job run, kept beside the queue (its tables belong to Procrastinate)."""
+
+    __tablename__ = "worker_job_errors"
+
+    job_id = db.Column(db.BigInteger(), primary_key=True, autoincrement=False)
+    queue_name = db.Column(db.String(128), nullable=False)
+    task_name = db.Column(db.String(128), nullable=False)
+    error_message = db.Column(db.Text(), nullable=False)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
 
 
 class Feedback(db.Model):
