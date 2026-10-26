@@ -41,7 +41,7 @@ spec:
       # A running job gets this long to finish when the pod is stopped.
       terminationGracePeriodSeconds: {{ $worker.terminationGracePeriodSeconds }}
       securityContext:
-        # The distroless nonroot user.
+        # The image's nonroot user (uid 65532).
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532

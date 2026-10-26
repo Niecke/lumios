@@ -56,6 +56,12 @@ they are not repeated here.
 {{- define "lumios.backendEnv" -}}
 - name: APP_VERSION
   value: {{ .Values.backend.image.tag | quote }}
+- name: SENTRY_ENVIRONMENT
+  value: {{ default .Release.Namespace .Values.sentry.environment | quote }}
+- name: SENTRY_RELEASE
+  value: {{ printf "lumios-backend@%s" .Values.backend.image.tag | quote }}
+- name: SENTRY_TRACES_SAMPLE_RATE
+  value: {{ .Values.sentry.tracesSampleRate | quote }}
 - name: POSTGRES_HOST
   value: {{ include "lumios.postgresHost" . | quote }}
 - name: POSTGRES_PORT

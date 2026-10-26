@@ -126,6 +126,10 @@ def create_app(test_config=None):
     # Logging
     setup_app_logger(app)
 
+    from sentry import init_sentry
+
+    init_sentry(app)
+
     # Server-side sessions (Redis if available, filesystem fallback)
     if REDIS_URL:
         from services.redis_client import get_redis_session

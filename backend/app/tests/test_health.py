@@ -3,6 +3,11 @@ Tests for the /health endpoint.
 """
 
 import json
+import sys
+
+
+def test_python_runtime_version():
+    assert sys.version_info[:2] == (3, 14)
 
 
 class TestHealthEndpoint:

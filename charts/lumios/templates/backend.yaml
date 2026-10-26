@@ -24,6 +24,9 @@ stringData:
   {{- with .Values.backend.mail.brevoApiKey }}
   BREVO_API_KEY: {{ . | quote }}
   {{- end }}
+  {{- with .Values.sentry.backendDsn }}
+  SENTRY_DSN: {{ . | quote }}
+  {{- end }}
   {{- with .Values.backend.google.clientSecret }}
   GOOGLE_CLIENT_SECRET: {{ . | quote }}
   {{- end }}
@@ -72,7 +75,7 @@ spec:
       priorityClassName: {{ . | quote }}
       {{- end }}
       securityContext:
-        # The distroless nonroot user.
+        # UID 65532, created by useradd in backend/Dockerfile.
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532

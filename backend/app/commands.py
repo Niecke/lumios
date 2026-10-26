@@ -4,6 +4,7 @@ Run via: flask <command-name>
 """
 
 import click
+import sentry_sdk
 from datetime import datetime, timezone, timedelta
 from flask import current_app
 from flask.cli import with_appcontext
@@ -97,6 +98,8 @@ def purge_deleted_accounts() -> None:
         current_app.logger.exception(
             "purge-deleted-accounts: failed", extra={"log_type": "cleanup"}
         )
+        sentry_sdk.capture_exception(exc)
+        sentry_sdk.flush(timeout=2.0)
         db.session.rollback()
         db.session.add(
             JobRun(
@@ -143,6 +146,8 @@ def purge_audit_logs() -> None:
         current_app.logger.exception(
             "purge-audit-logs: failed", extra={"log_type": "cleanup"}
         )
+        sentry_sdk.capture_exception(exc)
+        sentry_sdk.flush(timeout=2.0)
         db.session.rollback()
         db.session.add(
             JobRun(
@@ -238,6 +243,8 @@ def apply_agb_acceptance() -> None:
         current_app.logger.exception(
             "apply-agb-acceptance: failed", extra={"log_type": "cleanup"}
         )
+        sentry_sdk.capture_exception(exc)
+        sentry_sdk.flush(timeout=2.0)
         db.session.rollback()
         db.session.add(
             JobRun(

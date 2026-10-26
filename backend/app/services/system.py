@@ -16,6 +16,7 @@ from config import (
     GIT_HASH,
     LANDINGPAGE_URL,
     S3_BUCKET,
+    SENTRY_DSN,
 )
 from models import JobRun, db
 from services import storage
@@ -63,6 +64,16 @@ def _check_redis() -> dict:
             "detail": "REDIS_URL is not set",
         }
     return _timed("Redis", r.ping)
+
+
+def _check_sentry() -> dict:
+    configured = bool(SENTRY_DSN)
+    return {
+        "name": "Sentry",
+        "status": "ok" if configured else "not_configured",
+        "ms": None,
+        "detail": "" if configured else "SENTRY_DSN is not set",
+    }
 
 
 def _check_storage() -> dict:
@@ -161,7 +172,7 @@ def get_dashboard_status() -> dict:
 
 
 def get_system_status() -> dict:
-    checks = [_check_database(), _check_redis()]
+    checks = [_check_database(), _check_redis(), _check_sentry()]
     # Storage and the remote version fetches are network-bound: run them concurrently.
     with ThreadPoolExecutor(max_workers=3) as pool:
         storage_f = pool.submit(_check_storage)

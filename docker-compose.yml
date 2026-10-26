@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: docker.io/library/postgres:18.6-alpine@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5
+    image: docker.io/library/postgres:18.6-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
     container_name: lumios-postgres
     env_file: .env
     environment:
@@ -20,7 +20,7 @@ services:
 
   postgres-test:
     profiles: ["test"]
-    image: docker.io/library/postgres:18.6-alpine@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5
+    image: docker.io/library/postgres:18.6-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
     container_name: lumios-postgres-test
     command: ["-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
     environment:
@@ -38,7 +38,7 @@ services:
       retries: 5
 
   redis:
-    image: docker.io/library/redis:8.10.2-alpine@sha256:0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0
+    image: docker.io/library/redis:8.10.2-alpine@sha256:9f8d2d789b9a1d1e3f283f979aa9cbf393373806472e1ccd460e2f9c869b833b
     container_name: lumios-redis
     restart: unless-stopped
     healthcheck:
@@ -48,7 +48,7 @@ services:
       retries: 5
 
   s3:
-    image: docker.io/versity/versitygw:v1.9.0@sha256:57b45f18ff79cc2fc28aa6eb49920abd96be9786569842b7c5f783cc8ad5a1a4
+    image: docker.io/versity/versitygw:v1.10.0@sha256:2df780de109d16491cb99c25f4c0bc9085b286e77b5b47b56121b340094e70bb
     container_name: lumios-s3
     entrypoint: ["/bin/sh", "-ec", "mkdir -p /data/buckets /data/versions && exec /usr/local/bin/docker-entrypoint.sh"]
     environment:

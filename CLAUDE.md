@@ -10,7 +10,7 @@ Domain: **lumios.niecke-it.de** (landing page), **lumios-app.niecke-it.de** (app
 
 | Layer | Technology |
 |---|---|
-| Backend API | Python 3.13, Flask 3.x, Gunicorn, Distroless container, uv (package mgmt) |
+| Backend API | Python 3.14, Flask 3.x, Gunicorn, python-slim container, uv (package mgmt) |
 | Admin UI | Flask + Jinja2 templates, integrated in backend under `/admin` |
 | Frontend SPA | React 19, TanStack Query, TanStack Router (file-based), Vite 8, TypeScript |
 | Landing page | Separate static site, deployed as its own Cloud Run service |
@@ -73,7 +73,7 @@ lumios/
 │   │   ├── worker.py         # Procrastinate app, queues (default/video/photo), tasks, health check
 │   │   ├── tracing.py        # @traced decorator for OpenTelemetry spans
 │   │   └── gunicorn_logging.conf
-│   ├── Dockerfile            # Multi-stage: builder + distroless runtime
+│   ├── Dockerfile            # Multi-stage: builder + python-slim runtime
 │   ├── entrypoint.py         # Waits for DB, runs flask db upgrade (unless RUN_MIGRATIONS=false), starts Gunicorn; `migrate` arg = migrate only; `worker --queue <name>` / `worker-health` for the job workers
 │   ├── pyproject.toml        # Dependencies (managed via uv)
 │   └── uv.lock               # Locked dependency versions
@@ -188,6 +188,10 @@ Defined and validated in `backend/app/config.py`. The app **refuses to start** i
 | `VIDEO_UPLOADS_ENABLED` | `false` | Feature gate for the video upload routes |
 | `MAX_VIDEO_FILE_SIZE` | `209715200` | Max video size in bytes (200MB) |
 | `OTEL_EXPORTER_ENDPOINT` | — | OTLP endpoint (e.g. Jaeger); tracing is enabled when set |
+| `SENTRY_DSN` | — | Sentry DSN; error tracking is off while empty |
+| `SENTRY_ENVIRONMENT` | — | Sentry environment (`lumios` / `lumios-staging`, set by the Helm chart) |
+| `SENTRY_RELEASE` | `$APP_VERSION` | Sentry release (`lumios-backend@<tag>` from the chart) |
+| `SENTRY_TRACES_SAMPLE_RATE` | `0.0` | Sentry trace sampling; 0 = errors only |
 | `BREVO_API_KEY` | — | Brevo transactional email API key |
 | `MAIL_SENDER_EMAIL` | `lumios@niecke-it.de` | Sender email address |
 | `MAIL_SENDER_NAME` | `Lumios` | Sender display name |
