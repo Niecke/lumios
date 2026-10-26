@@ -1406,6 +1406,84 @@ class TestAdminWorkers:
         assert "status-dot-error" in card
         assert "No worker is alive for default" in card
 
+    def test_verdict_warns_about_a_job_waiting_too_long(self, app):
+        from sqlalchemy import text
+
+        from services.workers import QUEUE_STALE_SECONDS, get_workers_status
+
+        job_id = _add_job(queue="default", task="recover_stalled_jobs")
+        db.session.execute(
+            text("UPDATE procrastinate_jobs SET scheduled_at = :at WHERE id = :id"),
+            {
+                "at": datetime.now(timezone.utc) - timedelta(seconds=QUEUE_STALE_SECONDS + 60),
+                "id": job_id,
+            },
+        )
+        db.session.commit()
+        _beat("default", 1)
+        _beat("video", 1)
+
+        status = get_workers_status()
+
+        assert status["pipelines"]["default"]["oldest_queued_age"] > QUEUE_STALE_SECONDS
+        assert status["verdict"] == "warning"
+        assert status["summary"] == "A job has been waiting for a long time"
+
+    def test_verdict_ignores_idle_photo_queue_without_pod(self, app):
+        from services.workers import get_workers_status
+
+        _beat("default", 1)
+        _beat("video", 1)
+
+        status = get_workers_status()
+
+        assert status["pipelines"]["photo"]["alive"] == 0
+        assert status["verdict"] == "ok"
+
+    def test_verdict_requires_pod_for_photo_queue_with_work(self, app):
+        from services.workers import get_workers_status
+
+        _add_job(queue="photo", task="process_photo")
+        _beat("default", 1)
+        _beat("video", 1)
+
+        status = get_workers_status()
+
+        assert status["verdict"] == "error"
+        assert status["summary"] == "No worker is alive for photo"
+
+    def test_worker_job_retry_fails_cleanly_on_queueing_lock_conflict(self, client, admin_user):
+        from sqlalchemy import text
+
+        from models import VideoProcessingStatus
+
+        video = _failed_video()
+        failed_id = _add_job(status="failed")
+        # A newer job for the same video holds the lock `retry_job_by_id` needs
+        db.session.execute(
+            text(
+                "UPDATE procrastinate_jobs SET queueing_lock = :l WHERE id = :id"
+            ),
+            {"l": f"video-{VIDEO_UUID}", "id": failed_id},
+        )
+        db.session.commit()
+        todo_id = _add_job(status="todo")
+        db.session.execute(
+            text("UPDATE procrastinate_jobs SET queueing_lock = :l WHERE id = :id"),
+            {"l": f"video-{VIDEO_UUID}", "id": todo_id},
+        )
+        db.session.commit()
+        login_admin(client, admin_user)
+
+        response = client.post(f"/admin/workers/jobs/{failed_id}/retry", follow_redirects=True)
+
+        assert f"Job {failed_id} could not be changed." in html_text(response)
+        assert _job_status(failed_id) == "failed"
+        assert _job_status(todo_id) == "todo"
+        db.session.refresh(video)
+        assert video.processing_status == VideoProcessingStatus.failed
+        assert _audit_entries(AuditLogType.worker_job_retried) == []
+
     def test_nav_links_to_workers(self, client, admin_user):
         login_admin(client, admin_user)
         assert 'href="/admin/workers"' in html_text(client.get("/admin/system"))
