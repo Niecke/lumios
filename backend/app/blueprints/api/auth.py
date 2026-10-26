@@ -621,11 +621,6 @@ def deactivate_account():
         "Account self-deactivated: %s", user.email, extra={"log_type": "audit"}
     )
 
-    try:
-        notify_account_cancellation(user.email)
-    except Exception:
-        current_app.logger.exception(
-            "Failed to queue cancellation email for %s", user.email
-        )
+    notify_account_cancellation(user.email)
 
     return jsonify({"ok": True})

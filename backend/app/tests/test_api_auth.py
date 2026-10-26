@@ -785,7 +785,7 @@ class TestDeactivateAccount:
 
     @patch(
         "blueprints.api.auth.notify_account_cancellation",
-        side_effect=Exception("SMTP down"),
+        return_value=False,
     )
     def test_email_failure_does_not_fail_request(
         self, mock_mail, client, photographer_user

@@ -108,11 +108,16 @@ def _send(to_email: str, subject: str, html: str) -> None:
         raise MailDeliveryError(f"Brevo request failed: {type(exc).__name__}") from exc
 
     if resp.ok:
+        # The mail is accepted: an unreadable body must never turn it into a failed job.
+        try:
+            message_id = resp.json().get("messageId", "")
+        except (ValueError, AttributeError):
+            message_id = ""
         current_app.logger.info(
             "MAIL sent: to=%s subject=%r messageId=%s",
             to_email,
             subject,
-            resp.json().get("messageId", ""),
+            message_id,
             extra={"log_type": "mail"},
         )
         return

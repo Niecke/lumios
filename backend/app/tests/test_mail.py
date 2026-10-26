@@ -84,6 +84,19 @@ def test_success_reports_nothing(app, brevo_key):
     sentry.capture_exception.assert_not_called()
 
 
+def test_success_with_non_json_body_is_not_a_failure(app, brevo_key):
+    resp = MagicMock(ok=True, status_code=202)
+    resp.json.side_effect = ValueError("not json")
+    with (
+        patch.object(mail.requests, "post", return_value=resp),
+        patch.object(mail, "sentry_sdk") as sentry,
+    ):
+        _send(app)  # must not raise, so the job is not retried
+
+    sentry.capture_message.assert_not_called()
+    sentry.capture_exception.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "status, permanent",
     [(400, True), (401, True), (404, True), (429, False), (500, False), (503, False)],
