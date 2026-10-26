@@ -10,7 +10,7 @@ Domain: **lumios.niecke-it.de** (landing page), **lumios-app.niecke-it.de** (app
 
 | Layer | Technology |
 |---|---|
-| Backend API | Python 3.13, Flask 3.x, Gunicorn, Distroless container, uv (package mgmt) |
+| Backend API | Python 3.14, Flask 3.x, Gunicorn, python-slim container, uv (package mgmt) |
 | Admin UI | Flask + Jinja2 templates, integrated in backend under `/admin` |
 | Frontend SPA | React 19, TanStack Query, TanStack Router (file-based), Vite 8, TypeScript |
 | Landing page | Separate static site, deployed as its own Cloud Run service |
@@ -72,7 +72,7 @@ lumios/
 │   │   ├── security.py       # @login_required, @require_role, @require_api_auth, @require_api_role
 │   │   ├── tracing.py        # @traced decorator for OpenTelemetry spans
 │   │   └── gunicorn_logging.conf
-│   ├── Dockerfile            # Multi-stage: builder + distroless runtime
+│   ├── Dockerfile            # Multi-stage: builder + python-slim runtime
 │   ├── entrypoint.py         # Waits for DB, runs flask db upgrade (unless RUN_MIGRATIONS=false), starts Gunicorn; `migrate` arg = migrate only
 │   ├── pyproject.toml        # Dependencies (managed via uv)
 │   └── uv.lock               # Locked dependency versions

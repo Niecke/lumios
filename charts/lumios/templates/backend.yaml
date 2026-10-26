@@ -72,7 +72,7 @@ spec:
       priorityClassName: {{ . | quote }}
       {{- end }}
       securityContext:
-        # The distroless nonroot user.
+        # UID 65532, created by useradd in backend/Dockerfile.
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532

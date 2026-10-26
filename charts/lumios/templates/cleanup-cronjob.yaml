@@ -1,8 +1,8 @@
 {{- if .Values.cleanup.enabled }}
 {{- /*
 The two retention jobs (purge-deleted-accounts, purge-audit-logs), one CronJob each so a
-failure in one does not hide the other. The backend image is distroless: there
-is no shell, so the command is the interpreter itself.
+failure in one does not hide the other. The command is the interpreter itself
+(/usr/bin/python3) rather than a shell wrapper.
 */}}
 {{- range $job := list "purge-deleted-accounts" "purge-audit-logs" }}
 ---

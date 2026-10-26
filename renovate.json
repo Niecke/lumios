@@ -20,6 +20,18 @@
   },
   "packageRules": [
     {
+      "description": "Hold Python on 3.14 (docker image and requires-python): 3.15 is not adopted by most package providers yet (wheels, base images). Patch and digest updates still flow. Remove this rule once 3.15 is widely supported.",
+      "matchPackageNames": [
+        "python",
+        "docker.io/library/python"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor"
+      ],
+      "enabled": false
+    },
+    {
       "description": "OpenTelemetry core and instrumentation packages are released in lockstep, so they must be updated together.",
       "matchPackageNames": [
         "opentelemetry-*"
