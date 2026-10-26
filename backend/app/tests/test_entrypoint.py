@@ -1,6 +1,7 @@
 import importlib.util
 import os
 import subprocess
+import types
 
 import pytest
 
@@ -141,3 +142,83 @@ def test_start_fails_when_upgrade_fails(entrypoint, monkeypatch):
         entrypoint.main()
 
     assert execv == []
+
+
+@pytest.fixture
+def fake_worker(entrypoint, monkeypatch):
+    """Stand-in for worker.py so no database or Procrastinate is needed."""
+    module = types.SimpleNamespace(
+        QUEUES=("default", "video", "photo"),
+        worker_app=types.SimpleNamespace(run_worker=lambda **kw: runs.append(kw)),
+        check_worker_health=lambda: health["code"],
+    )
+    runs = []
+    health = {"code": 0}
+    monkeypatch.setattr(entrypoint, "_import_worker", lambda: module)
+    module.runs = runs
+    module.health = health
+    return module
+
+
+def test_worker_command_waits_for_database_then_runs_worker(
+    entrypoint, calls, fake_worker, monkeypatch
+):
+    monkeypatch.setattr(
+        entrypoint.sys,
+        "argv",
+        ["entrypoint.py", "worker", "--queue", "video", "--concurrency", "2"],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        entrypoint.main()
+
+    assert exc.value.code == 0
+    assert calls["run"] == [["db", "current"]]
+    assert fake_worker.runs == [{"queues": ["video"], "concurrency": 2}]
+    assert calls["execv"] == []
+
+
+def test_worker_command_defaults_to_one_job_at_a_time(
+    entrypoint, calls, fake_worker, monkeypatch
+):
+    monkeypatch.setattr(entrypoint.sys, "argv", ["entrypoint.py", "worker", "--queue", "photo"])
+
+    with pytest.raises(SystemExit):
+        entrypoint.main()
+
+    assert fake_worker.runs == [{"queues": ["photo"], "concurrency": 1}]
+
+
+def test_worker_command_rejects_unknown_queue(entrypoint, calls, fake_worker, monkeypatch):
+    monkeypatch.setattr(entrypoint.sys, "argv", ["entrypoint.py", "worker", "--queue", "mail"])
+
+    with pytest.raises(SystemExit) as exc:
+        entrypoint.main()
+
+    assert exc.value.code == 2
+    assert fake_worker.runs == []
+    assert calls["run"] == []
+
+
+def test_worker_command_requires_queue(entrypoint, calls, fake_worker, monkeypatch):
+    monkeypatch.setattr(entrypoint.sys, "argv", ["entrypoint.py", "worker"])
+
+    with pytest.raises(SystemExit) as exc:
+        entrypoint.main()
+
+    assert exc.value.code == 2
+    assert fake_worker.runs == []
+
+
+@pytest.mark.parametrize("code", [0, 1])
+def test_worker_health_command_exits_with_check_result(
+    entrypoint, calls, fake_worker, monkeypatch, code
+):
+    fake_worker.health["code"] = code
+    monkeypatch.setattr(entrypoint.sys, "argv", ["entrypoint.py", "worker-health"])
+
+    with pytest.raises(SystemExit) as exc:
+        entrypoint.main()
+
+    assert exc.value.code == code
+    assert calls["run"] == []

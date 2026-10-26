@@ -1,0 +1,297 @@
+"""Tests for the background worker: enqueue, run, retry, dead letter, isolation, health."""
+
+import asyncio
+import io
+from datetime import datetime, timezone
+from unittest.mock import patch
+
+import pytest
+from PIL import Image as PilImage
+from sqlalchemy import select, text
+
+import worker
+from models import db, Library, User, Video, VideoProcessingStatus
+from services.videos import finalize_video_upload, process_video
+
+
+VIDEO_UUID = "11111111-1111-1111-1111-111111111111"
+
+
+@pytest.fixture(autouse=True)
+def worker_uses_test_app(app, monkeypatch):
+    """Jobs run in the test app instead of building a second one."""
+    monkeypatch.setattr(worker, "_flask_app", app)
+
+
+@pytest.fixture
+def video():
+    user = User(email="photo@test.com", active=True)
+    db.session.add(user)
+    db.session.commit()
+    lib = Library(user_id=user.id, name="Lib")
+    db.session.add(lib)
+    db.session.commit()
+    vid = Video(
+        uuid=VIDEO_UUID,
+        library_id=lib.id,
+        s3_key=f"{VIDEO_UUID}.mp4",
+        original_filename="clip.mp4",
+        content_type="video/mp4",
+        size=1000,
+        processing_status=VideoProcessingStatus.uploading,
+    )
+    db.session.add(vid)
+    db.session.commit()
+    return vid
+
+
+@pytest.fixture
+def storage():
+    with patch("services.videos.storage") as st:
+        st.object_exists.return_value = True
+        st.iter_object_chunks.return_value = iter([b"fake video bytes"])
+        yield st
+
+
+@pytest.fixture
+def probe():
+    info = {
+        "frame": PilImage.new("RGB", (1280, 720), "blue"),
+        "width": 1280,
+        "height": 720,
+        "duration_ms": 4000,
+        "video_codec": "h264",
+        "audio_codec": "aac",
+        "bitrate": 1_000_000,
+        "hevc_warning": False,
+    }
+    with patch("services.videos._extract_video_info", return_value=info) as p:
+        yield p
+
+
+def _jobs():
+    rows = db.session.execute(
+        text(
+            "SELECT id, queue_name, task_name, status::text AS status, attempts, "
+            "lock, queueing_lock, args, scheduled_at FROM procrastinate_jobs ORDER BY id"
+        )
+    ).mappings()
+    return [dict(r) for r in rows]
+
+
+def _run_worker(*queues):
+    worker.worker_app.run_worker(queues=list(queues), wait=False, install_signal_handlers=False)
+    db.session.remove()
+
+
+def _make_due():
+    db.session.execute(text("UPDATE procrastinate_jobs SET scheduled_at = now() WHERE status = 'todo'"))
+    db.session.commit()
+
+
+def _reload(video):
+    """Fresh row: the worker run closes the test's session."""
+    return db.session.execute(select(Video).where(Video.uuid == VIDEO_UUID)).scalar_one()
+
+
+def _status(video):
+    return _reload(video).processing_status
+
+
+class TestEnqueue:
+    def test_finalize_defers_job_on_video_queue(self, video, storage):
+        finalize_video_upload(video)
+
+        (job,) = _jobs()
+        assert job["queue_name"] == "video"
+        assert job["task_name"] == "process_video"
+        assert job["status"] == "todo"
+        assert job["args"] == {"video_uuid": video.uuid}
+        assert job["lock"] == f"video-{video.uuid}"
+        assert job["queueing_lock"] == f"video-{video.uuid}"
+        assert _status(video) == VideoProcessingStatus.processing
+
+    def test_finalize_twice_queues_one_job(self, video, storage):
+        finalize_video_upload(video)
+        finalize_video_upload(video)
+
+        assert len(_jobs()) == 1
+
+    def test_finalize_missing_object_enqueues_nothing(self, video, storage):
+        storage.object_exists.return_value = False
+        with pytest.raises(ValueError):
+            finalize_video_upload(video)
+
+        assert _jobs() == []
+
+
+class TestExecution:
+    def test_job_processes_video_to_ready(self, video, storage, probe):
+        finalize_video_upload(video)
+
+        _run_worker("video")
+
+        assert _jobs()[0]["status"] == "succeeded"
+        video = _reload(video)
+        assert video.processing_status == VideoProcessingStatus.ready
+        assert (video.width, video.height, video.duration_ms) == (1280, 720, 4000)
+        assert video.video_codec == "h264"
+        thumb_args = storage.upload_fileobj.call_args.args
+        assert thumb_args[1] == video.storage_path("thumbs")
+        assert thumb_args[2] == "image/jpeg"
+        thumb = PilImage.open(io.BytesIO(thumb_args[0].getvalue()))
+        assert max(thumb.size) == 600
+
+    def test_rerun_of_ready_video_does_nothing(self, video, storage, probe):
+        finalize_video_upload(video)
+        _run_worker("video")
+        storage.reset_mock()
+        probe.reset_mock()
+
+        process_video(video.uuid)
+
+        storage.iter_object_chunks.assert_not_called()
+        storage.upload_fileobj.assert_not_called()
+        probe.assert_not_called()
+        assert _status(video) == VideoProcessingStatus.ready
+
+    def test_job_survives_without_worker(self, video, storage, probe):
+        """Nothing runs the job until a worker starts; it stays in the database."""
+        finalize_video_upload(video)
+
+        assert _jobs()[0]["status"] == "todo"
+        assert _status(video) == VideoProcessingStatus.processing
+
+
+class TestRetry:
+    def test_transient_failure_is_retried_with_backoff(self, video, storage, probe):
+        storage.iter_object_chunks.side_effect = OSError("storage hiccup")
+        finalize_video_upload(video)
+
+        _run_worker("video")
+
+        (job,) = _jobs()
+        assert job["status"] == "todo"
+        assert job["attempts"] == 1
+        assert (job["scheduled_at"] - datetime.now(timezone.utc)).total_seconds() > 3
+        assert _status(video) == VideoProcessingStatus.processing
+
+    def test_retry_succeeds_after_transient_failure(self, video, storage, probe):
+        storage.iter_object_chunks.side_effect = [OSError("storage hiccup"), iter([b"x"])]
+        finalize_video_upload(video)
+
+        _run_worker("video")
+        _make_due()
+        _run_worker("video")
+
+        # Procrastinate counts every finished run, the retry and the success
+        assert _jobs()[0]["status"] == "succeeded"
+        assert _jobs()[0]["attempts"] == 2
+        assert _status(video) == VideoProcessingStatus.ready
+
+    def test_exhausted_retries_end_in_failed_state(self, video, storage, probe):
+        storage.iter_object_chunks.side_effect = OSError("storage down")
+        finalize_video_upload(video)
+
+        for run in range(worker.VIDEO_MAX_RUNS):
+            assert _status(video) == VideoProcessingStatus.processing
+            _run_worker("video")
+            _make_due()
+
+        (job,) = _jobs()
+        assert job["status"] == "failed"
+        assert job["attempts"] == worker.VIDEO_MAX_RUNS
+        assert storage.iter_object_chunks.call_count == worker.VIDEO_MAX_RUNS
+        assert _status(video) == VideoProcessingStatus.failed
+
+    def test_failed_job_is_not_run_again(self, video, storage, probe):
+        storage.iter_object_chunks.side_effect = OSError("storage down")
+        finalize_video_upload(video)
+        for _ in range(worker.VIDEO_MAX_RUNS):
+            _run_worker("video")
+            _make_due()
+        calls = storage.iter_object_chunks.call_count
+
+        _run_worker("video")
+
+        assert storage.iter_object_chunks.call_count == calls
+
+
+class TestPipelineIsolation:
+    def test_default_worker_ignores_video_jobs(self, video, storage, probe):
+        finalize_video_upload(video)
+
+        _run_worker("default")
+        assert _jobs()[0]["status"] == "todo"
+        assert _status(video) == VideoProcessingStatus.processing
+
+        _run_worker("video")
+        assert _jobs()[0]["status"] == "succeeded"
+
+    def test_known_queues(self):
+        assert worker.QUEUES == ("default", "video", "photo")
+
+
+class TestHealthCheck:
+    def test_healthy_when_schema_is_there(self):
+        assert worker.check_worker_health() == 0
+
+    def test_unhealthy_when_queue_table_is_missing(self):
+        with patch.object(worker.worker_app, "check_connection", return_value=False):
+            assert worker.check_worker_health() == 1
+
+    def test_unhealthy_when_database_is_unreachable(self):
+        with patch.object(
+            worker.worker_app, "check_connection", side_effect=RuntimeError("down")
+        ):
+            assert worker.check_worker_health() == 1
+
+
+def _recover():
+    async def run():
+        async with worker.worker_app.open_async():
+            return await worker.recover_stalled_jobs_now()
+
+    handled = asyncio.run(run())
+    db.session.remove()
+    return handled
+
+
+def _kill_worker_mid_job():
+    """The state a SIGKILLed worker leaves behind: job in doing, no worker row."""
+    db.session.execute(text("UPDATE procrastinate_jobs SET status = 'doing'"))
+    db.session.commit()
+
+
+class TestStalledJobs:
+    def test_job_of_dead_worker_is_retried(self, video, storage, probe):
+        finalize_video_upload(video)
+        _kill_worker_mid_job()
+
+        assert _recover() == 1
+
+        (job,) = _jobs()
+        assert job["status"] == "todo"
+        assert job["attempts"] == 1
+        _make_due()
+        _run_worker("video")
+        assert _status(video) == VideoProcessingStatus.ready
+
+    def test_job_that_keeps_killing_workers_ends_failed(self, video, storage, probe):
+        finalize_video_upload(video)
+        for _ in range(worker.VIDEO_MAX_RUNS - 1):
+            _kill_worker_mid_job()
+            _recover()
+            _make_due()
+        _kill_worker_mid_job()
+
+        assert _recover() == 1
+
+        assert _jobs()[0]["status"] == "failed"
+        assert _status(video) == VideoProcessingStatus.failed
+
+    def test_nothing_stalled_nothing_done(self, video, storage):
+        finalize_video_upload(video)
+
+        assert _recover() == 0
+        assert _jobs()[0]["status"] == "todo"

@@ -1,4 +1,4 @@
-"""Video upload service — init presigned upload, finalize, async processing."""
+"""Video upload service — init presigned upload, finalize, processing (run by the video worker)."""
 
 from __future__ import annotations
 
@@ -10,14 +10,13 @@ import tempfile
 import uuid as uuid_module
 from typing import TYPE_CHECKING
 
-from flask import current_app
 from PIL import Image as PilImage
 
 from config import (
     ALLOWED_VIDEO_TYPES,
     MAX_VIDEO_FILE_SIZE,
     VIDEO_EXTENSIONS,
-    CLOUD_TASKS_QUEUE,
+    VIDEO_JOB_TIMEOUT_SECONDS,
 )
 from models import db, Video, VideoProcessingStatus, AuditLogType
 from services.audit import write_audit_log
@@ -90,33 +89,28 @@ def finalize_video_upload(video: "Video") -> None:
     video.processing_status = VideoProcessingStatus.processing
     db.session.commit()
 
-    if CLOUD_TASKS_QUEUE:
-        from services.cloud_tasks import enqueue_video_processing
-        enqueue_video_processing(video.uuid)
-    else:
-        import threading
-        app = current_app._get_current_object()
-        thread = threading.Thread(
-            target=_process_video_in_thread,
-            args=(app, video.uuid),
-            daemon=True,
-        )
-        thread.start()
+    # Imported here: worker.py imports this module for the job body.
+    from procrastinate.exceptions import AlreadyEnqueued
+    from worker import open_for_defer, process_video_task
 
-
-def _process_video_in_thread(app, video_uuid: str) -> None:
-    with app.app_context():
-        try:
-            process_video(video_uuid)
-        except Exception:
-            import logging
-            logging.getLogger(__name__).exception(
-                "Background video processing failed for %s", video_uuid
-            )
+    open_for_defer()
+    # queueing_lock: a second finalize cannot queue a duplicate while one is waiting.
+    # lock: jobs of one video never run concurrently.
+    try:
+        process_video_task.configure(
+            lock=f"video-{video.uuid}", queueing_lock=f"video-{video.uuid}"
+        ).defer(video_uuid=video.uuid)
+    except AlreadyEnqueued:
+        pass
 
 
 def process_video(video_uuid: str) -> None:
-    """Download video from storage, extract watermarked thumbnail, update DB row."""
+    """Download video from storage, extract the thumbnail, update the DB row.
+
+    Safe to run again: a video that is already ready is left alone. Errors
+    propagate so the worker can retry the job; marking the video failed after
+    the last attempt is the worker's job (worker.process_video_task).
+    """
     from sqlalchemy import select
 
     video = db.session.execute(
@@ -124,6 +118,9 @@ def process_video(video_uuid: str) -> None:
     ).scalar_one_or_none()
     if video is None:
         raise ValueError(f"Video {video_uuid} not found")
+
+    if video.processing_status == VideoProcessingStatus.ready:
+        return
 
     original_path = video.storage_path("originals")
     thumb_path = video.storage_path("thumbs")
@@ -138,35 +135,24 @@ def process_video(video_uuid: str) -> None:
 
         # Extract frame and probe metadata
         info = _extract_video_info(tmp_path)
-    except Exception:
-        current_app.logger.exception("Video extraction failed for %s", video_uuid)
-        video.processing_status = VideoProcessingStatus.failed
-        db.session.commit()
-        return
     finally:
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
 
-    try:
-        pil_frame: PilImage.Image = info["frame"]
+    pil_frame: PilImage.Image = info["frame"]
 
-        # Resize to THUMB_SIZE for thumbnail
-        thumb_img = pil_frame.copy()
-        thumb_img.thumbnail((THUMB_SIZE, THUMB_SIZE))
-        if thumb_img.mode != "RGB":
-            thumb_img = thumb_img.convert("RGB")
-        thumb_buf = io.BytesIO()
-        thumb_img.save(thumb_buf, format="JPEG", quality=85)
-        thumb_buf.seek(0)
-        thumb_img.close()
-        pil_frame.close()
+    # Resize to THUMB_SIZE for thumbnail
+    thumb_img = pil_frame.copy()
+    thumb_img.thumbnail((THUMB_SIZE, THUMB_SIZE))
+    if thumb_img.mode != "RGB":
+        thumb_img = thumb_img.convert("RGB")
+    thumb_buf = io.BytesIO()
+    thumb_img.save(thumb_buf, format="JPEG", quality=85)
+    thumb_buf.seek(0)
+    thumb_img.close()
+    pil_frame.close()
 
-        storage.upload_fileobj(thumb_buf, thumb_path, "image/jpeg")
-    except Exception:
-        current_app.logger.exception("Thumbnail upload failed for %s", video_uuid)
-        video.processing_status = VideoProcessingStatus.failed
-        db.session.commit()
-        return
+    storage.upload_fileobj(thumb_buf, thumb_path, "image/jpeg")
 
     video.width = info.get("width")
     video.height = info.get("height")
@@ -193,6 +179,7 @@ def _extract_video_info(tmp_path: str) -> dict:
         [ffmpeg_exe, "-i", tmp_path, "-hide_banner"],
         capture_output=True,
         text=True,
+        timeout=VIDEO_JOB_TIMEOUT_SECONDS,
     )
     stderr = info_proc.stderr
 
@@ -248,5 +235,6 @@ def _extract_frame_jpeg(ffmpeg_exe: str, tmp_path: str, seek_seconds: int) -> by
             "-loglevel", "error",
         ],
         capture_output=True,
+        timeout=VIDEO_JOB_TIMEOUT_SECONDS,
     )
     return proc.stdout if proc.stdout else b""
