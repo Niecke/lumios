@@ -70,7 +70,14 @@ export function initSentry(): void {
     dsn: config.SENTRY_DSN,
     environment: config.SENTRY_ENVIRONMENT || undefined,
     release: config.APP_VERSION ? `lumios-frontend@${config.APP_VERSION}` : undefined,
-    sendDefaultPii: false,
+    // v11 collects everything unless told otherwise; keep the v10 sendDefaultPii: false behaviour.
+    dataCollection: {
+      userInfo: false,
+      cookies: false,
+      httpHeaders: false,
+      httpBodies: [],
+      urlQueryParams: false,
+    },
     tracesSampleRate: 0.0,
     beforeSend: scrubEvent,
   });
