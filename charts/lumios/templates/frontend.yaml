@@ -63,6 +63,10 @@ spec:
             # the same in every environment.
             - name: APP_VERSION
               value: {{ .Values.frontend.image.tag | quote }}
+            - name: SENTRY_DSN
+              value: {{ .Values.sentry.frontendDsn | quote }}
+            - name: SENTRY_ENVIRONMENT
+              value: {{ default .Release.Namespace .Values.sentry.environment | quote }}
             - name: GOOGLE_CLIENT_ID
               value: {{ default .Values.backend.google.frontendClientId .Values.frontend.googleClientId | quote }}
             - name: LANDING_URL

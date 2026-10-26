@@ -4,6 +4,9 @@ interface AppConfig {
   GOOGLE_CLIENT_ID: string;
   LANDING_URL: string;
   APP_URL: string;
+  SENTRY_DSN: string;
+  SENTRY_ENVIRONMENT: string;
+  APP_VERSION: string;
 }
 
 declare global {
@@ -20,4 +23,8 @@ export const config: AppConfig = {
   LANDING_URL:
     runtime.LANDING_URL || (import.meta.env.VITE_LANDING_URL as string | undefined) || "",
   APP_URL: runtime.APP_URL || (import.meta.env.VITE_APP_URL as string | undefined) || "",
+  // Runtime only (no VITE_* override): empty SENTRY_DSN keeps Sentry off.
+  SENTRY_DSN: runtime.SENTRY_DSN ?? "",
+  SENTRY_ENVIRONMENT: runtime.SENTRY_ENVIRONMENT ?? "",
+  APP_VERSION: runtime.APP_VERSION ?? "",
 };

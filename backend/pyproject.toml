@@ -31,6 +31,7 @@ dependencies = [
     "opentelemetry-exporter-gcp-trace==1.15.0",
     "opentelemetry-exporter-otlp-proto-grpc==1.45.1",
     "opentelemetry-instrumentation-sqlalchemy==0.66b1",
+    "sentry-sdk[flask]==2.73.0",
 ]
 
 [dependency-groups]

@@ -128,6 +128,10 @@ backend:
   mail:
     brevoApiKey: ...
     adminEmail: ...
+# Optional, error tracking (see "Error tracking with Sentry")
+sentry:
+  backendDsn: https://<key>@<org>.ingest.de.sentry.io/<backend-project>
+  frontendDsn: https://<key>@<org>.ingest.de.sentry.io/<frontend-project>
 EOF
 
 kubectl -n lumios create secret generic lumios-values \
@@ -297,6 +301,60 @@ flux -n lumios reconcile helmrelease lumios
 
 Rotating `backend.jwtSecret` signs every photographer out; `backend.secretKey`
 invalidates sessions and CSRF tokens.
+
+### Error tracking with Sentry
+
+Unhandled backend exceptions, failed Brevo calls, failed cleanup CronJobs and
+frontend crashes are reported to Sentry. It is off while the DSNs are empty
+(local dev, CI), and the app then makes no network calls for it.
+
+**Setup.** Create an organisation in the EU region (`de.sentry.io`) and two
+projects, a Flask one and a React one. Put their DSNs in the `lumios-values`
+Secret of each namespace (`sentry.backendDsn`, `sentry.frontendDsn`, see
+above) and reconcile. `sentry.environment` defaults to the namespace, so events
+arrive as `lumios` or `lumios-staging`; the release is `lumios-backend@<tag>`
+and `lumios-frontend@<tag>`. The frontend DSN is public by design (it ships in
+`/config.js`); the backend DSN lives in the backend Secret. Traces are off
+(`sentry.tracesSampleRate: 0.0`), so only errors count against the free quota.
+The frontend CSP allows `*.ingest.sentry.io` and `*.ingest.de.sentry.io`.
+
+**Alert.** In Sentry, Alerts → Create Alert → Issues, condition "A new issue is
+created", action "Send a notification" by email. Do it per project.
+
+**Verify on staging.** Backend, a one-off event from inside the running pod
+(the scrubber is not applied here, the event carries no request data):
+
+```bash
+kubectl -n lumios-staging exec deploy/lumios-backend -- /usr/bin/python3 -c \
+  'import os, sentry_sdk; sentry_sdk.init(dsn=os.environ["SENTRY_DSN"], environment=os.environ["SENTRY_ENVIRONMENT"], release=os.environ["SENTRY_RELEASE"]); sentry_sdk.capture_exception(RuntimeError("Sentry test")); sentry_sdk.flush(timeout=5)'
+```
+
+Frontend: open the staging app and run `sendSentryTestEvent()` in the browser
+console. The hook only exists when `SENTRY_ENVIRONMENT` is set and is not the
+production namespace `lumios`, so it is never exposed in production.
+`/admin/system` shows whether the backend DSN is configured.
+
+**What is sent, and why this is acceptable.** Sentry SaaS in the EU region
+was chosen over self-hosting GlitchTip: nothing to run, back up or patch on the
+single node, and the SDK is the same, so moving to GlitchTip later is a DSN
+change. Privacy measures (all in code, applied before an event leaves the
+process):
+
+- `send_default_pii` is off: no user, cookie or IP collection by the SDK.
+- `Authorization`, `Cookie`, `X-Forwarded-For` and `X-Real-IP` headers and the
+  cookies are redacted; request bodies are dropped entirely, so no passwords
+  and no image or video content.
+- JWTs, email addresses and UUIDs (share links) in URLs, query strings,
+  messages, exception texts and breadcrumbs are replaced with
+  `[REDACTED_JWT]`, `[REDACTED_EMAIL]` and `[REDACTED_UUID]`.
+- A failed mail is reported with the Brevo status code only, never the
+  recipient.
+- Logged errors are not forwarded automatically (they stay breadcrumbs); only
+  explicit reports and unhandled exceptions are events.
+
+Remaining personal data is limited to stack traces and request paths. Before
+go-live, conclude the Sentry data processing agreement (EU data residency) and
+list Sentry as a processor in the privacy policy, as for Brevo and Cloudflare.
 
 ### Running a maintenance command now
 

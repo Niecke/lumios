@@ -184,6 +184,10 @@ Defined and validated in `backend/app/config.py`. The app **refuses to start** i
 | `CLOUD_TRACE_ENABLED` | `false` | Enable OpenTelemetry tracing |
 | `GOOGLE_CLOUD_PROJECT` | — | GCP project ID for Cloud Trace |
 | `OTEL_EXPORTER_ENDPOINT` | — | OTLP endpoint (e.g. Jaeger); overrides Cloud Trace |
+| `SENTRY_DSN` | — | Sentry DSN; error tracking is off while empty |
+| `SENTRY_ENVIRONMENT` | — | Sentry environment (`lumios` / `lumios-staging`, set by the Helm chart) |
+| `SENTRY_RELEASE` | `$APP_VERSION` | Sentry release (`lumios-backend@<tag>` from the chart) |
+| `SENTRY_TRACES_SAMPLE_RATE` | `0.0` | Sentry trace sampling; 0 = errors only |
 | `BREVO_API_KEY` | — | Brevo transactional email API key |
 | `MAIL_SENDER_EMAIL` | `lumios@niecke-it.de` | Sender email address |
 | `MAIL_SENDER_NAME` | `Lumios` | Sender display name |

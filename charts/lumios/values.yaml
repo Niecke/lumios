@@ -57,6 +57,15 @@ s3:
   accessKey: ""
   secretKey: ""
 
+# Error tracking. Off while the DSNs are empty. The backend DSN goes into the
+# backend Secret, the frontend DSN is public (served in /config.js).
+sentry:
+  backendDsn: ""
+  frontendDsn: ""
+  # Defaults to the release namespace (lumios / lumios-staging).
+  environment: ""
+  tracesSampleRate: 0.0
+
 backend:
   image:
     repository: ghcr.io/niecke/lumios/backend
