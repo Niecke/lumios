@@ -41,6 +41,23 @@ VIDEO_MAX_RUNS = 3
 # Procrastinate counts retries in job.attempts (0 on the first run)
 VIDEO_RETRY = RetryStrategy(max_attempts=VIDEO_MAX_RUNS - 1, wait=5, exponential_wait=2)
 
+# Total runs of a mail job, the first one included
+MAIL_MAX_RUNS = 3
+
+
+class MailRetryStrategy(RetryStrategy):
+    """Backoff for mail jobs, except when Brevo refuses the mail for good."""
+
+    def get_retry_decision(self, *, exception, job):
+        from services.mail import PermanentMailError
+
+        if isinstance(exception, PermanentMailError):
+            return None
+        return super().get_retry_decision(exception=exception, job=job)
+
+
+MAIL_RETRY = MailRetryStrategy(max_attempts=MAIL_MAX_RUNS - 1, wait=5, exponential_wait=2)
+
 worker_app = App(
     connector=PsycopgConnector(
         kwargs={
@@ -218,6 +235,140 @@ def process_video_task(context, video_uuid: str) -> None:
             raise
         finally:
             db.session.remove()
+
+
+def _run_mail_job(context, task_name: str, fn, **kwargs) -> None:
+    """Run one mail job in an app context; errors propagate so the job is retried."""
+    from models import db
+
+    with get_flask_app().app_context():
+        try:
+            fn(**kwargs)
+            clear_job_error(context.job.id)
+        except Exception as exc:
+            db.session.rollback()
+            record_job_error(
+                context.job.id, QUEUE_DEFAULT, task_name, summarize_error(exc)
+            )
+            logger.error(
+                "Mail job %s (%s) failed in run %d: %s",
+                context.job.id,
+                task_name,
+                context.job.attempts + 1,
+                type(exc).__name__,
+            )
+            raise
+        finally:
+            db.session.remove()
+
+
+def _mail_task(name: str):
+    return worker_app.task(
+        queue=QUEUE_DEFAULT, name=name, retry=MAIL_RETRY, pass_context=True
+    )
+
+
+@_mail_task("send_registration_email")
+def send_registration_email_task(context, user_email: str) -> None:
+    from services.mail import send_registration_email
+
+    _run_mail_job(
+        context, "send_registration_email", send_registration_email, user_email=user_email
+    )
+
+
+@_mail_task("send_activation_email")
+def send_activation_email_task(context, user_id: int) -> None:
+    from services.mail import send_activation_email
+
+    _run_mail_job(context, "send_activation_email", send_activation_email, user_id=user_id)
+
+
+@_mail_task("resend_activation")
+def resend_activation_task(context, email: str, ip: str) -> None:
+    from services.mail import process_resend_activation
+
+    _run_mail_job(
+        context, "resend_activation", process_resend_activation, email=email, ip=ip
+    )
+
+
+@_mail_task("send_admin_new_account_email")
+def send_admin_new_account_email_task(context, user_email: str, account_type: str) -> None:
+    from services.mail import send_admin_new_account_email
+
+    _run_mail_job(
+        context,
+        "send_admin_new_account_email",
+        send_admin_new_account_email,
+        user_email=user_email,
+        account_type=account_type,
+    )
+
+
+@_mail_task("send_account_cancellation_email")
+def send_account_cancellation_email_task(context, user_email: str) -> None:
+    from services.mail import send_account_cancellation_email
+
+    _run_mail_job(
+        context,
+        "send_account_cancellation_email",
+        send_account_cancellation_email,
+        user_email=user_email,
+    )
+
+
+@_mail_task("send_agb_change_email")
+def send_agb_change_email_task(
+    context, user_email: str, agb_version: str, summary: str
+) -> None:
+    from services.mail import send_agb_change_email
+
+    _run_mail_job(
+        context,
+        "send_agb_change_email",
+        send_agb_change_email,
+        user_email=user_email,
+        agb_version=agb_version,
+        summary=summary,
+    )
+
+
+@_mail_task("send_gallery_finished_email")
+def send_gallery_finished_email_task(
+    context,
+    photographer_email: str,
+    library_name: str,
+    library_uuid: str,
+    liked_count: int,
+) -> None:
+    from services.mail import send_gallery_finished_email
+
+    _run_mail_job(
+        context,
+        "send_gallery_finished_email",
+        send_gallery_finished_email,
+        photographer_email=photographer_email,
+        library_name=library_name,
+        library_uuid=library_uuid,
+        liked_count=liked_count,
+    )
+
+
+@_mail_task("send_new_support_ticket_email")
+def send_new_support_ticket_email_task(
+    context, ticket_id: int, subject: str, user_email: str
+) -> None:
+    from services.mail import send_new_support_ticket_email
+
+    _run_mail_job(
+        context,
+        "send_new_support_ticket_email",
+        send_new_support_ticket_email,
+        ticket_id=ticket_id,
+        subject=subject,
+        user_email=user_email,
+    )
 
 
 def _mark_video_failed(video_uuid: str) -> None:

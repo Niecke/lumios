@@ -1,5 +1,5 @@
+import re
 import secrets
-import threading
 from flask import Blueprint, current_app, request, jsonify, g, redirect
 from jwt import PyJWKClient
 import jwt
@@ -7,7 +7,6 @@ from urllib.parse import urlencode
 from main import limiter
 from config import (
     GOOGLE_FRONTEND_CLIENT_ID,
-    FRONTEND_URL,
     MAX_USERS,
     CURRENT_AGB_VERSION,
 )
@@ -17,16 +16,20 @@ from services.login_protection import get_client_ip
 from services.token import create_token
 from services.mail import (
     notify_activation_email,
+    notify_resend_activation,
     notify_account_cancellation,
     notify_admin_new_account,
 )
 from services.audit import write_audit_log
 from security import require_api_auth, require_api_role
-from models import db, User, Role, Library, Image, AuditLog, AuditLogType
+from models import db, User, Role, Library, Image, AuditLogType
 from sqlalchemy import select, func, or_
 from datetime import datetime, timedelta, timezone
 
 ACTIVATION_TOKEN_LIFETIME = timedelta(hours=72)
+
+# Loose shape check before a resend job is queued; the worker only mails real accounts
+_EMAIL_RE = re.compile(r"[^@\s]{1,64}@[^@\s]{1,255}\.[^@\s]{2,}")
 
 auth_api = Blueprint("auth_api", __name__, url_prefix="/auth")
 
@@ -403,9 +406,7 @@ def register():
 
     db.session.commit()
     cache_delete("registration:status")
-    notify_activation_email(
-        email, f"{FRONTEND_URL}/activate?token={user.activation_token}"
-    )
+    notify_activation_email(user.id)
     notify_admin_new_account(email, "E-Mail / Passwort")
     current_app.logger.info(
         "User registered: %s (local)", email, extra={"log_type": "audit"}
@@ -480,9 +481,7 @@ def google_register():
     user = _create_pending_user(email, "google", google_sub)
     db.session.commit()
     cache_delete("registration:status")
-    notify_activation_email(
-        email, f"{FRONTEND_URL}/activate?token={user.activation_token}"
-    )
+    notify_activation_email(user.id)
     notify_admin_new_account(email, "Google")
     current_app.logger.info(
         "User registered: %s (google)", email, extra={"log_type": "audit"}
@@ -542,52 +541,6 @@ def _resend_email_key() -> str:
     return f"resend_noemail:{get_client_ip()}"
 
 
-def _run_in_background(fn, *args) -> None:
-    """Run ``fn(*args)`` in a daemon thread inside an app context."""
-    app = current_app._get_current_object()
-
-    def runner():
-        with app.app_context():
-            try:
-                fn(*args)
-            except Exception:
-                current_app.logger.exception("Background resend-activation failed")
-
-    threading.Thread(target=runner, daemon=True).start()
-
-
-def _resend_activation_for_email(email: str, ip: str) -> None:
-    """Issue a fresh token and mail it, but only for a pending account.
-
-    Runs after the response was sent, so the request takes the same time for
-    pending, active and unknown addresses.
-    """
-    user = db.session.execute(
-        select(User).where(func.lower(User.email) == email, User.deleted_at.is_(None))
-    ).scalar_one_or_none()
-    if not user or not user.activation_pending or user.is_system:
-        return
-
-    user.activation_token = secrets.token_urlsafe(32)
-    user.activation_token_created_at = datetime.now(timezone.utc)
-    db.session.add(
-        AuditLog(
-            audit_type=AuditLogType.activation_token_resent,
-            ip_address=ip,
-            related_object_type="user",
-            related_object_id=str(user.id),
-        )
-    )
-    db.session.commit()
-
-    notify_activation_email(
-        user.email, f"{FRONTEND_URL}/activate?token={user.activation_token}"
-    )
-    current_app.logger.info(
-        "Activation email resent: %s", user.email, extra={"log_type": "audit"}
-    )
-
-
 @auth_api.route("/resend-activation", methods=["POST"])
 @limiter.limit("3 per hour", key_func=get_client_ip)
 @limiter.limit("3 per hour", key_func=_resend_email_key)
@@ -600,9 +553,11 @@ def resend_activation():
     data = request.get_json(silent=True) or {}
     email = data.get("email")
     if isinstance(email, str) and email.strip():
-        _run_in_background(
-            _resend_activation_for_email, email.strip().lower(), get_client_ip()
-        )
+        email = email.strip().lower()
+        if not _EMAIL_RE.fullmatch(email):
+            return jsonify({"error": "Invalid email address"}), 400
+        # No lookup here: the worker job decides, so every address takes the same path.
+        notify_resend_activation(email, get_client_ip())
         return jsonify({"ok": True}), 200
 
     token = data.get("token")
@@ -627,9 +582,7 @@ def resend_activation():
     )
     db.session.commit()
 
-    notify_activation_email(
-        user.email, f"{FRONTEND_URL}/activate?token={user.activation_token}"
-    )
+    notify_activation_email(user.id)
     current_app.logger.info(
         "Activation email resent: %s", user.email, extra={"log_type": "audit"}
     )
@@ -672,7 +625,7 @@ def deactivate_account():
         notify_account_cancellation(user.email)
     except Exception:
         current_app.logger.exception(
-            "Failed to send cancellation email to %s", user.email
+            "Failed to queue cancellation email for %s", user.email
         )
 
     return jsonify({"ok": True})

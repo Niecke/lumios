@@ -23,9 +23,12 @@ def _queues() -> tuple[str, ...]:
 
 
 def _target(args: dict | None) -> str | None:
-    """Only the id of what a job works on, never the rest of its payload."""
-    value = (args or {}).get("video_uuid")
-    return str(value) if value else None
+    """What a job works on (video, user, ticket or recipient), never the rest of its payload."""
+    args = args or {}
+    for key in ("video_uuid", "user_id", "ticket_id", "user_email", "photographer_email", "email"):
+        if args.get(key):
+            return str(args[key])
+    return None
 
 
 def _pipeline_counts(now: datetime) -> dict[str, dict]:
