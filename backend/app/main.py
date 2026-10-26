@@ -19,10 +19,8 @@ from config import (
     MAX_CONTENT_LENGTH,
     GIT_HASH,
     APP_VERSION,
-    CLOUD_TRACE_ENABLED,
-    GOOGLE_CLOUD_PROJECT,
-    CLOUD_TRACE_SERVICE,
-    CLOUD_TRACE_SERVICE_VERSION,
+    OTEL_SERVICE_NAME,
+    OTEL_SERVICE_VERSION,
     OTEL_EXPORTER_ENDPOINT,
     LANDINGPAGE_URL,
     RATELIMIT_ENABLED,
@@ -63,35 +61,29 @@ else:
 oauth = OAuth()
 
 
-def _init_cloud_trace(app: Flask) -> None:
-    """Set up OpenTelemetry tracing with Cloud Trace or OTLP (Jaeger) exporter."""
-    if not CLOUD_TRACE_ENABLED:
+def _init_tracing(app: Flask) -> None:
+    """Set up OpenTelemetry tracing with an OTLP exporter (e.g. Jaeger)."""
+    if not OTEL_EXPORTER_ENDPOINT:
         return
     from opentelemetry import trace
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
     from opentelemetry.instrumentation.flask import FlaskInstrumentor
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+        OTLPSpanExporter,
+    )
 
     resource = Resource.create(
         {
-            "service.name": CLOUD_TRACE_SERVICE,
-            "service.version": CLOUD_TRACE_SERVICE_VERSION,
+            "service.name": OTEL_SERVICE_NAME,
+            "service.version": OTEL_SERVICE_VERSION,
         }
     )
     provider = TracerProvider(resource=resource)
 
-    if OTEL_EXPORTER_ENDPOINT:
-        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
-            OTLPSpanExporter,
-        )
-
-        insecure = True if DEBUG else False
-        exporter = OTLPSpanExporter(endpoint=OTEL_EXPORTER_ENDPOINT, insecure=insecure)
-    else:
-        from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
-
-        exporter = CloudTraceSpanExporter(project_id=GOOGLE_CLOUD_PROJECT or None)
+    insecure = True if DEBUG else False
+    exporter = OTLPSpanExporter(endpoint=OTEL_EXPORTER_ENDPOINT, insecure=insecure)
 
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
@@ -105,9 +97,9 @@ def _init_cloud_trace(app: Flask) -> None:
 def create_app(test_config=None):
     app = Flask(__name__)
 
-    _init_cloud_trace(app)
+    _init_tracing(app)
     app.logger.info(
-        f"Cloud Trace: {'enabled' if CLOUD_TRACE_ENABLED else 'disabled'}",
+        f"Tracing: {'enabled' if OTEL_EXPORTER_ENDPOINT else 'disabled'}",
         extra={"log_type": "startup"},
     )
 
@@ -259,7 +251,6 @@ def create_app(test_config=None):
     from blueprints.api.libraries import libraries_api
     from blueprints.api.images import images_api
     from blueprints.api.videos import videos_api
-    from blueprints.api.videos import internal_bp
     from blueprints.api.public import public_api
     from blueprints.api.notifications import notifications_api
     from blueprints.api.support import support_api
@@ -277,9 +268,7 @@ def create_app(test_config=None):
     csrf.exempt(notifications_api)
     csrf.exempt(support_api)
     csrf.exempt(feedback_api)
-    csrf.exempt(internal_bp)
     app.register_blueprint(api)
-    app.register_blueprint(internal_bp)
 
     # Allow the landing page to call the public API cross-origin.
     # Only /api/v1/public/* is exposed; all other routes stay same-origin only.

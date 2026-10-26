@@ -1,3 +1,4 @@
+import argparse
 import inspect
 import json
 import multiprocessing
@@ -81,10 +82,48 @@ def migrate_with_retry() -> int:
     return 0
 
 
+def _import_worker():
+    # The app modules sit in the working directory (/app), not next to this script.
+    sys.path.insert(0, os.getcwd())
+    import worker
+
+    return worker
+
+
+def run_worker(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="entrypoint.py worker")
+    parser.add_argument("--queue", required=True)
+    parser.add_argument("--concurrency", type=int, default=1)
+    args = parser.parse_args(argv)
+
+    worker = _import_worker()
+    if args.queue not in worker.QUEUES:
+        _log(f"Unknown queue {args.queue!r}, expected one of {worker.QUEUES}", level="error")
+        return 2
+
+    wait_for_db()
+    _log(f"Starting worker for queue {args.queue} (concurrency {args.concurrency})...")
+    worker.worker_app.run_worker(queues=[args.queue], concurrency=args.concurrency)
+    return 0
+
+
+def worker_health() -> int:
+    code = _import_worker().check_worker_health()
+    if code != 0:
+        _log("Worker health check failed", level="error")
+    return code
+
+
 def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "migrate":
         _log("Running migrations only...")
         sys.exit(migrate_with_retry())
+
+    if len(sys.argv) > 1 and sys.argv[1] == "worker":
+        sys.exit(run_worker(sys.argv[2:]))
+
+    if len(sys.argv) > 1 and sys.argv[1] == "worker-health":
+        sys.exit(worker_health())
 
     _log("Starting Lumios Backend...")
 

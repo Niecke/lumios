@@ -3,13 +3,31 @@ from alembic.migration import MigrationContext
 from sqlalchemy import Enum, text
 
 from models import db
+from procrastinate_schema import include_object
 
 
 def test_alembic_migrations_match_metadata(app):
     """The migration history must produce exactly the schema the models describe."""
     with db.engine.connect() as conn:
-        diff = compare_metadata(MigrationContext.configure(conn), db.metadata)
+        context = MigrationContext.configure(
+            conn, opts={"include_object": include_object}
+        )
+        diff = compare_metadata(context, db.metadata)
     assert diff == []
+
+
+def test_queue_tables_exist_but_are_not_models(app):
+    """The job queue is created by the migrations and stays out of the model diff."""
+    with db.engine.connect() as conn:
+        tables = {
+            row[0]
+            for row in conn.execute(
+                text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+            )
+        }
+        unfiltered = compare_metadata(MigrationContext.configure(conn), db.metadata)
+    assert {"procrastinate_jobs", "procrastinate_schema_version"} <= tables
+    assert any(op[0] == "remove_table" for op in unfiltered)
 
 
 def test_alembic_enum_values_match_models(app):

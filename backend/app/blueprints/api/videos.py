@@ -1,4 +1,4 @@
-"""Video upload blueprint — photographer-authenticated endpoints + internal processing."""
+"""Video upload blueprint — photographer-authenticated endpoints."""
 
 from flask import Blueprint, request, jsonify, g, current_app
 from security import require_api_auth, require_api_role
@@ -9,8 +9,8 @@ from datetime import datetime, timezone
 from services import storage
 from services.quota import check_upload_allowed
 from services.redis_client import cache_delete, cache_delete_pattern
-from services.videos import validate_video_init, init_video_upload, finalize_video_upload, process_video
-from config import VIDEO_UPLOADS_ENABLED, CLOUD_TASKS_SECRET
+from services.videos import validate_video_init, init_video_upload, finalize_video_upload
+from config import VIDEO_UPLOADS_ENABLED
 
 
 videos_api = Blueprint("videos_api", __name__, url_prefix="/libraries")
@@ -178,24 +178,3 @@ def delete_video(library_id: int, video_id: int):
     cache_delete_pattern(f"public:library:{library.uuid}:*")
     cache_delete(f"user:storage:{user_id}")
     return "", 204
-
-
-# ── Internal endpoint — called by Cloud Tasks (or directly in local dev) ──────
-
-internal_bp = Blueprint("internal", __name__, url_prefix="/internal")
-
-
-@internal_bp.route("/videos/<video_uuid>/process", methods=["POST"])
-def process_video_endpoint(video_uuid: str):
-    """Cloud Tasks callback to run video thumbnail extraction."""
-    secret = request.headers.get("X-Internal-Secret", "")
-    if not CLOUD_TASKS_SECRET or secret != CLOUD_TASKS_SECRET:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    try:
-        process_video(video_uuid)
-    except Exception:
-        current_app.logger.exception("Processing failed for video=%s", video_uuid)
-        return jsonify({"error": "Processing failed"}), 500
-
-    return jsonify({"ok": True})

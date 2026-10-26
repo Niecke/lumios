@@ -39,13 +39,9 @@ VIDEO_EXTENSIONS = {
     "video/x-m4v": "m4v",
 }
 
-# Cloud Tasks (Architecture B async video processing)
-CLOUD_TASKS_QUEUE = os.getenv("CLOUD_TASKS_QUEUE", "")
-CLOUD_TASKS_LOCATION = os.getenv("CLOUD_TASKS_LOCATION", "europe-west1")
-# URL the Cloud Tasks worker calls for processing (must be reachable from GCP)
-BACKEND_INTERNAL_URL = os.getenv("BACKEND_INTERNAL_URL", "http://localhost:8080")
-# Shared secret protecting the internal processing endpoint
-CLOUD_TASKS_SECRET = os.getenv("CLOUD_TASKS_SECRET", "")
+# Background worker (Procrastinate on PostgreSQL), see worker.py
+# Upper bound for one ffmpeg call of a video job; a hung process is killed and the job retried
+VIDEO_JOB_TIMEOUT_SECONDS = int(os.getenv("VIDEO_JOB_TIMEOUT_SECONDS", "600"))
 
 # Database
 POSTGRES_USER = str(os.getenv("POSTGRES_USER", "lumios"))
@@ -106,16 +102,9 @@ S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "").strip()
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "").strip()
 S3_BUCKET = os.getenv("S3_BUCKET", "lumios")
 
-# Cloud Trace via OpenTelemetry (optional — disabled by default)
-CLOUD_TRACE_ENABLED = os.getenv("CLOUD_TRACE_ENABLED", "false").lower() in (
-    "1",
-    "true",
-    "yes",
-)
-GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "")
-CLOUD_TRACE_SERVICE = os.getenv("CLOUD_TRACE_SERVICE", "lumios-backend")
-CLOUD_TRACE_SERVICE_VERSION = os.getenv("CLOUD_TRACE_SERVICE_VERSION", GIT_HASH)
-# When set, traces are exported via OTLP to this endpoint (e.g. Jaeger) instead of Cloud Trace
+# OpenTelemetry tracing: on when an OTLP endpoint is set (e.g. Jaeger), off otherwise
+OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "lumios-backend")
+OTEL_SERVICE_VERSION = os.getenv("OTEL_SERVICE_VERSION", GIT_HASH)
 OTEL_EXPORTER_ENDPOINT = os.getenv("OTEL_EXPORTER_ENDPOINT", "")
 
 # Subscription tier limits — the only source of per-user quotas

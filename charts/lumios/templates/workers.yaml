@@ -1,0 +1,92 @@
+{{- /*
+Background workers, one Deployment per enabled pipeline (default, video, photo).
+Same image and credentials Secret as the backend, a different command. Jobs live
+in PostgreSQL, so a worker restart loses nothing: a job it was running is picked
+up again by the recovery task of the default worker (backend/app/worker.py).
+
+Distroless: no shell, so the command is the interpreter itself. The probes ask
+the database and the queue schema, not the worker loop: a worker that cannot
+reach PostgreSQL is restarted, one that is merely busy is left alone.
+*/ -}}
+{{- $pw := required "postgres.password is required — generate one with `openssl rand -base64 24`" .Values.postgres.password }}
+{{- $secretKey := required "backend.secretKey is required — generate one with `openssl rand -hex 32`" .Values.backend.secretKey }}
+{{- $jwt := required "backend.jwtSecret is required — generate one with `openssl rand -hex 32`" .Values.backend.jwtSecret }}
+{{- range $name, $worker := .Values.workers }}
+{{- if $worker.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "lumios.fullname" $ }}-worker-{{ $name }}
+  labels:
+    {{- include "lumios.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: worker-{{ $name }}
+spec:
+  replicas: {{ $worker.replicas }}
+  selector:
+    matchLabels:
+      {{- include "lumios.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: worker-{{ $name }}
+  template:
+    metadata:
+      labels:
+        {{- include "lumios.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: worker-{{ $name }}
+      annotations:
+        checksum/credentials: {{ printf "%s|%s|%s|%s|%s|%s|%s" $pw $secretKey $jwt $.Values.s3.accessKey $.Values.s3.secretKey $.Values.backend.mail.brevoApiKey $.Values.backend.google.clientSecret | sha256sum }}
+    spec:
+      {{- with (default $.Values.priorityClassName $worker.priorityClassName) }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      # A running job gets this long to finish when the pod is stopped.
+      terminationGracePeriodSeconds: {{ $worker.terminationGracePeriodSeconds }}
+      securityContext:
+        # The image's nonroot user (uid 65532).
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          image: {{ include "lumios.image" (list "backend" $.Values.backend.image) | quote }}
+          imagePullPolicy: {{ $.Values.backend.image.pullPolicy }}
+          command:
+            - /usr/bin/python3
+            - /entrypoint.py
+            - worker
+            - --queue
+            - {{ $name | quote }}
+            - --concurrency
+            - {{ $worker.concurrency | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ include "lumios.fullname" $ }}-backend
+          env:
+            {{- include "lumios.backendEnv" $ | nindent 12 }}
+            # Migrations belong to the migrate hook Job.
+            - name: RUN_MIGRATIONS
+              value: "false"
+          # Until the schema exists (first install: the post-install Job is
+          # still running) the worker exits and Kubernetes restarts it; the
+          # startup probe gives it time before liveness takes over.
+          startupProbe:
+            exec:
+              command: ["/usr/bin/python3", "/entrypoint.py", "worker-health"]
+            periodSeconds: 10
+            timeoutSeconds: 15
+            failureThreshold: 30
+          livenessProbe:
+            exec:
+              command: ["/usr/bin/python3", "/entrypoint.py", "worker-health"]
+            periodSeconds: 60
+            timeoutSeconds: 15
+            failureThreshold: 3
+          resources:
+            {{- toYaml $worker.resources | nindent 12 }}
+{{- end }}
+{{- end }}

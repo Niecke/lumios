@@ -26,12 +26,14 @@ os.environ.setdefault("PASSWORD_HASHER_PARALLELISM", "1")
 
 # Add the app package to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "migrations"))
 
 # --- Now it is safe to import from the app ---
 import psycopg
 import pytest
 from flask_migrate import upgrade
 from psycopg import sql
+from sqlalchemy import text
 
 from main import create_app
 from models import db as _db, User, Role
@@ -122,6 +124,8 @@ def clean_db(app):
     _db.session.remove()
     for table in reversed(_db.metadata.sorted_tables):
         _db.session.execute(table.delete())
+    # The job queue is not part of the models; its events go with the jobs.
+    _db.session.execute(text("DELETE FROM procrastinate_jobs"))
     _db.session.commit()
 
 

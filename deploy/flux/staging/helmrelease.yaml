@@ -79,6 +79,23 @@ spec:
           memory: 128Mi
         limits:
           memory: 384Mi
+    # Smaller than production; priorityClassName falls back to lumios-staging.
+    workers:
+      default:
+        concurrency: 2
+        resources:
+          requests:
+            cpu: 10m
+            memory: 96Mi
+          limits:
+            memory: 192Mi
+      video:
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            memory: 384Mi
     frontend:
       image:
         tag: sha-c0601db

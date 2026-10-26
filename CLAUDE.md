@@ -17,10 +17,11 @@ Domain: **lumios.niecke-it.de** (landing page), **lumios-app.niecke-it.de** (app
 | Database | PostgreSQL 18 (Podman container on e2-small VM) |
 | Cache / Sessions | Redis 8 (Podman container on same e2-small VM) |
 | File storage | S3-compatible (Versity Gateway for local dev, GCS HMAC in production) via boto3 |
-| Image processing | Pillow — inline in Flask, no separate worker |
+| Image processing | Pillow — inline in Flask for images; videos (ffmpeg) run on the `video` worker |
+| Background jobs | Procrastinate (PostgreSQL-backed queue), worker pods on the backend image — see Background Worker |
 | Auth | Google OAuth 2.0 (photographers + admins); JWT tokens for API; UUID share links (customers) |
 | Email | Brevo (formerly Sendinblue) transactional API |
-| Observability | OpenTelemetry → Cloud Trace (prod) / Jaeger (local dev) |
+| Observability | OpenTelemetry → OTLP exporter (Jaeger locally), off unless `OTEL_EXPORTER_ENDPOINT` is set |
 | CDN / SSL / Domain | Cloudflare free plan (proxy, SSL termination, edge caching) |
 | IaC | Managed in the separate `Niecke/infrastructure` repo |
 | Local dev | Podman + podman-compose |
@@ -42,7 +43,7 @@ lumios/
 │   │   │       ├── auth.py           # /api/v1/auth — JWT login, register, OAuth
 │   │   │       ├── libraries.py      # /api/v1/libraries — CRUD, watermark mgmt
 │   │   │       ├── images.py         # /api/v1/libraries/<id>/images — upload, delete
-│   │   │       ├── videos.py         # /api/v1/libraries/<id>/videos — presigned upload, finalize; /internal/videos processing callback
+│   │   │       ├── videos.py         # /api/v1/libraries/<id>/videos — presigned upload, finalize
 │   │   │       ├── public.py         # /api/v1/public — share links, waitlist, registration status
 │   │   │       ├── notifications.py  # /api/v1/notifications — user notifications
 │   │   │       ├── support.py        # /api/v1/support — support tickets
@@ -50,7 +51,6 @@ lumios/
 │   │   ├── services/
 │   │   │   ├── audit.py      # Audit log creation helpers
 │   │   │   ├── auth.py       # Auth service logic
-│   │   │   ├── cloud_tasks.py # Google Cloud Tasks dispatch for video processing (obsolete, see Video Uploads)
 │   │   │   ├── images.py     # Pillow processing: watermarked preview + thumbnail
 │   │   │   ├── mail.py       # Brevo email sending
 │   │   │   ├── redis_client.py # Shared Redis client
@@ -58,7 +58,7 @@ lumios/
 │   │   │   ├── token.py      # JWT token generation/validation
 │   │   │   ├── videos.py     # Video validation, ffmpeg probe + thumbnail extraction
 │   │   │   └── zip_stream.py # Streaming ZIP download of a library
-│   │   ├── migrations/       # Alembic migration files
+│   │   ├── migrations/       # Alembic migration files; procrastinate_schema.py applies the job-queue schema
 │   │   ├── static/
 │   │   ├── templates/
 │   │   ├── tests/
@@ -70,10 +70,11 @@ lumios/
 │   │   ├── models.py         # SQLAlchemy models
 │   │   ├── password_handler.py # Argon2id config
 │   │   ├── security.py       # @login_required, @require_role, @require_api_auth, @require_api_role
+│   │   ├── worker.py         # Procrastinate app, queues (default/video/photo), tasks, health check
 │   │   ├── tracing.py        # @traced decorator for OpenTelemetry spans
 │   │   └── gunicorn_logging.conf
 │   ├── Dockerfile            # Multi-stage: builder + python-slim runtime
-│   ├── entrypoint.py         # Waits for DB, runs flask db upgrade (unless RUN_MIGRATIONS=false), starts Gunicorn; `migrate` arg = migrate only
+│   ├── entrypoint.py         # Waits for DB, runs flask db upgrade (unless RUN_MIGRATIONS=false), starts Gunicorn; `migrate` arg = migrate only; `worker --queue <name>` / `worker-health` for the job workers
 │   ├── pyproject.toml        # Dependencies (managed via uv)
 │   └── uv.lock               # Locked dependency versions
 ├── frontend/                 # React SPA (TanStack Router file-based routing)
@@ -91,7 +92,7 @@ lumios/
 ├── e2e/                      # Playwright end-to-end tests (run by e2e-tests.yml)
 ├── cloudflare-waf-rules.md   # Cloudflare WAF rule documentation
 ├── .github/workflows/        # CI/CD pipelines
-├── docker-compose.yml        # Local dev: backend, frontend, landingpage, postgres, redis, s3 (Versity Gateway), jaeger
+├── docker-compose.yml        # Local dev: backend, workers, frontend, landingpage, postgres, redis, s3 (Versity Gateway), jaeger
 ├── CLAUDE.md                 # This file
 └── TODO.md                   # Contains the next steps
 ```
@@ -131,6 +132,11 @@ cd frontend && npm run knip
 cd backend
 uv add <package>==<version>          # adds to pyproject.toml + uv.lock
 uv lock --upgrade-package <package>  # bump a pinned version
+
+# Background worker (see Background Worker); the Helm chart runs these in the worker pods
+python3 /entrypoint.py worker --queue video --concurrency 1   # run a pipeline's worker
+python3 /entrypoint.py worker-health                          # exit 0 when database + queue schema answer
+python -m procrastinate --app=worker.worker_app shell         # inspect/retry jobs (from app/)
 
 # CLI commands (registered in main.py)
 flask purge-deleted-accounts             # Hard-delete accounts soft-deleted > 1 year
@@ -181,9 +187,7 @@ Defined and validated in `backend/app/config.py`. The app **refuses to start** i
 | `S3_REGION` | `auto` | S3 region name passed to boto3 |
 | `VIDEO_UPLOADS_ENABLED` | `false` | Feature gate for the video upload routes |
 | `MAX_VIDEO_FILE_SIZE` | `209715200` | Max video size in bytes (200MB) |
-| `CLOUD_TRACE_ENABLED` | `false` | Enable OpenTelemetry tracing |
-| `GOOGLE_CLOUD_PROJECT` | — | GCP project ID for Cloud Trace |
-| `OTEL_EXPORTER_ENDPOINT` | — | OTLP endpoint (e.g. Jaeger); overrides Cloud Trace |
+| `OTEL_EXPORTER_ENDPOINT` | — | OTLP endpoint (e.g. Jaeger); tracing is enabled when set |
 | `SENTRY_DSN` | — | Sentry DSN; error tracking is off while empty |
 | `SENTRY_ENVIRONMENT` | — | Sentry environment (`lumios` / `lumios-staging`, set by the Helm chart) |
 | `SENTRY_RELEASE` | `$APP_VERSION` | Sentry release (`lumios-backend@<tag>` from the chart) |
@@ -208,12 +212,9 @@ Also read in `backend/app/config.py`, `backend/entrypoint.py` or `services/stora
 
 | Variable | Default | Description |
 |---|---|---|
-| `CLOUD_TASKS_QUEUE` | `""` | Cloud Tasks queue for video processing (obsolete, see Video Uploads); empty = in-process thread fallback |
-| `CLOUD_TASKS_LOCATION` | `europe-west1` | Cloud Tasks location |
-| `CLOUD_TASKS_SECRET` | `""` | Shared secret expected in the `X-Internal-Secret` header of `/internal` calls |
-| `BACKEND_INTERNAL_URL` | `http://localhost:8080` | URL Cloud Tasks calls back to |
-| `CLOUD_TRACE_SERVICE` | `lumios-backend` | Service name reported to tracing |
-| `CLOUD_TRACE_SERVICE_VERSION` | `$GIT_HASH` | Service version reported to tracing |
+| `OTEL_SERVICE_NAME` | `lumios-backend` | Service name reported to tracing |
+| `OTEL_SERVICE_VERSION` | `$GIT_HASH` | Service version reported to tracing |
+| `VIDEO_JOB_TIMEOUT_SECONDS` | `600` | Upper bound for one ffmpeg call of a video job; a hung process is killed and the job retried |
 | `INIT_ADMIN_PASSWORD` | random | Password of the seeded admin; generated (16 chars, letters, digits and `!@#\$%&*`) if empty |
 | `MIN_PASSWORD_LENGTH` | `8` | Minimum password length |
 | `PASSWORD_HASHER_TIME_COST` | `2` | Argon2id time cost |
@@ -399,15 +400,32 @@ Inline Pillow processing applies to **images only**.
 
 ### Video Uploads
 
-Videos are gated by `VIDEO_UPLOADS_ENABLED` and capped by `MAX_VIDEO_FILE_SIZE` (default 200MB). Allowed types: `video/mp4`, `video/quicktime` (MOV), `video/webm`, `video/x-m4v`. The code lives in `blueprints/api/videos.py` (photographer routes and the `/internal` callback), `blueprints/api/public.py` (customer upload routes), `services/videos.py` and `services/cloud_tasks.py`.
+Videos are gated by `VIDEO_UPLOADS_ENABLED` and capped by `MAX_VIDEO_FILE_SIZE` (default 200MB). Allowed types: `video/mp4`, `video/quicktime` (MOV), `video/webm`, `video/x-m4v`. The code lives in `blueprints/api/videos.py` (photographer routes), `blueprints/api/public.py` (customer upload routes), `services/videos.py` and `worker.py`.
 
 1. **Init** — `POST .../videos/init` validates type, size and library capacity, creates the `videos` row (`processing_status=uploading`) and returns a presigned S3 PUT URL. The file never passes through Flask.
 2. **Upload** — the client PUTs the file straight to S3.
-3. **Finalize** — `POST .../videos/<uuid>/finalize` checks the object exists in storage, sets `processing`, and dispatches processing.
-4. **Process** — Cloud Tasks calls `POST /internal/videos/<uuid>/process` with the `X-Internal-Secret` header (`CLOUD_TASKS_SECRET`). If `CLOUD_TASKS_QUEUE` is unset, a daemon thread in the same process does the work instead. ffmpeg probes metadata (duration, codecs, bitrate, `hevc_warning`) and extracts one frame; Pillow watermarks it and writes a 600px JPEG thumbnail. Status ends as `ready` or `failed`.
+3. **Finalize** — `POST .../videos/<uuid>/finalize` checks the object exists in storage, sets `processing`, and defers a `process_video` job on the `video` queue (see Background Worker).
+4. **Process** — the `video` worker runs the job: ffmpeg probes metadata (duration, codecs, bitrate, `hevc_warning`) and extracts one frame, Pillow writes a 600px JPEG thumbnail. Status ends as `ready`, or `failed` after the last retry. A video that is already `ready` is left alone, so a re-run is harmless.
 5. **Serving** — there is no preview transcode. Originals are streamed to customers; the thumbnail is the only derived file.
 
-> **Obsolete:** the Google Cloud Tasks dispatch (`services/cloud_tasks.py`, `CLOUD_TASKS_*`, `BACKEND_INTERNAL_URL`) belongs to the decommissioned GCP project and is pending replacement by a separate worker (tracked in the worker issue). That worker does not exist yet: do not describe or rely on it, and do not extend the Cloud Tasks path.
+### Background Worker
+
+Jobs are enqueued by the backend and run by separate worker pods. Queue and results live in PostgreSQL ([Procrastinate](https://procrastinate.readthedocs.io), `procrastinate_*` tables), so jobs survive a restart of the backend or a worker. No Celery, no Redis queue.
+
+| Queue | Deployment | Concurrency | Used for |
+|---|---|---|---|
+| `default` | `worker-default` | 4 | short jobs; the periodic `recover_stalled_jobs` task (every 5 min) |
+| `video` | `worker-video` | 1 | `process_video`: ffmpeg probe + thumbnail |
+| `photo` | `worker-photo`, **off by default** | 2 | prepared for image thumbnails/previews, nothing is enqueued on it yet |
+
+- **Code:** `app/worker.py` holds the `procrastinate.App` (`worker_app`), the queue names and the tasks. A task runs inside the Flask app context (`get_flask_app()`). Enqueue from a request with `process_video_task.configure(...).defer(...)` after `open_for_defer()`; import `worker` lazily inside the function, `worker.py` imports the services.
+- **Retries:** `process_video` runs at most `VIDEO_MAX_RUNS` (3) times with backoff (7 s, then 11 s). Errors are not swallowed in the service: the exception reaches the worker, which retries. After the last run the job stays in status `failed` (the dead letter, never deleted) and the video is marked `failed`.
+- **Idempotency:** `lock=queueing_lock=video-<uuid>` keeps one job per video; a job for a `ready` video returns early.
+- **Timeout:** every ffmpeg call is bounded by `VIDEO_JOB_TIMEOUT_SECONDS`; the pod gets `terminationGracePeriodSeconds` to finish a running job.
+- **Dead workers:** a job left in `doing` by a killed worker is retried by `recover_stalled_jobs` with the task's retry policy, and ends `failed` once that is used up. Keep `worker-default` enabled.
+- **Entrypoint:** `python3 /entrypoint.py worker --queue <default|video|photo> [--concurrency N]` waits for the database and runs the worker; `python3 /entrypoint.py worker-health` exits 0 when the database and the queue schema answer (the pods' liveness probe).
+- **Local dev:** `podman-compose up` starts `worker-default` and `worker-video`; inspect jobs with `podman exec -it lumios-worker-video /usr/bin/python3 -m procrastinate --app=worker.worker_app shell` (`list_jobs`, `retry <id>`).
+- **Schema and upgrades:** the queue tables are created by an Alembic revision that calls `migrations/procrastinate_schema.py::ensure_schema(bind, "<procrastinate migration version>")`. The helper records the applied version in `procrastinate_schema_version` and replays the library's SQL migrations up to that version. `procrastinate[psycopg]` is pinned exactly in `pyproject.toml`; **a bump needs a new Alembic revision** calling `ensure_schema` with the new highest version in `procrastinate/sql/migrations/` (the `pre` and `post` scripts of a version run together in the migrate Job, which is fine while no new pod runs; a later upgrade that ships `pre`/`post` scripts may need the two-step procedure of the Procrastinate docs for rolling workers). `procrastinate_*` tables are excluded from Alembic autogenerate (`include_object`).
 
 ---
 
@@ -471,8 +489,6 @@ POST /api/v1/libraries/<id>/videos/<video_uuid>/finalize     # Confirm upload, s
 GET  /api/v1/libraries/<id>/videos/<video_uuid>              # Video metadata / processing status
 DELETE /api/v1/libraries/<id>/videos/<video_id>              # Delete video
 
-# Internal (not under /api/v1, CSRF-exempt, X-Internal-Secret header)
-POST /internal/videos/<video_uuid>/process                   # Processing callback (ffmpeg + thumbnail)
 # Public (/api/v1/public, no auth)
 GET  /api/v1/public/libraries/<uuid>                # Get library + image metadata (share link)
 PATCH /api/v1/public/libraries/<uuid>/images/<image_uuid>/state  # Set customer state (liked/none)
@@ -572,13 +588,17 @@ tests/
 ├── test_health.py
 ├── test_migrations.py
 ├── test_models.py
+├── test_entrypoint.py
+├── test_procrastinate_schema.py
 ├── test_redis_client.py
 ├── test_security.py
 ├── test_storage.py
-└── test_support.py
+├── test_support.py
+├── test_tracing.py
+└── test_worker.py
 ```
 
-**Untested today:** `blueprints/api/videos.py` (including the `/internal` route), `services/videos.py`, `services/cloud_tasks.py` and `services/zip_stream.py` have no tests. Do not assume coverage there.
+**Thinly tested:** `blueprints/api/videos.py` has only quota tests (`test_api_videos.py`); the enqueue and processing path of `services/videos.py` is covered by `test_worker.py` (ffmpeg and storage are mocked). Do not assume coverage beyond that.
 
 Every new blueprint needs a corresponding `tests/test_<blueprint>.py`. Test happy path, auth enforcement, role enforcement, and input validation for every route.
 
@@ -666,7 +686,7 @@ lumios-api.niecke-it.de   → proxied CNAME → Cloud Run backend
 
 ## What NOT to do
 
-- Do not add Celery or any async worker — thumbnail generation is inline with Pillow
+- Do not add Celery or a second queue system — background jobs run on the Procrastinate workers; image thumbnail generation stays inline with Pillow until the `photo` pipeline is enabled
 - Do not use Cloud SQL or Memorystore — Postgres and Redis run on the e2-small VM
 - Do not add a GCP Load Balancer — Cloudflare handles routing and SSL
 - Do not serve original photos to customers — only preview and thumbnail URLs
@@ -675,5 +695,5 @@ lumios-api.niecke-it.de   → proxied CNAME → Cloud Run backend
 - Do not add separate `password` or `google_sub` columns — all credentials go in `auth_string`; `account_type` tells you how to interpret it
 - Do not skip CSRF protection on template state-changing routes (API routes are JWT-authenticated and CSRF-exempt)
 - Do not store personal data beyond what is listed in the schema
-- Do not write alembic migrations. These should always be generated by alembic itself
+- Do not write alembic migrations. These should always be generated by alembic itself (the Procrastinate revisions are generated empty with `flask db revision` and then call `ensure_schema`)
 - Do not use .env or docker-compose.yml file content for security or performance reports/audits

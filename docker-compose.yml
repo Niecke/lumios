@@ -126,6 +126,34 @@ services:
     #  start_period: 30s
     restart: unless-stopped
 
+  # Background workers (Procrastinate): same image as the backend, one per pipeline.
+  # The backend creates the queue tables (flask db upgrade), the workers wait for them.
+  worker-default:
+    build: backend/.
+    container_name: lumios-worker-default
+    env_file: .env
+    command: ["worker", "--queue", "default", "--concurrency", "2"]
+    environment:
+      RUN_MIGRATIONS: "false"
+    depends_on:
+      - backend
+    volumes:
+      - ./backend/app:/app:Z
+    restart: unless-stopped
+
+  worker-video:
+    build: backend/.
+    container_name: lumios-worker-video
+    env_file: .env
+    command: ["worker", "--queue", "video", "--concurrency", "1"]
+    environment:
+      RUN_MIGRATIONS: "false"
+    depends_on:
+      - backend
+    volumes:
+      - ./backend/app:/app:Z
+    restart: unless-stopped
+
   frontend:
     build:
       context: frontend/.
