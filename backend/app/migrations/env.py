@@ -1,9 +1,15 @@
 import logging
+import os
+import sys
 from logging.config import fileConfig
 
 from flask import current_app
 
 from alembic import context
+
+# The queue's tables are managed by procrastinate_schema.py, not by the models.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from procrastinate_schema import include_object  # noqa: E402
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -63,7 +69,12 @@ def run_migrations_offline():
 
     """
     url = config.get_main_option("sqlalchemy.url")
-    context.configure(url=url, target_metadata=get_metadata(), literal_binds=True)
+    context.configure(
+        url=url,
+        target_metadata=get_metadata(),
+        literal_binds=True,
+        include_object=include_object,
+    )
 
     with context.begin_transaction():
         context.run_migrations()
@@ -95,7 +106,10 @@ def run_migrations_online():
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=get_metadata(), **conf_args
+            connection=connection,
+            target_metadata=get_metadata(),
+            include_object=include_object,
+            **conf_args,
         )
 
         with context.begin_transaction():
