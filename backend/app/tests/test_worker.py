@@ -117,6 +117,25 @@ class TestEnqueue:
 
         assert len(_jobs()) == 1
 
+    def test_finalize_defer_failure_allows_retry(self, video, storage):
+        from unittest.mock import patch
+
+        import worker
+
+        with patch.object(
+            worker.process_video_task, "configure", side_effect=RuntimeError("db down")
+        ):
+            with pytest.raises(RuntimeError):
+                finalize_video_upload(video)
+
+        assert _status(video) == VideoProcessingStatus.uploading
+        assert _jobs() == []
+
+        finalize_video_upload(video)
+
+        assert _status(video) == VideoProcessingStatus.processing
+        assert len(_jobs()) == 1
+
     def test_finalize_missing_object_enqueues_nothing(self, video, storage):
         storage.object_exists.return_value = False
         with pytest.raises(ValueError):

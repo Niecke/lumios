@@ -102,6 +102,12 @@ def finalize_video_upload(video: "Video") -> None:
         ).defer(video_uuid=video.uuid)
     except AlreadyEnqueued:
         pass
+    except Exception:
+        # No job exists: go back to uploading so the client can call finalize again.
+        db.session.rollback()
+        video.processing_status = VideoProcessingStatus.uploading
+        db.session.commit()
+        raise
 
 
 def process_video(video_uuid: str) -> None:
