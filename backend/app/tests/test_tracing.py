@@ -30,11 +30,11 @@ class TestTraced:
         assert work() == "done"
 
 
-class TestInitCloudTrace:
+class TestInitTracing:
     def test_disabled_does_not_touch_tracer_provider(self, monkeypatch):
-        monkeypatch.setattr(main, "CLOUD_TRACE_ENABLED", False)
+        monkeypatch.setattr(main, "OTEL_EXPORTER_ENDPOINT", "")
         from opentelemetry import trace
 
         before = trace.get_tracer_provider()
-        main._init_cloud_trace(object())
+        main._init_tracing(object())
         assert trace.get_tracer_provider() is before
