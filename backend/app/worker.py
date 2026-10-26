@@ -11,9 +11,15 @@ worker --queue <name>), so heavy work cannot starve light work:
 
 import asyncio
 import logging
+import re
+import socket
+import threading
+
+from datetime import datetime, timedelta, timezone
 
 from procrastinate import App, PsycopgConnector, RetryStrategy
 from procrastinate.jobs import Status
+from sqlalchemy import delete
 
 from config import (
     POSTGRES_DB,
@@ -50,6 +56,13 @@ worker_app = App(
     import_paths=["worker"],
 )
 
+# Error text shown on the admin Workers page: one short line, no URLs, paths or keys
+ERROR_MAX_LENGTH = 200
+
+HEARTBEAT_INTERVAL_SECONDS = 10
+# Rows of pods that are gone for good (new pod names on every rollout) are dropped after this
+HEARTBEAT_PRUNE_SECONDS = 24 * 3600
+
 _flask_app = None
 
 
@@ -66,6 +79,106 @@ def get_flask_app():
 def open_for_defer() -> None:
     """Open the sync connection pool of this process; a no-op once open."""
     worker_app.open()
+
+
+def summarize_error(exc: BaseException) -> str:
+    """One truncated line of an exception, safe to show to admins."""
+    lines = [line for line in str(exc).splitlines() if line.strip()]
+    text = f"{type(exc).__name__}: {lines[-1].strip() if lines else ''}"
+    text = re.sub(r"\w+://\S+", "<url>", text)
+    text = " ".join("<path>" if "/" in word else word for word in text.split())
+    return text[:ERROR_MAX_LENGTH]
+
+
+def record_job_error(job_id: int, queue_name: str, task_name: str, message: str) -> None:
+    """Remember the last error of a job for the admin Workers page (runs in an app context)."""
+    from models import WorkerJobError, db
+
+    try:
+        row = db.session.get(WorkerJobError, job_id)
+        if row is None:
+            row = WorkerJobError(job_id=job_id)
+            db.session.add(row)
+        row.queue_name = queue_name
+        row.task_name = task_name
+        row.error_message = message[:ERROR_MAX_LENGTH]
+        row.created_at = datetime.now(timezone.utc)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logger.exception("Could not record the error of job %s", job_id)
+
+
+def clear_job_error(job_id: int) -> None:
+    from models import WorkerJobError, db
+
+    try:
+        db.session.execute(delete(WorkerJobError).where(WorkerJobError.job_id == job_id))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logger.exception("Could not clear the error of job %s", job_id)
+
+
+def beat_heartbeat(queue_name: str, hostname: str, started_at: datetime) -> None:
+    """Upsert this pod's row in worker_heartbeats (runs in an app context)."""
+    from models import WorkerHeartbeat, db
+
+    try:
+        row = db.session.get(WorkerHeartbeat, hostname)
+        if row is None:
+            row = WorkerHeartbeat(hostname=hostname, started_at=started_at)
+            db.session.add(row)
+        row.queue_name = queue_name
+        now = datetime.now(timezone.utc)
+        row.last_heartbeat = now
+        db.session.execute(
+            delete(WorkerHeartbeat).where(
+                WorkerHeartbeat.last_heartbeat
+                < now - timedelta(seconds=HEARTBEAT_PRUNE_SECONDS)
+            )
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logger.exception("Could not write the heartbeat of %s", hostname)
+    finally:
+        db.session.remove()
+
+
+def remove_heartbeat(hostname: str) -> None:
+    from models import WorkerHeartbeat, db
+
+    try:
+        db.session.execute(
+            delete(WorkerHeartbeat).where(WorkerHeartbeat.hostname == hostname)
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logger.exception("Could not remove the heartbeat of %s", hostname)
+    finally:
+        db.session.remove()
+
+
+def start_heartbeat(queue_name: str) -> tuple[threading.Event, threading.Thread]:
+    """Write a heartbeat for this pod every few seconds until the returned event is set."""
+    hostname = socket.gethostname()
+    started_at = datetime.now(timezone.utc)
+    stop = threading.Event()
+    flask_app = get_flask_app()
+
+    def loop() -> None:
+        with flask_app.app_context():
+            while True:
+                beat_heartbeat(queue_name, hostname, started_at)
+                if stop.wait(HEARTBEAT_INTERVAL_SECONDS):
+                    break
+            remove_heartbeat(hostname)
+
+    thread = threading.Thread(target=loop, name="worker-heartbeat", daemon=True)
+    thread.start()
+    return stop, thread
 
 
 @worker_app.task(
@@ -88,8 +201,12 @@ def process_video_task(context, video_uuid: str) -> None:
     with get_flask_app().app_context():
         try:
             process_video(video_uuid)
-        except Exception:
+            clear_job_error(context.job.id)
+        except Exception as exc:
             db.session.rollback()
+            record_job_error(
+                context.job.id, QUEUE_VIDEO, "process_video", summarize_error(exc)
+            )
             if context.job.attempts >= VIDEO_MAX_RUNS - 1:
                 video = db.session.execute(
                     select(Video).where(Video.uuid == video_uuid)
@@ -117,6 +234,16 @@ def _mark_video_failed(video_uuid: str) -> None:
         db.session.remove()
 
 
+def _record_stalled_error(job) -> None:
+    with get_flask_app().app_context():
+        record_job_error(
+            job.id, job.queue, job.task_name, "Worker died while running the job"
+        )
+        from models import db
+
+        db.session.remove()
+
+
 async def recover_stalled_jobs_now() -> int:
     """Retry or fail jobs whose worker died mid-run (killed pod, OOM, node loss).
 
@@ -137,6 +264,7 @@ async def recover_stalled_jobs_now() -> int:
             await manager.retry_job(job, retry_at=decision.retry_at)
         else:
             await manager.finish_job(job, status=Status.FAILED, delete_job=False)
+            await asyncio.to_thread(_record_stalled_error, job)
             if job.task_name == "process_video":
                 await asyncio.to_thread(_mark_video_failed, job.task_kwargs["video_uuid"])
         logger.warning("Recovered stalled job %s (%s)", job.id, job.task_name)
