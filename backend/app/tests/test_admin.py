@@ -1057,9 +1057,7 @@ class TestAdminUserResendActivation:
         user = db.session.get(User, pending_user.id)
         assert user.activation_token not in (None, "old-token")
         assert user.activation_pending is True
-        mock_mail.assert_called_once()
-        assert mock_mail.call_args.args[0] == "pending@test.com"
-        assert user.activation_token in mock_mail.call_args.args[1]
+        mock_mail.assert_called_once_with(user.id)
         (entry,) = _audit_entries(AuditLogType.activation_token_resent)
         assert entry.creator_id == admin_user.id
 
