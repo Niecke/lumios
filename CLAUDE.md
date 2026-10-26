@@ -419,7 +419,7 @@ Jobs are enqueued by the backend and run by separate worker pods. Queue and resu
 
 | Queue | Deployment | Concurrency | Used for |
 |---|---|---|---|
-| `default` | `worker-default` | 4 | short jobs; the periodic `recover_stalled_jobs` task (every 5 min) |
+| `default` | `worker-default` | 4 | mail jobs (`send_*_email`, `resend_activation`, `services/mail.py`: `notify_*` enqueues, `send_*` sends; 3 runs, a Brevo 4xx other than 429 is not retried); the periodic `recover_stalled_jobs` task (every 5 min) |
 | `video` | `worker-video` | 1 | `process_video`: ffmpeg probe + thumbnail |
 | `photo` | `worker-photo`, **off by default** | 2 | prepared for image thumbnails/previews, nothing is enqueued on it yet |
 
@@ -470,7 +470,7 @@ POST /api/v1/auth/register                          # Register new account
 POST /api/v1/auth/google/register                   # Register via Google
 POST /api/v1/auth/activate                          # Activate account with token
 POST /api/v1/auth/change_password                   # Change password
-POST /api/v1/auth/resend-activation                 # Resend activation email by {email} (always 200, no enumeration; mailed in the background; limited per client IP and per address) or legacy {token}
+POST /api/v1/auth/resend-activation                 # Resend activation email by {email} (always 200 for a well-formed address, no enumeration; a `resend_activation` job does the lookup; limited per client IP and per address, one waiting job per address) or legacy {token}
 DELETE /api/v1/auth/account                         # Delete own account (soft-delete)
 
 # Libraries (/api/v1/libraries, JWT, photographer role)
