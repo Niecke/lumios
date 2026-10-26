@@ -21,12 +21,45 @@ from config import (
 from models import db, Video, VideoProcessingStatus, AuditLogType
 from services.audit import write_audit_log
 from services import storage
-from services.redis_client import cache_delete, cache_delete_pattern
+from services.redis_client import cache_delete, cache_delete_pattern, cache_get, cache_set, get_redis
 
 if TYPE_CHECKING:
     from models import Library, User
 
 THUMB_SIZE = 600
+
+STEP_DOWNLOADING = "Downloading"
+STEP_PROBING = "Probing & thumbnail"
+STEP_UPLOADING = "Uploading thumbnail"
+STEP_SAVING = "Saving metadata"
+
+# Current step of a running video job, for the admin Workers page. Kept in Redis
+# so the web app sees what a worker pod does; without Redis it lives in this
+# process only, so the web app cannot see a worker's steps then.
+STEP_TTL_SECONDS = 3600
+_steps_in_memory: dict[str, str] = {}
+
+
+def _step_key(video_uuid: str) -> str:
+    return f"worker:video-step:{video_uuid}"
+
+
+def set_video_step(video_uuid: str, step: str) -> None:
+    if get_redis() is None:
+        _steps_in_memory[video_uuid] = step
+    else:
+        cache_set(_step_key(video_uuid), step, ttl=STEP_TTL_SECONDS)
+
+
+def clear_video_step(video_uuid: str) -> None:
+    _steps_in_memory.pop(video_uuid, None)
+    cache_delete(_step_key(video_uuid))
+
+
+def get_video_step(video_uuid: str) -> str | None:
+    if get_redis() is None:
+        return _steps_in_memory.get(video_uuid)
+    return cache_get(_step_key(video_uuid))
 
 
 def validate_video_init(content_type: str, size: int, filename: str) -> None:
@@ -128,6 +161,14 @@ def process_video(video_uuid: str) -> None:
     if video.processing_status == VideoProcessingStatus.ready:
         return
 
+    try:
+        _process_video(video)
+    finally:
+        clear_video_step(video_uuid)
+
+
+def _process_video(video: "Video") -> None:
+    set_video_step(video.uuid, STEP_DOWNLOADING)
     original_path = video.storage_path("originals")
     thumb_path = video.storage_path("thumbs")
 
@@ -140,6 +181,7 @@ def process_video(video_uuid: str) -> None:
                 tmp.write(chunk)
 
         # Extract frame and probe metadata
+        set_video_step(video.uuid, STEP_PROBING)
         info = _extract_video_info(tmp_path)
     finally:
         if os.path.exists(tmp_path):
@@ -158,8 +200,10 @@ def process_video(video_uuid: str) -> None:
     thumb_img.close()
     pil_frame.close()
 
+    set_video_step(video.uuid, STEP_UPLOADING)
     storage.upload_fileobj(thumb_buf, thumb_path, "image/jpeg")
 
+    set_video_step(video.uuid, STEP_SAVING)
     video.width = info.get("width")
     video.height = info.get("height")
     video.duration_ms = info.get("duration_ms")

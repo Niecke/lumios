@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Workers{% endblock %}
+
+{% macro age(seconds) -%}
+{%- if seconds is none -%}—
+{%- elif seconds < 60 -%}{{ seconds }} s
+{%- elif seconds < 3600 -%}{{ seconds // 60 }} min
+{%- else -%}{{ seconds // 3600 }} h {{ (seconds % 3600) // 60 }} min
+{%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+{% set dot = {'ok': 'ok', 'warning': 'warning', 'error': 'error'}[workers.verdict] %}
+<div class="page-header">
+    <h1>Workers</h1>
+    <span id="workers-verdict"><span class="status-dot status-dot-{{ dot }}"></span>{{ workers.summary }}</span>
+</div>
+
+<h2>Pipelines</h2>
+<div class="table-container">
+    <table class="table" id="pipelines-table">
+        <thead>
+            <tr>
+                <th>Pipeline</th>
+                <th>Worker pods</th>
+                <th>Queued</th>
+                <th>Running</th>
+                <th>Failed</th>
+                <th>Finished (24 h)</th>
+                <th>Oldest queued</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for name, p in workers.pipelines.items() %}
+            <tr id="pipeline-{{ name }}">
+                <td class="text-mono">{{ name }}</td>
+                <td>
+                    {% if p.last_heartbeat_age is none %}
+                    <span class="badge badge-warning">none seen</span>
+                    {% else %}
+                    <span class="badge {{ 'badge-success' if p.alive else 'badge-error' }}">{{ p.alive }} alive</span>
+                    <span class="text-muted">last heartbeat {{ age(p.last_heartbeat_age) }} ago</span>
+                    {% endif %}
+                </td>
+                <td>{{ p.queued }}</td>
+                <td>{{ p.running }}</td>
+                <td>{% if p.failed %}<span class="badge badge-error">{{ p.failed }}</span>{% else %}0{% endif %}</td>
+                <td>{{ p.finished_24h }}</td>
+                <td class="oldest-queued">{{ age(p.oldest_queued_age) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h2>Running jobs</h2>
+<div class="table-container">
+    <table class="table" id="running-jobs-table">
+        <thead>
+            <tr><th>ID</th><th>Pipeline</th><th>Task</th><th>Target</th><th>Started</th><th>Running for</th><th>Step</th></tr>
+        </thead>
+        <tbody>
+            {% for job in workers.running %}
+            <tr>
+                <td>{{ job.id }}</td>
+                <td class="text-mono">{{ job.queue }}</td>
+                <td class="text-mono">{{ job.task }}</td>
+                <td class="text-mono">{{ job.target or '—' }}</td>
+                <td>{% if job.started_at %}{{ job.started_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC{% else %}—{% endif %}</td>
+                <td>{{ age(job.elapsed) }}</td>
+                <td>{{ job.step or '—' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7"><span class="text-muted">No job is running.</span></td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h2>Failed jobs</h2>
+<div class="table-container">
+    <table class="table" id="failed-jobs-table">
+        <thead>
+            <tr><th>ID</th><th>Pipeline</th><th>Task</th><th>Target</th><th>Attempts</th><th>Failed</th><th>Error</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+            {% for job in workers.failed %}
+            <tr>
+                <td>{{ job.id }}</td>
+                <td class="text-mono">{{ job.queue }}</td>
+                <td class="text-mono">{{ job.task }}</td>
+                <td class="text-mono">{{ job.target or '—' }}</td>
+                <td>{{ job.attempts + 1 }}</td>
+                <td>{% if job.failed_at %}{{ job.failed_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC{% else %}—{% endif %}</td>
+                <td>{{ job.error or '—' }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('admin.worker_job_retry', id=job.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-secondary btn-sm">Retry</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('admin.worker_job_discard', id=job.id) }}" data-confirm="Discard job {{ job.id }}? It cannot be retried afterwards.">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-danger btn-sm">Discard</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8"><span class="text-muted">No failed jobs.</span></td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1102,3 +1102,388 @@ class TestAdminUserResendActivation:
         with patch("blueprints.admin.notify_activation_email"):
             client.post(f"/admin/user_resend_activation/{pending_user.id}")
         assert _beta_slots_used() == before
+
+
+# ---------------------------------------------------------------------------
+# GET /admin/workers, POST /admin/workers/jobs/<id>/retry|discard
+# ---------------------------------------------------------------------------
+
+VIDEO_UUID = "22222222-2222-2222-2222-222222222222"
+
+
+def _add_job(queue="video", task="process_video", status="todo", attempts=0, video_uuid=VIDEO_UUID):
+    """Insert a job; the status goes through UPDATE so the queue's triggers write the events."""
+    from sqlalchemy import text
+
+    job_id = db.session.execute(
+        text(
+            "INSERT INTO procrastinate_jobs (queue_name, task_name, args, attempts) "
+            "VALUES (:q, :t, CAST(:a AS jsonb), :n) RETURNING id"
+        ),
+        {"q": queue, "t": task, "a": json.dumps({"video_uuid": video_uuid}), "n": attempts},
+    ).scalar_one()
+    if status == "doing":
+        db.session.execute(
+            text("UPDATE procrastinate_jobs SET status = 'doing' WHERE id = :id"), {"id": job_id}
+        )
+    elif status in ("failed", "succeeded"):
+        db.session.execute(
+            text("UPDATE procrastinate_jobs SET status = 'doing' WHERE id = :id"), {"id": job_id}
+        )
+        db.session.execute(
+            text("UPDATE procrastinate_jobs SET status = CAST(:s AS procrastinate_job_status) WHERE id = :id"),
+            {"s": status, "id": job_id},
+        )
+    db.session.commit()
+    return job_id
+
+
+def _job_status(job_id):
+    from sqlalchemy import text
+
+    return db.session.execute(
+        text("SELECT status::text FROM procrastinate_jobs WHERE id = :id"), {"id": job_id}
+    ).scalar_one_or_none()
+
+
+def _beat(queue, seconds_ago, hostname=None):
+    from models import WorkerHeartbeat
+
+    db.session.add(
+        WorkerHeartbeat(
+            hostname=hostname or f"worker-{queue}-0",
+            queue_name=queue,
+            last_heartbeat=datetime.now(timezone.utc) - timedelta(seconds=seconds_ago),
+        )
+    )
+    db.session.commit()
+
+
+def _failed_video():
+    from models import Library, Video, VideoProcessingStatus
+
+    user = User(email="photo@test.com", active=True)
+    db.session.add(user)
+    db.session.commit()
+    lib = Library(user_id=user.id, name="Lib")
+    db.session.add(lib)
+    db.session.commit()
+    video = Video(
+        uuid=VIDEO_UUID,
+        library_id=lib.id,
+        s3_key=f"{VIDEO_UUID}.mp4",
+        original_filename="clip.mp4",
+        content_type="video/mp4",
+        size=1000,
+        processing_status=VideoProcessingStatus.failed,
+    )
+    db.session.add(video)
+    db.session.commit()
+    return video
+
+
+class TestAdminWorkers:
+    def test_workers_requires_login(self, client):
+        response = client.get("/admin/workers", follow_redirects=False)
+        assert response.status_code == 302
+        assert "/login" in response.location
+
+    def test_workers_requires_admin_role(self, client, regular_user):
+        login_regular(client, regular_user)
+        response = client.get("/admin/workers", follow_redirects=True)
+        assert response.status_code == 200
+        assert "Access denied." in html_text(response)
+
+    def test_workers_accessible_to_admin(self, client, admin_user):
+        login_admin(client, admin_user)
+        response = client.get("/admin/workers")
+        assert response.status_code == 200
+        html = html_text(response)
+        for queue in ("default", "video", "photo"):
+            assert f'id="pipeline-{queue}"' in html
+        assert "No job is running." in html
+        assert "No failed jobs." in html
+
+    def test_workers_renders_pipeline_overview(self, client, admin_user):
+        from sqlalchemy import text
+
+        _add_job(status="todo")
+        queued = _add_job(status="todo", video_uuid="q2")
+        db.session.execute(
+            text(
+                "UPDATE procrastinate_events SET at = now() - interval '5 minutes' "
+                "WHERE job_id = :id"
+            ),
+            {"id": queued},
+        )
+        _add_job(status="failed")
+        _add_job(status="succeeded")
+        _beat("video", 4)
+        _beat("default", 120)
+        login_admin(client, admin_user)
+
+        html = html_text(client.get("/admin/workers"))
+
+        video_row = html.split('id="pipeline-video"')[1].split("</tr>")[0]
+        assert "1 alive" in video_row
+        assert "last heartbeat 4 s ago" in video_row
+        assert "badge-error\">1</span>" in video_row  # failed
+        assert "5 min" in video_row  # oldest queued
+        default_row = html.split('id="pipeline-default"')[1].split("</tr>")[0]
+        assert "0 alive" in default_row
+        assert "2 min ago" in default_row
+        photo_row = html.split('id="pipeline-photo"')[1].split("</tr>")[0]
+        assert "none seen" in photo_row
+        assert "—" in photo_row
+
+    def test_workers_renders_running_jobs_with_current_step(self, client, admin_user):
+        from services.videos import clear_video_step, set_video_step
+
+        job_id = _add_job(status="doing")
+        set_video_step(VIDEO_UUID, "Probing & thumbnail")
+        login_admin(client, admin_user)
+        try:
+            html = html_text(client.get("/admin/workers"))
+        finally:
+            clear_video_step(VIDEO_UUID)
+
+        row = html.split('id="running-jobs-table"')[1].split("</tr>", 2)[1]
+        assert f"<td>{job_id}</td>" in row
+        assert "process_video" in row
+        assert VIDEO_UUID in row
+        assert "UTC" in row
+        assert "Probing & thumbnail" in row
+
+    def test_workers_renders_failed_jobs(self, client, admin_user):
+        from models import WorkerJobError
+
+        job_id = _add_job(status="failed", attempts=2)
+        db.session.add(
+            WorkerJobError(
+                job_id=job_id,
+                queue_name="video",
+                task_name="process_video",
+                error_message="ValueError: Could not extract video frame",
+            )
+        )
+        db.session.commit()
+        login_admin(client, admin_user)
+
+        html = html_text(client.get("/admin/workers"))
+
+        row = html.split('id="failed-jobs-table"')[1].split("</tr>", 2)[1]
+        assert f"<td>{job_id}</td>" in row
+        assert VIDEO_UUID in row
+        assert "<td>3</td>" in row  # runs: first run plus two retries
+        assert "ValueError: Could not extract video frame" in row
+        assert f"/admin/workers/jobs/{job_id}/retry" in row
+        assert f"/admin/workers/jobs/{job_id}/discard" in row
+
+    def test_workers_page_has_no_inline_handlers(self, client, admin_user):
+        # The CSP has no 'unsafe-inline': inline handlers are blocked, so the
+        # discard confirmation is a data attribute handled by static/js/confirm.js.
+        import re
+
+        job_id = _add_job(status="failed", attempts=2)
+        login_admin(client, admin_user)
+
+        html = html_text(client.get("/admin/workers"))
+
+        assert not re.search(r"\son[a-z]+\s*=", html)
+        assert f'data-confirm="Discard job {job_id}?' in html
+        assert "js/confirm.js" in html
+
+    def test_workers_page_shows_no_payload_beyond_ids(self, client, admin_user):
+        from sqlalchemy import text
+
+        job_id = _add_job(status="failed")
+        db.session.execute(
+            text("UPDATE procrastinate_jobs SET args = CAST(:a AS jsonb) WHERE id = :id"),
+            {"a": json.dumps({"video_uuid": VIDEO_UUID, "secret": "hunter2"}), "id": job_id},
+        )
+        db.session.commit()
+        login_admin(client, admin_user)
+        assert "hunter2" not in html_text(client.get("/admin/workers"))
+
+    def test_worker_job_retry_action(self, client, admin_user):
+        from models import VideoProcessingStatus, WorkerJobError
+
+        video = _failed_video()
+        job_id = _add_job(status="failed")
+        db.session.add(
+            WorkerJobError(
+                job_id=job_id, queue_name="video", task_name="process_video", error_message="x"
+            )
+        )
+        db.session.commit()
+        login_admin(client, admin_user)
+
+        response = client.post(f"/admin/workers/jobs/{job_id}/retry", follow_redirects=False)
+
+        assert response.status_code == 302
+        assert response.location.endswith("/admin/workers")
+        assert _job_status(job_id) == "todo"
+        db.session.refresh(video)
+        assert video.processing_status == VideoProcessingStatus.processing
+        assert db.session.get(WorkerJobError, job_id) is None
+        (entry,) = _audit_entries(AuditLogType.worker_job_retried)
+        assert entry.creator_id == admin_user.id
+        assert entry.related_object_type == "worker_job"
+        assert entry.related_object_id == str(job_id)
+
+    def test_worker_job_discard_action(self, client, admin_user):
+        from sqlalchemy import text
+
+        job_id = _add_job(status="failed")
+        assert db.session.execute(
+            text("SELECT count(*) FROM procrastinate_events WHERE job_id = :id"), {"id": job_id}
+        ).scalar_one()
+        login_admin(client, admin_user)
+
+        response = client.post(f"/admin/workers/jobs/{job_id}/discard", follow_redirects=False)
+
+        assert response.status_code == 302
+        assert _job_status(job_id) is None
+        assert db.session.execute(
+            text("SELECT count(*) FROM procrastinate_events WHERE job_id = :id"), {"id": job_id}
+        ).scalar_one() == 0
+        (entry,) = _audit_entries(AuditLogType.worker_job_discarded)
+        assert entry.creator_id == admin_user.id
+        assert entry.related_object_id == str(job_id)
+
+    @pytest.mark.parametrize("action", ["retry", "discard"])
+    def test_worker_job_action_ignores_jobs_that_are_not_failed(self, client, admin_user, action):
+        job_id = _add_job(status="todo")
+        login_admin(client, admin_user)
+
+        response = client.post(f"/admin/workers/jobs/{job_id}/{action}", follow_redirects=True)
+
+        assert "is not a failed job" in html_text(response)
+        assert _job_status(job_id) == "todo"
+        assert _audit_entries(AuditLogType.worker_job_retried) == []
+        assert _audit_entries(AuditLogType.worker_job_discarded) == []
+
+    @pytest.mark.parametrize("action", ["retry", "discard"])
+    def test_worker_job_actions_require_login(self, client, action):
+        job_id = _add_job(status="failed")
+        response = client.post(f"/admin/workers/jobs/{job_id}/{action}")
+        assert response.status_code == 302
+        assert "/login" in response.location
+        assert _job_status(job_id) == "failed"
+
+    @pytest.mark.parametrize("action", ["retry", "discard"])
+    def test_worker_job_actions_require_admin(self, client, regular_user, action):
+        job_id = _add_job(status="failed")
+        login_regular(client, regular_user)
+
+        response = client.post(f"/admin/workers/jobs/{job_id}/{action}", follow_redirects=True)
+
+        assert "Access denied." in html_text(response)
+        assert _job_status(job_id) == "failed"
+        assert _audit_entries(AuditLogType.worker_job_retried) == []
+        assert _audit_entries(AuditLogType.worker_job_discarded) == []
+
+    def test_dashboard_renders_worker_status_card(self, client, admin_user):
+        _add_job(status="failed")
+        _add_job(status="doing", video_uuid="b")
+        _add_job(status="todo", video_uuid="c")
+        _beat("default", 1)
+        _beat("video", 1)
+        login_admin(client, admin_user)
+
+        html = html_text(client.get("/"))
+
+        card = html.split('id="worker-status-card"')[1].split("</div>\n</div>")[0]
+        assert "status-dot-warning" in card
+        assert "Failed jobs need attention" in card
+        assert "1 running" in card and "1 queued" in card and "1 failed" in card
+        assert 'href="/admin/workers"' in card
+
+    def test_dashboard_card_is_red_without_live_workers(self, client, admin_user):
+        login_admin(client, admin_user)
+        html = html_text(client.get("/"))
+        card = html.split('id="worker-status-card"')[1].split("</div>\n</div>")[0]
+        assert "status-dot-error" in card
+        assert "No worker is alive for default" in card
+
+    def test_verdict_warns_about_a_job_waiting_too_long(self, app):
+        from sqlalchemy import text
+
+        from services.workers import QUEUE_STALE_SECONDS, get_workers_status
+
+        job_id = _add_job(queue="default", task="recover_stalled_jobs")
+        db.session.execute(
+            text("UPDATE procrastinate_jobs SET scheduled_at = :at WHERE id = :id"),
+            {
+                "at": datetime.now(timezone.utc) - timedelta(seconds=QUEUE_STALE_SECONDS + 60),
+                "id": job_id,
+            },
+        )
+        db.session.commit()
+        _beat("default", 1)
+        _beat("video", 1)
+
+        status = get_workers_status()
+
+        assert status["pipelines"]["default"]["oldest_queued_age"] > QUEUE_STALE_SECONDS
+        assert status["verdict"] == "warning"
+        assert status["summary"] == "A job has been waiting for a long time"
+
+    def test_verdict_ignores_idle_photo_queue_without_pod(self, app):
+        from services.workers import get_workers_status
+
+        _beat("default", 1)
+        _beat("video", 1)
+
+        status = get_workers_status()
+
+        assert status["pipelines"]["photo"]["alive"] == 0
+        assert status["verdict"] == "ok"
+
+    def test_verdict_requires_pod_for_photo_queue_with_work(self, app):
+        from services.workers import get_workers_status
+
+        _add_job(queue="photo", task="process_photo")
+        _beat("default", 1)
+        _beat("video", 1)
+
+        status = get_workers_status()
+
+        assert status["verdict"] == "error"
+        assert status["summary"] == "No worker is alive for photo"
+
+    def test_worker_job_retry_fails_cleanly_on_queueing_lock_conflict(self, client, admin_user):
+        from sqlalchemy import text
+
+        from models import VideoProcessingStatus
+
+        video = _failed_video()
+        failed_id = _add_job(status="failed")
+        # A newer job for the same video holds the lock `retry_job_by_id` needs
+        db.session.execute(
+            text(
+                "UPDATE procrastinate_jobs SET queueing_lock = :l WHERE id = :id"
+            ),
+            {"l": f"video-{VIDEO_UUID}", "id": failed_id},
+        )
+        db.session.commit()
+        todo_id = _add_job(status="todo")
+        db.session.execute(
+            text("UPDATE procrastinate_jobs SET queueing_lock = :l WHERE id = :id"),
+            {"l": f"video-{VIDEO_UUID}", "id": todo_id},
+        )
+        db.session.commit()
+        login_admin(client, admin_user)
+
+        response = client.post(f"/admin/workers/jobs/{failed_id}/retry", follow_redirects=True)
+
+        assert f"Job {failed_id} could not be changed." in html_text(response)
+        assert _job_status(failed_id) == "failed"
+        assert _job_status(todo_id) == "todo"
+        db.session.refresh(video)
+        assert video.processing_status == VideoProcessingStatus.failed
+        assert _audit_entries(AuditLogType.worker_job_retried) == []
+
+    def test_nav_links_to_workers(self, client, admin_user):
+        login_admin(client, admin_user)
+        assert 'href="/admin/workers"' in html_text(client.get("/admin/system"))

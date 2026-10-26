@@ -33,6 +33,12 @@
         <div class="stats-label">{{ system.backend.version }} &middot; {{ system.backend.commit[:8] }}</div>
         <div class="stats-label" style="margin-top:0.25rem"><a href="{{ url_for('admin.system_view') }}">System details</a></div>
     </div>
+    <div class="card stats-card" id="worker-status-card">
+        {% set wdot = {'ok': 'ok', 'warning': 'warning', 'error': 'error'}[worker_summary.verdict] %}
+        <div class="stats-value"><span class="status-dot status-dot-{{ wdot }}"></span>{{ worker_summary.summary }}</div>
+        <div class="stats-label">{{ worker_summary.running }} running &middot; {{ worker_summary.queued }} queued &middot; {{ worker_summary.failed }} failed</div>
+        <div class="stats-label" style="margin-top:0.25rem"><a href="{{ url_for('admin.workers_view') }}">Worker details</a></div>
+    </div>
 </div>
 
 <h2>Scheduled Jobs</h2>

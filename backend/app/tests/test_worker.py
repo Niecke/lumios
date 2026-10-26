@@ -314,3 +314,91 @@ class TestStalledJobs:
 
         assert _recover() == 0
         assert _jobs()[0]["status"] == "todo"
+
+
+class TestWorkerDashboardSupport:
+    def test_summarize_error_is_one_short_line_without_urls_or_paths(self):
+        exc = ValueError(
+            "first line\nfailed GET https://s3.example.com/bucket/photos/1/2/originals/x.mp4?sig=abc "
+            "for photos/1/2/originals/x.mp4: " + "boom " * 100
+        )
+
+        text_ = worker.summarize_error(exc)
+
+        assert "\n" not in text_
+        assert text_.startswith("ValueError: failed GET <url> for <path>")
+        assert "s3.example.com" not in text_ and "photos/" not in text_
+        assert len(text_) <= worker.ERROR_MAX_LENGTH
+
+    def test_failed_run_records_error_and_success_clears_it(self, video, storage, probe):
+        from models import WorkerJobError
+
+        job = type("J", (), {"id": 7, "attempts": 0})()
+        context = type("C", (), {"job": job})()
+        storage.iter_object_chunks.side_effect = OSError("down at https://s3.local/x")
+
+        with pytest.raises(OSError):
+            worker.process_video_task.func(context, VIDEO_UUID)
+
+        row = db.session.get(WorkerJobError, 7)
+        assert row.queue_name == "video" and row.task_name == "process_video"
+        assert row.error_message == "OSError: down at <url>"
+
+        storage.iter_object_chunks.side_effect = None
+        storage.iter_object_chunks.return_value = iter([b"fake video bytes"])
+        worker.process_video_task.func(context, VIDEO_UUID)
+        db.session.expire_all()
+        assert db.session.get(WorkerJobError, 7) is None
+
+    def test_process_video_reports_steps_and_clears_them(self, video, storage, probe):
+        from services import videos as video_service
+
+        seen = []
+        real = video_service.set_video_step
+        with patch.object(
+            video_service, "set_video_step", side_effect=lambda u, s: (seen.append(s), real(u, s))
+        ):
+            process_video(VIDEO_UUID)
+
+        assert seen == [
+            "Downloading",
+            "Probing & thumbnail",
+            "Uploading thumbnail",
+            "Saving metadata",
+        ]
+        assert video_service.get_video_step(VIDEO_UUID) is None
+
+    def test_step_is_cleared_when_processing_fails(self, video, storage, probe):
+        from services import videos as video_service
+
+        storage.upload_fileobj.side_effect = RuntimeError("nope")
+        with pytest.raises(RuntimeError):
+            process_video(VIDEO_UUID)
+        assert video_service.get_video_step(VIDEO_UUID) is None
+
+    def test_heartbeat_upserts_and_is_removed(self, app):
+        from models import WorkerHeartbeat
+
+        started = datetime.now(timezone.utc)
+        worker.beat_heartbeat("video", "pod-a", started)
+        worker.beat_heartbeat("video", "pod-a", started)
+        assert len(db.session.execute(select(WorkerHeartbeat)).scalars().all()) == 1
+
+        worker.remove_heartbeat("pod-a")
+        db.session.expire_all()
+        assert db.session.execute(select(WorkerHeartbeat)).scalars().all() == []
+
+    def test_heartbeat_prunes_pods_gone_for_good(self, app):
+        from datetime import timedelta
+
+        from models import WorkerHeartbeat
+
+        old = datetime.now(timezone.utc) - timedelta(seconds=worker.HEARTBEAT_PRUNE_SECONDS + 60)
+        db.session.add(WorkerHeartbeat(hostname="old-pod", queue_name="video", last_heartbeat=old))
+        db.session.commit()
+
+        worker.beat_heartbeat("video", "new-pod", datetime.now(timezone.utc))
+
+        db.session.expire_all()
+        hosts = {h.hostname for h in db.session.execute(select(WorkerHeartbeat)).scalars()}
+        assert hosts == {"new-pod"}

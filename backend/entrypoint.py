@@ -103,7 +103,12 @@ def run_worker(argv: list[str]) -> int:
 
     wait_for_db()
     _log(f"Starting worker for queue {args.queue} (concurrency {args.concurrency})...")
-    worker.worker_app.run_worker(queues=[args.queue], concurrency=args.concurrency)
+    stop_heartbeat, heartbeat = worker.start_heartbeat(args.queue)
+    try:
+        worker.worker_app.run_worker(queues=[args.queue], concurrency=args.concurrency)
+    finally:
+        stop_heartbeat.set()
+        heartbeat.join(timeout=5)
     return 0
 
 
