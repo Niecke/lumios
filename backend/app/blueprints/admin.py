@@ -39,6 +39,12 @@ from config import MAX_USERS, CURRENT_AGB_VERSION, FRONTEND_URL
 from security import login_required, require_role
 from services.audit import write_audit_log
 from services.system import get_dashboard_status, get_system_status
+from services.workers import (
+    discard_failed_job,
+    get_dashboard_workers_summary,
+    get_workers_status,
+    retry_failed_job,
+)
 from services.mail import (
     notify_activation_email,
     notify_agb_change,
@@ -94,6 +100,7 @@ def index():
         beta_slots_max=MAX_USERS,
         job_runs=job_runs,
         system=get_dashboard_status(),
+        worker_summary=get_dashboard_workers_summary(),
     )
 
 
@@ -102,6 +109,45 @@ def index():
 @require_role("admin")
 def system_view():
     return render_template("admin/system.html", system=get_system_status())
+
+
+@admin.route("/admin/workers")
+@login_required
+@require_role("admin")
+def workers_view():
+    return render_template("admin/workers.html", workers=get_workers_status())
+
+
+def _worker_job_action(id, action, done_message):
+    try:
+        done = action(id, current_user.id)
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Worker job %s action failed", id)
+        flash(f"Job {id} could not be changed.", "error")
+        return redirect(url_for("admin.workers_view"))
+    if done:
+        current_app.logger.info(
+            "Worker job %s %s by admin", id, done_message, extra={"log_type": "audit"}
+        )
+        flash(f"Job {id} {done_message}.", "success")
+    else:
+        flash(f"Job {id} is not a failed job.", "error")
+    return redirect(url_for("admin.workers_view"))
+
+
+@admin.route("/admin/workers/jobs/<int:id>/retry", methods=["POST"])
+@login_required
+@require_role("admin")
+def worker_job_retry(id):
+    return _worker_job_action(id, retry_failed_job, "queued again")
+
+
+@admin.route("/admin/workers/jobs/<int:id>/discard", methods=["POST"])
+@login_required
+@require_role("admin")
+def worker_job_discard(id):
+    return _worker_job_action(id, discard_failed_job, "discarded")
 
 
 @admin.route("/admin/users", methods=["GET", "POST"])

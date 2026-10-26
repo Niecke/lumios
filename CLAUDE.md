@@ -57,6 +57,7 @@ lumios/
 │   │   │   ├── storage.py    # S3-compatible storage operations
 │   │   │   ├── token.py      # JWT token generation/validation
 │   │   │   ├── videos.py     # Video validation, ffmpeg probe + thumbnail extraction
+│   │   │   ├── workers.py    # Queue/worker state for the admin Workers page, retry + discard of failed jobs
 │   │   │   └── zip_stream.py # Streaming ZIP download of a library
 │   │   ├── migrations/       # Alembic migration files; procrastinate_schema.py applies the job-queue schema
 │   │   ├── static/
@@ -258,7 +259,7 @@ User                --> AuditLog                # append-only
 - `VideoProcessingStatus`: `uploading`, `processing`, `ready`, `failed`
 - `NotificationType`: `library_marked`, `library_viewed`, `ticket_comment_added`
 - `SupportTicketStatus`: `open`, `closed`
-- `AuditLogType`: `user_created`, `user_activated`, `user_deactivated`, `user_reactivated`, `user_deleted`, `password_changed`, `password_set_by_admin`, `login_backend`, `login_frontend`, `login_failed`, `library_created`, `library_edited`, `library_deleted`, `library_finished`, `picture_uploaded`, `picture_deleted`, `picture_downloaded`, `gdpr_export`, `activation_token_resent`, `video_uploaded`, `video_deleted`, `video_downloaded`
+- `AuditLogType`: `user_created`, `user_activated`, `user_deactivated`, `user_reactivated`, `user_deleted`, `password_changed`, `password_set_by_admin`, `login_backend`, `login_frontend`, `login_failed`, `library_created`, `library_edited`, `library_deleted`, `library_finished`, `picture_uploaded`, `picture_deleted`, `picture_downloaded`, `gdpr_export`, `activation_token_resent`, `video_uploaded`, `video_deleted`, `video_downloaded`, `worker_job_retried`, `worker_job_discarded`
 
 ### Tables
 
@@ -297,6 +298,10 @@ Quota limits come solely from the subscription tier (`SUBSCRIPTION_LIMITS` in `c
 **audit_logs** — `id (UUIDBinary), audit_type (AuditLogType), ip_address, audit_date (indexed), creator_id FK, related_object_type, related_object_id`
 
 **job_runs** — `id, job_name (indexed), ran_at, status, records_affected, error_message`
+
+**worker_heartbeats** — `hostname (PK), queue_name (indexed), started_at, last_heartbeat` — one row per worker pod, written every 10 s by `entrypoint.py worker`; a pod counts as alive for 30 s. Procrastinate's own `procrastinate_workers` has a heartbeat too but no queue name, so it cannot tell the pipelines apart.
+
+**worker_job_errors** — `job_id (PK), queue_name, task_name, error_message, created_at` — last error line of a job (one truncated line, URLs and paths replaced), shown on the Workers page; removed on retry, discard or success
 
 **feedbacks** — `id, user_id FK, rating, body, admin_note, created_at, updated_at`
 
@@ -423,6 +428,7 @@ Jobs are enqueued by the backend and run by separate worker pods. Queue and resu
 - **Idempotency:** `lock=queueing_lock=video-<uuid>` keeps one job per video; a job for a `ready` video returns early.
 - **Timeout:** every ffmpeg call is bounded by `VIDEO_JOB_TIMEOUT_SECONDS`; the pod gets `terminationGracePeriodSeconds` to finish a running job.
 - **Dead workers:** a job left in `doing` by a killed worker is retried by `recover_stalled_jobs` with the task's retry policy, and ends `failed` once that is used up. Keep `worker-default` enabled.
+- **Admin page:** `/admin/workers` (`services/workers.py`) shows per pipeline the queued/running/failed/finished-24h counts, the oldest queued age and the pods' heartbeats, plus running jobs and failed jobs with **Retry** (library `retry_job_by_id`, video back to `processing`) and **Discard** (deletes the failed job; its events cascade). Both are audit logged. The current video step comes from Redis (`worker:video-step:<uuid>`); without `REDIS_URL` it is kept in the worker process only, so the web app shows no step then. A retry counts as one more attempt, so a retried video job runs once more and is not retried again by the policy.
 - **Entrypoint:** `python3 /entrypoint.py worker --queue <default|video|photo> [--concurrency N]` waits for the database and runs the worker; `python3 /entrypoint.py worker-health` exits 0 when the database and the queue schema answer (the pods' liveness probe).
 - **Local dev:** `podman-compose up` starts `worker-default` and `worker-video`; inspect jobs with `podman exec -it lumios-worker-video /usr/bin/python3 -m procrastinate --app=worker.worker_app shell` (`list_jobs`, `retry <id>`).
 - **Schema and upgrades:** the queue tables are created by an Alembic revision that calls `migrations/procrastinate_schema.py::ensure_schema(bind, "<procrastinate migration version>")`. The helper records the applied version in `procrastinate_schema_version` and replays the library's SQL migrations up to that version. `procrastinate[psycopg]` is pinned exactly in `pyproject.toml`; **a bump needs a new Alembic revision** calling `ensure_schema` with the new highest version in `procrastinate/sql/migrations/` (the `pre` and `post` scripts of a version run together in the migrate Job, which is fine while no new pod runs; a later upgrade that ships `pre`/`post` scripts may need the two-step procedure of the Procrastinate docs for rolling workers). `procrastinate_*` tables are excluded from Alembic autogenerate (`include_object`).
@@ -536,6 +542,9 @@ GET  /admin/feedback
 POST /admin/feedback/<feedback_id>/note
 GET/POST /admin/notify_agb
 GET  /admin/system                                  # Build info, dependency checks, job recency
+GET  /admin/workers                                 # Queue counts, worker pods, running + failed jobs
+POST /admin/workers/jobs/<id>/retry                 # Queue a failed job again (audit worker_job_retried)
+POST /admin/workers/jobs/<id>/discard               # Delete a failed job (audit worker_job_discarded)
 GET  /admin/auditlogs
 ```
 
