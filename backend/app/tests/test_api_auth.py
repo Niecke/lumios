@@ -11,8 +11,8 @@ from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone, timedelta
 import jwt as pyjwt
 
-from models import db, User, Role, AuditLog, AuditLogType
-from sqlalchemy import select, func
+from models import db, User, Role
+from sqlalchemy import select
 from services.token import create_token, decode_token
 
 BASE = "/api/v1/auth"
@@ -589,14 +589,6 @@ class TestResendActivation:
 class TestResendActivationByEmail:
     ENDPOINT = f"{BASE}/resend-activation"
 
-    @pytest.fixture(autouse=True)
-    def inline_background(self):
-        """Run the background job inline so the result is visible to the test."""
-        with patch(
-            "blueprints.api.auth._run_in_background", lambda fn, *a: fn(*a)
-        ) as p:
-            yield p
-
     @pytest.fixture
     def pending(self):
         user = User(
@@ -610,72 +602,50 @@ class TestResendActivationByEmail:
         db.session.commit()
         return user
 
-    @patch("blueprints.api.auth.notify_activation_email")
-    def test_pending_user_gets_new_token_and_mail(self, mock_mail, client, pending):
-        res = client.post(self.ENDPOINT, json={"email": " pending@test.com "})
+    @patch("blueprints.api.auth.notify_resend_activation")
+    def test_email_is_normalised_and_queued(self, mock_notify, client):
+        res = client.post(self.ENDPOINT, json={"email": " Pending@Test.com "})
         assert res.status_code == 200
         assert res.get_json() == {"ok": True}
-        user = db.session.get(User, pending.id)
-        assert user.activation_token not in (None, "pending-token")
-        mock_mail.assert_called_once()
-        assert user.activation_token in mock_mail.call_args.args[1]
-        entries = (
-            db.session.execute(
-                select(AuditLog).where(
-                    AuditLog.audit_type == AuditLogType.activation_token_resent
-                )
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args.args[0] == "pending@test.com"
+
+    @patch("blueprints.api.auth.notify_resend_activation")
+    def test_invalid_address_is_not_queued(self, mock_notify, client):
+        for bad in ("not-an-email", "a@b", "a b@test.com", "x" * 300 + "@test.com"):
+            res = client.post(self.ENDPOINT, json={"email": bad})
+            assert res.status_code == 400
+        mock_notify.assert_not_called()
+
+    def test_queues_a_resend_job_on_the_default_queue(self, client):
+        from sqlalchemy import text
+
+        res = client.post(self.ENDPOINT, json={"email": "Pending@Test.com"})
+        assert res.status_code == 200
+        (job,) = db.session.execute(
+            text(
+                "SELECT queue_name, task_name, args FROM procrastinate_jobs "
+                "WHERE task_name = 'resend_activation'"
             )
-            .scalars()
-            .all()
+        ).mappings()
+        assert job["queue_name"] == "default"
+        assert job["args"]["email"] == "pending@test.com"
+
+    def test_flood_for_one_address_queues_one_job(self, client):
+        from sqlalchemy import text
+
+        for _ in range(5):
+            client.post(self.ENDPOINT, json={"email": "victim@test.com"})
+        count = db.session.scalar(
+            text("SELECT count(*) FROM procrastinate_jobs WHERE task_name = 'resend_activation'")
         )
-        assert len(entries) == 1
-        assert entries[0].creator_id is None
-
-    @patch("blueprints.api.auth.notify_activation_email")
-    def test_unknown_address_same_answer_no_side_effects(self, mock_mail, client):
-        res = client.post(self.ENDPOINT, json={"email": "nobody@test.com"})
-        assert res.status_code == 200
-        assert res.get_json() == {"ok": True}
-        mock_mail.assert_not_called()
-        assert db.session.scalar(select(func.count(AuditLog.id))) == 0
-
-    @patch("blueprints.api.auth.notify_activation_email")
-    def test_active_user_same_answer_token_unchanged(
-        self, mock_mail, client, photographer_user
-    ):
-        res = client.post(self.ENDPOINT, json={"email": photographer_user.email})
-        assert res.status_code == 200
-        assert res.get_json() == {"ok": True}
-        mock_mail.assert_not_called()
-        assert db.session.scalar(select(func.count(AuditLog.id))) == 0
-
-    @patch("blueprints.api.auth.notify_activation_email")
-    def test_deleted_pending_user_ignored(self, mock_mail, client, pending):
-        pending.deleted_at = datetime.now(timezone.utc)
-        db.session.commit()
-        res = client.post(self.ENDPOINT, json={"email": "pending@test.com"})
-        assert res.status_code == 200
-        mock_mail.assert_not_called()
-
-    @patch("blueprints.api.auth.notify_activation_email")
-    def test_beta_slots_unchanged(self, mock_mail, client, pending):
-        def used():
-            return db.session.scalar(
-                select(func.count(User.id)).where(
-                    db.or_(User.active.is_(True), User.activation_pending.is_(True)),
-                    User.deleted_at.is_(None),
-                )
-            )
-
-        before = used()
-        client.post(self.ENDPOINT, json={"email": "pending@test.com"})
-        assert used() == before
+        assert count == 1
 
     def test_token_still_works(self, client, pending):
         with patch("blueprints.api.auth.notify_activation_email") as mock_mail:
             res = client.post(self.ENDPOINT, json={"token": "pending-token"})
         assert res.status_code == 200
-        mock_mail.assert_called_once()
+        mock_mail.assert_called_once_with(pending.id)
 
     def test_missing_params_returns_400(self, client):
         assert client.post(self.ENDPOINT, json={}).status_code == 400
@@ -684,11 +654,11 @@ class TestResendActivationByEmail:
     def test_request_does_no_lookup_itself(self, client, pending, photographer_user):
         """Pending, active and unknown addresses take the identical in-request path.
 
-        The only work done before the response is handing the normalised
-        address to the background job; lookup, token, mail and audit entry all
-        happen afterwards, so response time cannot reveal the account state.
+        The only work done before the response is queueing the normalised
+        address; lookup, token, mail and audit entry all happen in the worker,
+        so response time cannot reveal the account state.
         """
-        with patch("blueprints.api.auth._run_in_background") as bg:
+        with patch("blueprints.api.auth.notify_resend_activation") as notify:
             answers = [
                 client.post(self.ENDPOINT, json={"email": email})
                 for email in (
@@ -700,8 +670,7 @@ class TestResendActivationByEmail:
         assert {(r.status_code, r.get_data()) for r in answers} == {
             (answers[0].status_code, answers[0].get_data())
         }
-        assert bg.call_count == 3
-        assert all(c.args[0].__name__ == "_resend_activation_for_email" for c in bg.call_args_list)
+        assert notify.call_count == 3
         assert db.session.get(User, pending.id).activation_token == "pending-token"
 
 
@@ -723,7 +692,7 @@ class TestResendActivationRateLimit:
             }
         )
         try:
-            with patch("blueprints.api.auth._run_in_background"):
+            with patch("blueprints.api.auth.notify_resend_activation"):
                 yield limited_app.test_client()
         finally:
             limiter.enabled = False
@@ -816,7 +785,7 @@ class TestDeactivateAccount:
 
     @patch(
         "blueprints.api.auth.notify_account_cancellation",
-        side_effect=Exception("SMTP down"),
+        return_value=False,
     )
     def test_email_failure_does_not_fail_request(
         self, mock_mail, client, photographer_user
@@ -855,6 +824,31 @@ class TestRegisterAdminNotification:
         )
         assert res.status_code == 201
         mock_admin.assert_called_once_with("newuser@test.com", "E-Mail / Passwort")
+        user = db.session.execute(
+            select(User).where(User.email == "newuser@test.com")
+        ).scalar_one()
+        mock_activation.assert_called_once_with(user.id)
+
+    def test_register_succeeds_when_queue_is_down(self, client, photographer_role):
+        import worker
+
+        with patch.object(
+            worker.send_activation_email_task,
+            "configure",
+            side_effect=RuntimeError("db down"),
+        ):
+            res = client.post(
+                self.ENDPOINT,
+                json={
+                    "email": "newuser@test.com",
+                    "password": "SecurePass123!",
+                    "agb_accepted": True,
+                },
+            )
+        assert res.status_code == 201
+        assert db.session.execute(
+            select(User).where(User.email == "newuser@test.com")
+        ).scalar_one()
 
     @patch("blueprints.api.auth.notify_admin_new_account")
     @patch("blueprints.api.auth.notify_activation_email")

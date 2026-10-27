@@ -402,3 +402,156 @@ class TestWorkerDashboardSupport:
         db.session.expire_all()
         hosts = {h.hostname for h in db.session.execute(select(WorkerHeartbeat)).scalars()}
         assert hosts == {"new-pod"}
+
+
+def _mail_jobs():
+    return [j for j in _jobs() if j["task_name"] != "recover_stalled_jobs"]
+
+
+@pytest.fixture
+def mail_user():
+    user = User(
+        email="pending@test.com",
+        active=False,
+        activation_pending=True,
+        activation_token="raw-secret-token",
+    )
+    db.session.add(user)
+    db.session.commit()
+    return user
+
+
+class TestMailEnqueue:
+    def test_every_notify_helper_queues_on_default(self, app):
+        from services import mail
+
+        mail.notify_registration("a@test.com")
+        mail.notify_activation_email(5)
+        mail.notify_resend_activation("a@test.com", "1.2.3.4")
+        mail.notify_admin_new_account("a@test.com", "Google")
+        mail.notify_account_cancellation("a@test.com")
+        mail.notify_agb_change("a@test.com", "2.0", "text")
+        mail.notify_gallery_finished("a@test.com", "Lib", "uuid", 3)
+        mail.notify_new_support_ticket(1, "Help", "a@test.com")
+
+        jobs = {j["task_name"]: j for j in _mail_jobs()}
+        assert set(jobs) == {
+            "send_registration_email",
+            "send_activation_email",
+            "resend_activation",
+            "send_admin_new_account_email",
+            "send_account_cancellation_email",
+            "send_agb_change_email",
+            "send_gallery_finished_email",
+            "send_new_support_ticket_email",
+        }
+        assert all(j["queue_name"] == "default" for j in jobs.values())
+        assert jobs["send_gallery_finished_email"]["args"] == {
+            "photographer_email": "a@test.com",
+            "library_name": "Lib",
+            "library_uuid": "uuid",
+            "liked_count": 3,
+        }
+        assert jobs["resend_activation"]["args"] == {"email": "a@test.com", "ip": "1.2.3.4"}
+
+    def test_activation_job_holds_only_the_user_id(self, app, mail_user):
+        from services import mail
+
+        mail.notify_activation_email(mail_user.id)
+
+        (job,) = _mail_jobs()
+        assert job["args"] == {"user_id": mail_user.id}
+        assert "raw-secret-token" not in str(job)
+
+    def test_duplicate_activation_and_resend_jobs_collapse(self, app):
+        from services import mail
+
+        for _ in range(3):
+            assert mail.notify_activation_email(5) is True
+            assert mail.notify_resend_activation("a@test.com", "1.2.3.4") is True
+        mail.notify_resend_activation("b@test.com", "1.2.3.4")
+
+        names = sorted(j["task_name"] for j in _mail_jobs())
+        assert names == ["resend_activation"] * 2 + ["send_activation_email"]
+
+
+class TestMailExecution:
+    def test_job_sends_the_mail_and_succeeds(self, app, mail_user):
+        from services import mail
+
+        mail.notify_activation_email(mail_user.id)
+        with patch("services.mail._send") as send:
+            _run_worker("default")
+
+        send.assert_called_once()
+        assert "raw-secret-token" in send.call_args.args[2]
+        assert _mail_jobs()[0]["status"] == "succeeded"
+
+    def test_failure_is_retried_records_error_and_ends_failed(self, app, mail_user):
+        from models import WorkerJobError
+        from services import mail
+
+        mail.notify_activation_email(mail_user.id)
+        with patch("services.mail._send", side_effect=mail.MailDeliveryError("Brevo answered with status 503")) as send:
+            _run_worker("default")
+            (job,) = _mail_jobs()
+            assert job["status"] == "todo" and job["attempts"] == 1
+            assert (job["scheduled_at"] - datetime.now(timezone.utc)).total_seconds() > 3
+            row = db.session.get(WorkerJobError, job["id"])
+            assert row.task_name == "send_activation_email"
+            assert row.error_message == "MailDeliveryError: Brevo answered with status 503"
+
+            for _ in range(worker.MAIL_MAX_RUNS - 1):
+                _make_due()
+                _run_worker("default")
+
+        (job,) = _mail_jobs()
+        assert job["status"] == "failed"
+        assert job["attempts"] == worker.MAIL_MAX_RUNS
+        assert send.call_count == worker.MAIL_MAX_RUNS
+
+    def test_permanent_error_is_not_retried(self, app, mail_user):
+        from services import mail
+
+        mail.notify_activation_email(mail_user.id)
+        with patch("services.mail._send", side_effect=mail.PermanentMailError("status 400")) as send:
+            _run_worker("default")
+
+        (job,) = _mail_jobs()
+        assert job["status"] == "failed"
+        assert send.call_count == 1
+
+    def test_stalled_mail_job_is_retried(self, app, mail_user):
+        from services import mail
+
+        mail.notify_activation_email(mail_user.id)
+        _kill_worker_mid_job()
+        _recover()
+
+        (job,) = _mail_jobs()
+        assert job["status"] == "todo" and job["attempts"] == 1
+
+    def test_admin_retry_requeues_failed_mail_job(self, app, mail_user):
+        from models import WorkerJobError
+        from services import mail, workers
+
+        mail.notify_activation_email(mail_user.id)
+        with patch("services.mail._send", side_effect=mail.PermanentMailError("status 400")):
+            _run_worker("default")
+        (job,) = _mail_jobs()
+        assert job["status"] == "failed"
+
+        with app.test_request_context():
+            assert workers.retry_failed_job(job["id"], mail_user.id) is True
+
+        (job,) = _mail_jobs()
+        assert job["status"] == "todo"
+        assert db.session.get(WorkerJobError, job["id"]) is None
+
+    def test_failed_mail_job_target_shows_user(self, app):
+        from services.workers import _target
+
+        assert _target({"user_id": 4}) == "4"
+        assert _target({"ticket_id": 9, "subject": "x"}) == "9"
+        assert _target({"email": "a@test.com", "ip": "1.2.3.4"}) == "a@test.com"
+        assert _target({"summary": "x"}) is None

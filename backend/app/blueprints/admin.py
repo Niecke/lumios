@@ -35,7 +35,7 @@ from models import (
     AgbUpdate,
     Feedback,
 )
-from config import MAX_USERS, CURRENT_AGB_VERSION, FRONTEND_URL
+from config import MAX_USERS, CURRENT_AGB_VERSION
 from security import login_required, require_role
 from services.audit import write_audit_log
 from services.system import get_dashboard_status, get_system_status
@@ -549,9 +549,7 @@ def user_resend_activation(id):
     )
     db.session.commit()
 
-    notify_activation_email(
-        user.email, f"{FRONTEND_URL}/activate?token={user.activation_token}"
-    )
+    notify_activation_email(user.id)
     current_app.logger.info(
         "Activation email resent by admin: %s",
         user.email,
