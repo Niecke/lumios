@@ -20,7 +20,11 @@ import piexif
 import pytest
 from PIL import Image as PilImage
 
-from models import db, User, Role, Library
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+
+from models import db, User, Role, Library, Image, Video, VideoProcessingStatus
 from services.token import create_token
 
 
@@ -101,9 +105,14 @@ def upload(client, library_id, token, data, filename, content_type):
 
 @pytest.fixture
 def photographer_role():
-    role = Role(name="photographer", description="Photographer")
-    db.session.add(role)
-    db.session.commit()
+    # The photographer role is seeded by a migration; reuse it.
+    role = db.session.execute(
+        select(Role).where(Role.name == "photographer")
+    ).scalar_one_or_none()
+    if role is None:
+        role = Role(name="photographer", description="Photographer")
+        db.session.add(role)
+        db.session.commit()
     return role
 
 
@@ -417,6 +426,123 @@ def _patch_limits(**kwargs):
     return patch.object(
         User, "effective_limits", new_callable=PropertyMock, return_value=_limits(**kwargs)
     )
+
+
+class TestListMedia:
+    """GET /images returns photos and videos merged, newest first."""
+
+    @staticmethod
+    def _add_video(library, uuid, created_at, status):
+        db.session.add(
+            Video(
+                uuid=uuid,
+                library_id=library.id,
+                s3_key=f"{uuid}.mp4",
+                original_filename=f"{uuid}.mp4",
+                content_type="video/mp4",
+                size=2048,
+                processing_status=status,
+                created_at=created_at,
+            )
+        )
+
+    @staticmethod
+    def _add_image(library, name, created_at):
+        db.session.add(
+            Image(
+                library_id=library.id,
+                uuid=name,
+                s3_key=f"{name}.jpg",
+                original_filename=f"{name}.jpg",
+                content_type="image/jpeg",
+                size=1024,
+                created_at=created_at,
+            )
+        )
+
+    @pytest.fixture
+    def mixed(self, library):
+        t = lambda day: datetime(2026, 1, day, tzinfo=timezone.utc)
+        self._add_image(library, "photo-old", t(1))
+        self._add_video(library, "video-ready", t(2), VideoProcessingStatus.ready)
+        self._add_image(library, "photo-new", t(3))
+        self._add_video(library, "video-busy", t(4), VideoProcessingStatus.processing)
+        db.session.commit()
+        return library
+
+    def _list(self, client, photographer, library, query=""):
+        with patch("blueprints.api.images.storage") as st:
+            st.get_presigned_url.side_effect = lambda key: f"http://s3/{key}"
+            res = client.get(
+                f"/api/v1/libraries/{library.id}/images{query}",
+                headers=auth_header(make_token(photographer)),
+            )
+        return res
+
+    def test_photos_and_videos_are_merged_newest_first(
+        self, client, photographer, mixed
+    ):
+        res = self._list(client, photographer, mixed)
+
+        assert res.status_code == 200
+        body = res.get_json()
+        assert body["total"] == 4
+        assert [(i["media_type"], i["uuid"]) for i in body["images"]] == [
+            ("video", "video-busy"),
+            ("photo", "photo-new"),
+            ("video", "video-ready"),
+            ("photo", "photo-old"),
+        ]
+
+    def test_ready_video_has_presigned_urls(self, client, photographer, mixed):
+        items = {i["uuid"]: i for i in self._list(client, photographer, mixed).get_json()["images"]}
+        ready = db.session.execute(
+            select(Video).where(Video.uuid == "video-ready")
+        ).scalar_one()
+
+        item = items["video-ready"]
+        assert item["processing_status"] == "ready"
+        assert item["original_url"] == f"http://s3/{ready.storage_path('originals')}"
+        assert item["thumb_url"] == f"http://s3/{ready.storage_path('thumbs')}"
+
+    def test_unfinished_video_has_no_urls(self, client, photographer, mixed):
+        items = {i["uuid"]: i for i in self._list(client, photographer, mixed).get_json()["images"]}
+
+        item = items["video-busy"]
+        assert item["processing_status"] == "processing"
+        assert item["original_url"] is None
+        assert item["thumb_url"] is None
+
+    def test_photo_keeps_all_three_urls(self, client, photographer, mixed):
+        items = {i["uuid"]: i for i in self._list(client, photographer, mixed).get_json()["images"]}
+
+        photo = items["photo-new"]
+        assert photo["original_url"] and photo["preview_url"] and photo["thumb_url"]
+
+    def test_pagination_spans_both_media_types(self, client, photographer, mixed):
+        page1 = self._list(client, photographer, mixed, "?page_size=3").get_json()
+        page2 = self._list(client, photographer, mixed, "?page_size=3&page=2").get_json()
+
+        assert page1["has_more"] is True
+        assert [i["uuid"] for i in page1["images"]] == [
+            "video-busy",
+            "photo-new",
+            "video-ready",
+        ]
+        assert page2["has_more"] is False
+        assert [i["uuid"] for i in page2["images"]] == ["photo-old"]
+
+    def test_deleted_video_is_not_listed(self, client, photographer, mixed):
+        video = db.session.execute(
+            select(Video).where(Video.uuid == "video-ready")
+        ).scalar_one()
+        video.deleted_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        body = self._list(client, photographer, mixed).get_json()
+
+        assert body["total"] == 3
+        assert "video-ready" not in [i["uuid"] for i in body["images"]]
 
 
 class TestUploadImageQuotas:
