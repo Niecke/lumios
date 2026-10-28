@@ -107,5 +107,5 @@ http.user_agent eq "")
   user agent rule (4) so that blocked paths are rejected early.
 - Monitor **Security → Events** after enabling to check for false positives.
 - The empty user agent block (`http.user_agent eq ""`) may catch some
-  health check probes. If Cloud Run or GCP health checks use an empty UA,
+  health check probes. If health check probes use an empty UA,
   switch that condition to **Managed Challenge** instead of Block.

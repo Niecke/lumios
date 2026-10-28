@@ -49,7 +49,7 @@ keeps running the previous release.
 | `landingpage` | Deployment + Service `:8080` | nginx; `APP_URL` and `BACKEND_URL` are substituted at start. |
 | `postgres` | StatefulSet + Service `:5432` | One replica, PVC on `local-path`. |
 | `redis` | Deployment + Service `:6379` | Sessions and rate limits. No persistence. |
-| `purge-deleted-accounts`, `purge-audit-logs` | one CronJob each | The backend image, daily at 02:00 UTC. Replaces the Cloud Run cleanup job. |
+| `purge-deleted-accounts`, `purge-audit-logs` | one CronJob each | The backend image, daily at 02:00 UTC. |
 | Ingress | one per host, plus Traefik Middlewares | cert-manager issues one certificate per host. |
 
 Staging redeploys on two kinds of commit on `main`:

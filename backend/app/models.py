@@ -222,7 +222,7 @@ class Image(db.Model):
     library = db.relationship("Library", backref=db.backref("images", lazy="dynamic"))
 
     def storage_path(self, variant: str = "originals") -> str:
-        """Build full GCS key for a variant: originals, previews, or thumbs.
+        """Build full object storage key for a variant: originals, previews, or thumbs.
 
         s3_key stores: {uuid}.{ext}
         Returns:       photos/{photographer_id}/{library_id}/{variant}/{uuid}.{ext}
@@ -410,7 +410,7 @@ class Video(db.Model):
     library = db.relationship("Library", backref=db.backref("videos", lazy="dynamic"))
 
     def storage_path(self, variant: str = "originals") -> str:
-        """Build full GCS key for a variant: originals or thumbs.
+        """Build full object storage key for a variant: originals or thumbs.
 
         Videos have no previews/ variant — originals are served for streaming.
         Thumbnails are always JPEG regardless of the video container format.

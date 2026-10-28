@@ -13,10 +13,10 @@ Domain: **lumios.niecke-it.de** (landing page), **lumios-app.niecke-it.de** (app
 | Backend API | Python 3.14, Flask 3.x, Gunicorn, python-slim container, uv (package mgmt) |
 | Admin UI | Flask + Jinja2 templates, integrated in backend under `/admin` |
 | Frontend SPA | React 19, TanStack Query, TanStack Router (file-based), Vite 8, TypeScript |
-| Landing page | Separate static site, deployed as its own Cloud Run service |
-| Database | PostgreSQL 18 (Podman container on e2-small VM) |
-| Cache / Sessions | Redis 8 (Podman container on same e2-small VM) |
-| File storage | S3-compatible (Versity Gateway for local dev, GCS HMAC in production) via boto3 |
+| Landing page | Separate static site, own nginx Deployment in the k3s cluster |
+| Database | PostgreSQL 18 (StatefulSet in k3s, PVC on `local-path`, on the Hetzner node) |
+| Cache / Sessions | Redis 8 (Deployment in k3s, no persistence) |
+| File storage | S3-compatible object storage (Versity Gateway locally, Hetzner object storage in production) via boto3 |
 | Image processing | Pillow — inline in Flask for images; videos (ffmpeg) run on the `video` worker |
 | Background jobs | Procrastinate (PostgreSQL-backed queue), worker pods on the backend image — see Background Worker |
 | Auth | Google OAuth 2.0 (photographers + admins); JWT tokens for API; UUID share links (customers) |
@@ -87,7 +87,7 @@ lumios/
 │   ├── Dockerfile
 │   ├── nginx.conf.template
 │   └── package.json
-├── landingpage/              # Static landing page (separate Cloud Run service)
+├── landingpage/              # Static landing page (nginx container)
 ├── charts/lumios/            # Helm chart (published as OCI chart on release)
 ├── deploy/                   # Flux GitOps manifests for k3s staging/prod (see deploy/README.md)
 ├── e2e/                      # Playwright end-to-end tests (run by e2e-tests.yml)
@@ -180,7 +180,7 @@ Defined and validated in `backend/app/config.py`. The app **refuses to start** i
 | `PUBLIC_BASE_URL` | `http://localhost:8080` | Must match OAuth redirect URIs |
 | `FRONTEND_URL` | `http://localhost:5173` | URL of the React frontend |
 | `JWT_EXPIRY_SECONDS` | `3600` | JWT token lifetime |
-| `S3_ENDPOINT_URL` | `http://s3:7070` | S3-compatible endpoint (Versity Gateway locally, GCS in prod) |
+| `S3_ENDPOINT_URL` | `http://s3:7070` | S3-compatible endpoint (Versity Gateway locally, Hetzner object storage in prod) |
 | `S3_PUBLIC_ENDPOINT_URL` | same as above | Public URL for presigned URLs (must be browser-reachable) |
 | `S3_ACCESS_KEY` | — | S3/HMAC access key |
 | `S3_SECRET_KEY` | — | S3/HMAC secret key |
@@ -309,7 +309,7 @@ Quota limits come solely from the subscription tier (`SUBSCRIPTION_LIMITS` in `c
 
 ### Rules
 - `deleted_at` is set when a user/library/image is soft-deleted. Hard delete runs after 1 year via `flask purge-deleted-accounts`.
-- `archived_at` on libraries is currently not set by any lifecycle job (the column exists, nothing populates it; the lifecycle job is tracked in issue #435). The GCS lifecycle rule (365d → Nearline) works on object age, not on this column.
+- `archived_at` on libraries is currently not set by any lifecycle job (the column exists, nothing populates it; issue #435 was closed as not planned). The object storage provider has no storage tiers, so there is no lifecycle rule either; the column stays unused.
 - Audit logs retain for 90 days then are purged via `flask purge-audit-logs` (IP address is personal data under GDPR).
 
 ---
@@ -626,7 +626,7 @@ Some workflow triggers below still list `dev` (and `release/**`); those entries 
 
 ### GitHub Actions workflows
 
-Container images live in **GHCR** (`ghcr.io/niecke/lumios/{backend,frontend,landingpage}`) and are pushed with `GITHUB_TOKEN`. Direct Cloud Run deploys from workflows are gone.
+Container images live in **GHCR** (`ghcr.io/niecke/lumios/{backend,frontend,landingpage}`) and are pushed with `GITHUB_TOKEN`. Workflows never deploy directly: Flux on the k3s node pulls the new tags (see `deploy/README.md`).
 
 | Workflow | Trigger | Actions |
 |---|---|---|
@@ -663,19 +663,22 @@ def inject_config():
 
 ## Infrastructure
 
-Infrastructure (GCP, Cloudflare, cluster) is managed in the separate `Niecke/infrastructure` repository; this repo holds no Terraform. Deployment to k3s is Flux GitOps, see `deploy/README.md`.
+Staging and production run on one Hetzner node (CAX21, k3s) with Hetzner object storage. The node, volume and DNS are managed in the separate `Niecke/infrastructure` repository; this repo holds no Terraform. Deployment is Flux GitOps with the Helm chart in `charts/lumios/`, see `deploy/README.md`.
 
 ---
 
-## Cloudflare Setup
+## Cloudflare and Ingress Setup
 
 ```
-lumios.niecke-it.de       → proxied CNAME → Cloud Run landingpage
-lumios-app.niecke-it.de   → proxied CNAME → Cloud Run frontend
-lumios-api.niecke-it.de   → proxied CNAME → Cloud Run backend
+lumios.niecke-it.de       → landingpage Service
+lumios-app.niecke-it.de   → frontend Service (/api/ → backend Service)
+lumios-api.niecke-it.de   → backend Service
+(staging: lumios-staging, lumios-app-staging, lumios-api-staging)
 ```
 
-- Cloudflare terminates SSL — Cloud Run runs HTTP internally
+- DNS records point at the Hetzner k3s node; Cloudflare may proxy them
+- Traefik (shipped with k3s) is the ingress controller, one Ingress per host plus Traefik Middlewares (`charts/lumios/templates/ingress.yaml`)
+- cert-manager issues one Let's Encrypt certificate per host (ClusterIssuer `letsencrypt`)
 - Thumbnails and previews cached at Cloudflare edge (Cache-Control: public, max-age=31536000)
 - API and HTML responses: Cache-Control: no-store
 
@@ -683,12 +686,13 @@ lumios-api.niecke-it.de   → proxied CNAME → Cloud Run backend
 
 ## GDPR Notes (Austria / Germany)
 
-- All GCP data in `europe-west1` (EU)
+- Application data (database, object storage) lives on Hetzner in the EU
 - Audit logs contain IP address → personal data → purge after 90 days
 - Customer sessions are anonymous — no name or email collected
 - Photographer right-to-erasure: soft-delete → hard-delete after 1 year
 - AGB (Terms of Service) acceptance tracked per user (`agb_accepted_at`, `agb_version`)
-- DPAs required with: Google Cloud, Brevo, Cloudflare
+- DPAs required with the processors in use: Hetzner, Cloudflare, Brevo, Sentry
+- Google Cloud stays a processor only if it is still used for the off-site database and photo backups (#411). Owner decision, to be reflected in the privacy policy (#517)
 - Privacy policy + Impressum pages required before go-live
 
 ---
@@ -696,10 +700,10 @@ lumios-api.niecke-it.de   → proxied CNAME → Cloud Run backend
 ## What NOT to do
 
 - Do not add Celery or a second queue system — background jobs run on the Procrastinate workers; image thumbnail generation stays inline with Pillow until the `photo` pipeline is enabled
-- Do not use Cloud SQL or Memorystore — Postgres and Redis run on the e2-small VM
-- Do not add a GCP Load Balancer — Cloudflare handles routing and SSL
+- Do not use Cloud SQL or Memorystore — Postgres and Redis run in the k3s cluster on the Hetzner node
+- Do not add a cloud load balancer — Traefik is the ingress, cert-manager handles certificates, Cloudflare may proxy in front
 - Do not serve original photos to customers — only preview and thumbnail URLs
-- Do not store secrets in code or Docker images — always use Secret Manager / env vars
+- Do not store secrets in code or Docker images — inject them through env vars from Kubernetes Secrets (`lumios-values`, see `deploy/README.md`)
 - Do not use any password hashing other than Argon2id (used for `auth_string` on `local` accounts)
 - Do not add separate `password` or `google_sub` columns — all credentials go in `auth_string`; `account_type` tells you how to interpret it
 - Do not skip CSRF protection on template state-changing routes (API routes are JWT-authenticated and CSRF-exempt)
