@@ -265,7 +265,7 @@ def _create_watermarked_preview(
 
 
 def _load_library_logo(library: "Library") -> PilImage.Image | None:
-    """Download the library's watermark logo from GCS and return it as RGBA."""
+    """Download the library's watermark logo from object storage and return it as RGBA."""
     if not library.watermark_gcs_key:
         return None
     try:

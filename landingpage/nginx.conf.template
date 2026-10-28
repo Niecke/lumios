@@ -41,7 +41,7 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    # Health check for Cloud Run
+    # Health check for Kubernetes probes
     location /healthz {
         access_log off;
         return 200 "ok";

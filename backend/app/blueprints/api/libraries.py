@@ -265,7 +265,7 @@ def upload_watermark(library_id: int):
         storage.ensure_bucket()
         storage.upload_fileobj(io.BytesIO(file_data), gcs_key, "image/png")
     except Exception:
-        current_app.logger.exception("GCS upload failed for watermark key=%s", gcs_key)
+        current_app.logger.exception("Object storage upload failed for watermark key=%s", gcs_key)
         return jsonify({"error": "Storage error. Please try again."}), 502
 
     library.watermark_gcs_key = gcs_key
@@ -297,7 +297,7 @@ def delete_watermark(library_id: int):
             storage.delete_object(library.watermark_gcs_key)
         except Exception:
             current_app.logger.warning(
-                "Failed to delete watermark from GCS key=%s", library.watermark_gcs_key
+                "Failed to delete watermark from object storage key=%s", library.watermark_gcs_key
             )
         library.watermark_gcs_key = None
         db.session.commit()

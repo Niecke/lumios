@@ -641,7 +641,7 @@ def public_upload_image(library_uuid: str):
         )
     except Exception:
         current_app.logger.exception(
-            "GCS upload failed for public upload library=%s", library_uuid
+            "Object storage upload failed for public upload library=%s", library_uuid
         )
         return jsonify({"error": "Storage error. Please try again."}), 502
 

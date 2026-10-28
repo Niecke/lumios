@@ -182,7 +182,7 @@ def upload_image(library_id: int):
             library, user, file_data, file.filename, content_type, is_external=False
         )
     except Exception:
-        current_app.logger.exception("GCS upload failed for library=%s", library_id)
+        current_app.logger.exception("Object storage upload failed for library=%s", library_id)
         return jsonify({"error": "Storage error. Please try again."}), 502
 
     original_url = storage.get_presigned_url(image.storage_path("originals"))

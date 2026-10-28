@@ -220,7 +220,7 @@ migration:
 
 # ---------------------------------------------------------------------------
 # Cleanup — the flask maintenance commands, one CronJob each, on the backend
-# image. Replaces the Cloud Scheduler + Cloud Run Job.
+# image. Runs as Kubernetes CronJobs.
 # ---------------------------------------------------------------------------
 cleanup:
   enabled: true
