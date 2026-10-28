@@ -108,7 +108,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=0
-          for image in backend frontend landingpage; do
+          for image in backend frontend landingpage backup; do
             if docker buildx imagetools inspect "$REGISTRY/$image:$SOURCE_TAG" >/dev/null 2>&1; then
               echo "found $image:$SOURCE_TAG"
             else
@@ -134,7 +134,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="sha-${GITHUB_SHA:0:7}"
-          for image in backend frontend landingpage; do
+          for image in backend frontend landingpage backup; do
             docker buildx imagetools create \
               --tag "$REGISTRY/$image:$tag" \
               "$REGISTRY/$image:$SOURCE_TAG"
