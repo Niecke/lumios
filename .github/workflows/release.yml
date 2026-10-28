@@ -130,7 +130,7 @@ jobs:
         run: |
           set -euo pipefail
           deadline=$((SECONDS + 600))
-          for image in backend frontend landingpage; do
+          for image in backend frontend landingpage backup; do
             until digest=$(docker buildx imagetools inspect "$REGISTRY/$image:$SOURCE" \
                              --format '{{.Manifest.Digest}}' 2>/dev/null); do
               if [ "$SECONDS" -ge "$deadline" ]; then
@@ -156,9 +156,10 @@ jobs:
           BACKEND: ${{ steps.images.outputs.backend }}
           FRONTEND: ${{ steps.images.outputs.frontend }}
           LANDINGPAGE: ${{ steps.images.outputs.landingpage }}
+          BACKUP: ${{ steps.images.outputs.backup }}
         run: |
           set -euo pipefail
-          for image in backend frontend landingpage; do
+          for image in backend frontend landingpage backup; do
             var="${image^^}"
             digest="${!var}"
             args=(--tag "$REGISTRY/$image:$VERSION")
@@ -258,6 +259,7 @@ jobs:
           BACKEND: ${{ steps.images.outputs.backend }}
           FRONTEND: ${{ steps.images.outputs.frontend }}
           LANDINGPAGE: ${{ steps.images.outputs.landingpage }}
+          BACKUP: ${{ steps.images.outputs.backup }}
           CHART: ${{ steps.chart.outputs.digest }}
         run: |
           set -euo pipefail
@@ -265,7 +267,7 @@ jobs:
             cosign sign --yes "$CHART_REGISTRY/lumios@$CHART"
           fi
 
-          for image in backend frontend landingpage; do
+          for image in backend frontend landingpage backup; do
             var="${image^^}"
             ref="$REGISTRY/$image@${!var}"
             sbom="sbom-$image.spdx.json"
@@ -299,7 +301,8 @@ jobs:
           TAG="$VERSION" yq -i '
             .spec.values.backend.image.tag = strenv(TAG) |
             .spec.values.frontend.image.tag = strenv(TAG) |
-            .spec.values.landingpage.image.tag = strenv(TAG)
+            .spec.values.landingpage.image.tag = strenv(TAG) |
+            .spec.values.backup.image.tag = strenv(TAG)
           ' "$RELEASE"
           TAG="$VERSION" yq -i '.spec.ref.tag = strenv(TAG)' "$CHART_SOURCE"
 
@@ -347,6 +350,7 @@ jobs:
           BACKEND: ${{ steps.images.outputs.backend }}
           FRONTEND: ${{ steps.images.outputs.frontend }}
           LANDINGPAGE: ${{ steps.images.outputs.landingpage }}
+          BACKUP: ${{ steps.images.outputs.backup }}
           CHART: ${{ steps.chart.outputs.digest }}
         run: |
           set -euo pipefail
@@ -376,6 +380,7 @@ jobs:
             echo "| \`$REGISTRY/backend:$VERSION\` | \`$BACKEND\` |"
             echo "| \`$REGISTRY/frontend:$VERSION\` | \`$FRONTEND\` |"
             echo "| \`$REGISTRY/landingpage:$VERSION\` | \`$LANDINGPAGE\` |"
+            echo "| \`$REGISTRY/backup:$VERSION\` | \`$BACKUP\` |"
             if [ -n "$CHART" ]; then
               echo "| \`$CHART_REGISTRY/lumios:$VERSION\` (Helm chart) | \`$CHART\` |"
             fi

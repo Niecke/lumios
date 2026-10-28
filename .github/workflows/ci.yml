@@ -74,7 +74,7 @@ jobs:
             echo "chart=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if echo "$changed" | grep -qE '^(backend/|frontend/|landingpage/|\.github/workflows/(ci|backend-tests)\.yml|\.release-please-manifest\.json)'; then
+          if echo "$changed" | grep -qE '^(backend/|frontend/|landingpage/|backup/|\.github/workflows/(ci|backend-tests)\.yml|\.release-please-manifest\.json)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "Application code touched — running the full pipeline." >> "$GITHUB_STEP_SUMMARY"
           else
@@ -109,6 +109,14 @@ jobs:
             --set backend.image.tag=ci
             --set frontend.image.tag=ci
             --set landingpage.image.tag=ci
+            --set backup.image.tag=ci
+            --set backup.database.gcs.accessKey=ci-db-key
+            --set backup.database.gcs.secretKey=ci-db-secret
+            --set backup.photos.gcs.accessKey=ci-photos-key
+            --set backup.photos.gcs.secretKey=ci-photos-secret
+            --set s3.endpointUrl=https://s3.example.invalid
+            --set s3.accessKey=ci-s3-key
+            --set s3.secretKey=ci-s3-secret
             --set postgres.password=ci-password
             --set redis.password=ci-redis-password
             --set backend.secretKey=ci-secret-key-ci-secret-key-ci-secret
@@ -129,16 +137,40 @@ jobs:
             [ "$ok" = true ]
           done
 
+          # Both backups run as non-root with a read-only root fs and never
+          # overlap.
+          for comp in backup-database backup-photos; do
+            ok=$(yq -e "select(.kind == \"CronJob\" and .metadata.labels[\"app.kubernetes.io/component\"] == \"$comp\")
+              | (.spec.concurrencyPolicy == \"Forbid\"
+              and .spec.jobTemplate.spec.template.spec.securityContext.runAsNonRoot == true
+              and .spec.jobTemplate.spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem == true)" \
+              "$RUNNER_TEMP/default.yaml")
+            [ "$ok" = true ]
+          done
+
           # The environments' own values, so a Flux edit that breaks the chart
-          # fails here and not on the cluster.
+          # fails here and not on the cluster. Staging turns the backups off,
+          # production keeps them.
           for env in staging prod; do
             yq '.spec.values' "deploy/flux/$env/helmrelease.yaml" > "$RUNNER_TEMP/$env-values.yaml"
+            # backup.image.tag is not in the prod values until the release that
+            # ships the image: release.yml adds it.
             helm template lumios charts/lumios -f "$RUNNER_TEMP/$env-values.yaml" \
+              --set backup.image.tag=ci \
+              --set backup.database.gcs.accessKey=ci-db-key \
+              --set backup.database.gcs.secretKey=ci-db-secret \
+              --set backup.photos.gcs.accessKey=ci-photos-key \
+              --set backup.photos.gcs.secretKey=ci-photos-secret \
+              --set s3.endpointUrl=https://s3.example.invalid \
+              --set s3.accessKey=ci-s3-key \
+              --set s3.secretKey=ci-s3-secret \
               --set postgres.password=ci-password \
               --set redis.password=ci-redis-password \
               --set backend.secretKey=ci-secret-key-ci-secret-key-ci-secret \
-              --set backend.jwtSecret=ci-jwt-secret-ci-jwt-secret-ci-jwt-secret > /dev/null
+              --set backend.jwtSecret=ci-jwt-secret-ci-jwt-secret-ci-jwt-secret > "$RUNNER_TEMP/$env.yaml"
           done
+          [ "$(grep -c 'component: backup-' "$RUNNER_TEMP/staging.yaml")" -eq 0 ]
+          [ "$(grep -c 'kind: CronJob' "$RUNNER_TEMP/prod.yaml")" -eq 4 ]
 
   # The sha under test. For a pull_request event github.sha is the ephemeral
   # merge commit, which no image should ever be tagged with — promote looks the
@@ -271,7 +303,7 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
-  # Built alongside the others so all three images always exist at the same
+  # Built alongside the others so all four images always exist at the same
   # ci-<sha>: promote checks for the whole set before retagging any of it.
   build-landingpage:
     name: Build landingpage
@@ -310,3 +342,40 @@ jobs:
           tags: ${{ env.REGISTRY }}/landingpage:${{ needs.meta.outputs.tag }}
           cache-from: type=gha,scope=landingpage
           cache-to: type=gha,mode=max,scope=landingpage
+
+  build-backup:
+    name: Build backup
+    needs: [changes, meta]
+    if: github.event.pull_request.head.repo.full_name == github.repository && needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ${{ env.REGISTRY_HOST }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: backup
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            GIT_SHA=${{ needs.meta.outputs.commit }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.meta.outputs.commit }}
+            org.opencontainers.image.version=${{ needs.meta.outputs.app_version }}
+          tags: ${{ env.REGISTRY }}/backup:${{ needs.meta.outputs.tag }}
+          cache-from: type=gha,scope=backup
+          cache-to: type=gha,mode=max,scope=backup
