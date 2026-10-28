@@ -36,8 +36,8 @@ AUDIT_LOG_RETENTION_DAYS = 90
 def purge_deleted_accounts() -> None:
     """Hard-delete accounts soft-deleted more than 30 days ago.
 
-    For each qualifying user, removes all associated DB rows and GCS objects
-    (photos, previews, thumbnails). GCS failures are logged and skipped so that
+    For each qualifying user, removes all associated DB rows and object storage objects
+    (photos, previews, thumbnails). Object storage failures are logged and skipped so that
     DB cleanup always completes.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(days=ACCOUNT_RETENTION_DAYS)
@@ -170,7 +170,7 @@ def apply_agb_acceptance() -> None:
     applied, bulk-updates every active user's agb_version and agb_accepted_at,
     then marks the AgbUpdate as applied.
 
-    Run daily via Cloud Scheduler alongside purge-deleted-accounts.
+    Run daily as a Kubernetes CronJob alongside purge-deleted-accounts.
     """
     now = datetime.now(timezone.utc)
     ran_at = now
@@ -356,7 +356,7 @@ def _purge_library(library: Library) -> None:
                 storage.delete_object(key)
             except Exception as exc:
                 current_app.logger.warning(
-                    "purge-deleted-accounts: GCS delete failed for key %s: %s",
+                    "purge-deleted-accounts: object storage delete failed for key %s: %s",
                     key,
                     exc,
                     extra={"log_type": "cleanup"},

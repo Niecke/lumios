@@ -180,7 +180,7 @@ def delete_object(key: str) -> None:
 
 
 def get_object_bytes(key: str) -> bytes:
-    """Download an object from GCS and return its raw bytes."""
+    """Download an object from object storage and return its raw bytes."""
     response = _client.get_object(Bucket=S3_BUCKET, Key=key)
     return response["Body"].read()
 

@@ -6,8 +6,8 @@ Covers the purge-deleted-accounts command:
 - accounts within retention window are kept
 - active (non-deleted) accounts are untouched
 - all associated DB rows are removed (libraries, images, notifications, tickets)
-- GCS delete_object is called for each image variant
-- GCS failures do not abort DB deletion
+- Object storage delete_object is called for each image variant
+- Object storage failures do not abort DB deletion
 """
 
 import pytest
@@ -214,7 +214,7 @@ class TestDbCascade:
 
 
 # ---------------------------------------------------------------------------
-# GCS deletion
+# Object storage deletion
 # ---------------------------------------------------------------------------
 
 
