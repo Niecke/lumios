@@ -377,7 +377,8 @@ class TestProcessVideo:
         assert steps == [STEP_DOWNLOADING, STEP_PROBING, STEP_UPLOADING, STEP_SAVING]
         assert get_video_step(VIDEO_UUID) is None
 
-    def test_probe_failure_reraises_and_clears_step(self, video, storage):
+    def test_probe_failure_reraises_and_clears_step(self, library, storage):
+        _make_video(library, status=VideoProcessingStatus.processing)
         with patch(
             "services.videos._extract_video_info", side_effect=ValueError("no frame")
         ):
@@ -385,10 +386,11 @@ class TestProcessVideo:
                 process_video(VIDEO_UUID)
 
         assert get_video_step(VIDEO_UUID) is None
-        assert _reload().processing_status == VideoProcessingStatus.uploading
+        assert _reload().processing_status == VideoProcessingStatus.processing
         storage.upload_fileobj.assert_not_called()
 
-    def test_probe_failure_removes_temp_file(self, video, storage):
+    def test_probe_failure_removes_temp_file(self, library, storage):
+        _make_video(library, status=VideoProcessingStatus.processing)
         seen = {}
 
         def probe(path):
@@ -401,21 +403,24 @@ class TestProcessVideo:
 
         assert not os.path.exists(seen["path"])
 
-    def test_download_failure_reraises_and_clears_step(self, video, storage):
+    def test_download_failure_reraises_and_clears_step(self, library, storage):
+        _make_video(library, status=VideoProcessingStatus.processing)
         storage.iter_object_chunks.side_effect = RuntimeError("s3 down")
 
         with pytest.raises(RuntimeError, match="s3 down"):
             process_video(VIDEO_UUID)
 
         assert get_video_step(VIDEO_UUID) is None
+        assert _reload().processing_status == VideoProcessingStatus.processing
 
-    def test_thumbnail_upload_failure_keeps_status_unchanged(self, video, storage):
+    def test_thumbnail_upload_failure_keeps_status_unchanged(self, library, storage):
+        _make_video(library, status=VideoProcessingStatus.processing)
         storage.upload_fileobj.side_effect = RuntimeError("s3 down")
         with patch("services.videos._extract_video_info", return_value=_frame_info()):
             with pytest.raises(RuntimeError):
                 process_video(VIDEO_UUID)
 
-        assert _reload().processing_status == VideoProcessingStatus.uploading
+        assert _reload().processing_status == VideoProcessingStatus.processing
 
 
 FFMPEG_STDERR = """\

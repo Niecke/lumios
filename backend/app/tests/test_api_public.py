@@ -728,6 +728,49 @@ class TestPublicVideoFeatureGate:
         assert res.status_code == 501
 
 
+class TestPublicVideoUngatedRoutes:
+    """The state and download routes carry no VIDEO_UPLOADS_ENABLED check (only
+    init, finalize and status do), so they keep working with the gate closed."""
+
+    def test_state_route_is_not_gated(self, client, public_library):
+        _add_video(public_library)
+        res = client.patch(
+            f"{BASE}/libraries/{public_library.uuid}/videos/{PUBLIC_VIDEO_UUID}/state",
+            json={"customer_state": "liked"},
+        )
+        assert res.status_code == 200
+
+    def test_download_route_is_not_gated(self, client, public_library):
+        public_library.download_enabled = True
+        _add_video(public_library, status=VideoProcessingStatus.ready)
+        db.session.commit()
+        with _patch("blueprints.api.public.storage") as st:
+            st.get_presigned_download_url.return_value = "http://example.com/dl"
+            res = client.get(
+                f"{BASE}/libraries/{public_library.uuid}/videos/{PUBLIC_VIDEO_UUID}/download"
+            )
+        assert res.status_code == 200
+
+    @pytest.mark.parametrize(
+        "status", [VideoProcessingStatus.uploading, VideoProcessingStatus.failed]
+    )
+    def test_download_of_non_ready_video_is_not_blocked(
+        self, client, public_library, status
+    ):
+        # Known gap, tracked as a follow-up: download_video does not check
+        # processing_status, so a presigned URL is issued for a video that is not
+        # ready. Pinned here so a later fix shows up as a deliberate test change.
+        public_library.download_enabled = True
+        _add_video(public_library, status=status)
+        db.session.commit()
+        with _patch("blueprints.api.public.storage") as st:
+            st.get_presigned_download_url.return_value = "http://example.com/dl"
+            res = client.get(
+                f"{BASE}/libraries/{public_library.uuid}/videos/{PUBLIC_VIDEO_UUID}/download"
+            )
+        assert res.status_code == 200
+
+
 @pytest.mark.usefixtures("video_enabled")
 class TestPublicVideoInit:
     PAYLOAD = {"filename": "v.mp4", "content_type": "video/mp4", "size": 5000}
@@ -1077,6 +1120,8 @@ class TestPublicLibraryVideos:
         assert item["uuid"] == video.uuid
         assert item["processing_status"] == "ready"
         assert item["duration_ms"] == 4000
+        # Intended for videos: there is no preview transcode, so the original is
+        # streamed as the preview (see "Video Uploads" in CLAUDE.md).
         assert item["preview_url"] == f"http://s3/{video.storage_path('originals')}"
         assert item["thumb_url"] == f"http://s3/{video.storage_path('thumbs')}"
         assert item["download_url"] is None

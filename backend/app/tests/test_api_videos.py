@@ -252,21 +252,23 @@ class TestVideoAuth:
     def non_photographer(self, regular_user):
         return regular_user
 
-    def _calls(self, client, user, library_id):
-        return [
-            _init(client, user, library_id),
-            _finalize(client, user, library_id),
-            _get(client, user, library_id),
-            _delete(client, user, library_id, 1),
-        ]
+    ROUTES = {
+        "init": lambda c, u, lib: _init(c, u, lib),
+        "finalize": lambda c, u, lib: _finalize(c, u, lib),
+        "get": lambda c, u, lib: _get(c, u, lib),
+        "delete": lambda c, u, lib: _delete(c, u, lib, 1),
+    }
 
-    def test_unauthenticated_returns_401(self, client, library):
-        for res in self._calls(client, None, library.id):
-            assert res.status_code == 401
+    @pytest.mark.parametrize("route", list(ROUTES))
+    def test_unauthenticated_returns_401(self, client, library, route):
+        assert self.ROUTES[route](client, None, library.id).status_code == 401
 
-    def test_non_photographer_returns_403(self, client, non_photographer, library):
-        for res in self._calls(client, non_photographer, library.id):
-            assert res.status_code == 403
+    @pytest.mark.parametrize("route", list(ROUTES))
+    def test_non_photographer_returns_403(
+        self, client, non_photographer, library, route
+    ):
+        res = self.ROUTES[route](client, non_photographer, library.id)
+        assert res.status_code == 403
 
 
 # ---------------------------------------------------------------------------
