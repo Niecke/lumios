@@ -286,6 +286,10 @@ backup:
     # needs from the bucket.
     mode: backup-dir
     transfers: 4
+    # A sync run that would delete more objects than this fails instead, so a
+    # wrong or unreadable source bucket cannot empty the backup. Ignored in copy
+    # mode; 0 turns the guard off.
+    maxDelete: 500
     activeDeadlineSeconds: 14400
     gcs:
       bucket: niecke-it-lumios-photo-backups

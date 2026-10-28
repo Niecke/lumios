@@ -153,7 +153,10 @@ jobs:
           # production keeps them.
           for env in staging prod; do
             yq '.spec.values' "deploy/flux/$env/helmrelease.yaml" > "$RUNNER_TEMP/$env-values.yaml"
+            # backup.image.tag is not in the prod values until the release that
+            # ships the image: release.yml adds it.
             helm template lumios charts/lumios -f "$RUNNER_TEMP/$env-values.yaml" \
+              --set backup.image.tag=ci \
               --set backup.database.gcs.accessKey=ci-db-key \
               --set backup.database.gcs.secretKey=ci-db-secret \
               --set backup.photos.gcs.accessKey=ci-photos-key \

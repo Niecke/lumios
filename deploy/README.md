@@ -242,6 +242,14 @@ packages `charts/lumios` and pushes it to `oci://ghcr.io/niecke/lumios/charts`,
 signs everything, and commits `Deploy X.Y.Z to production` into
 `deploy/flux/prod/`.
 
+**Before the release that first ships the backup:** add the `backup.*` keys
+(`backup.database.gcs`, `backup.photos.gcs`, the healthcheck URLs) and
+`s3.endpointUrl` to `lumios-values` and roll the Secret out first, see "Backup
+and disaster recovery". The chart requires them while `backup.enabled` is true,
+so without them the production HelmRelease fails and the app release with it.
+`deploy/flux/prod/helmrelease.yaml` has no `backup.image.tag` until then;
+`release.yml` adds it with the other tags.
+
 ### Rolling back
 
 ```bash
@@ -457,6 +465,13 @@ too, which is what the 14 days are for.
 | `backup-dir` (default) | `rclone sync` into `current/`; objects it would delete or overwrite are moved to `deleted/<date>/`. A lifecycle rule on `deleted/` (30 days) empties it. | Create, read **and delete** on the bucket: the move is a copy plus a delete. A leaked key can therefore remove `current/` and `deleted/`. |
 | `mirror` | `rclone sync` into `current/`, nothing kept aside. For a bucket that versions its objects and expires the old versions itself. | Create, read and delete; deleting a version needs the same right. |
 | `copy` | `rclone copy`: adds and updates, never deletes. | Create and read only, so a leaked key cannot destroy anything. Deleted photos then stay in the backup indefinitely. |
+
+Both sync modes stop with an error when one run would delete more than
+`backup.photos.maxDelete` objects (default 500, `0` turns it off). A wrong or
+unlistable source bucket looks empty to rclone and would otherwise move the whole
+of `current/` aside and still report success; now the job fails and pings `/fail`.
+Raise the value for a run that legitimately removes more, such as a large
+account purge.
 
 Which mode fits depends on what the bucket offers; the permission model is
 decided in the infrastructure repository. Set the mode in `backup.photos.mode`.

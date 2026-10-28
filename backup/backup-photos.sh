@@ -19,6 +19,11 @@
 #   copy        rclone copy: new and changed objects are added, nothing is ever
 #               deleted. Needs no delete right, but deleted photos stay in the
 #               backup forever.
+#
+# The sync modes stop with an error when one run would delete more than
+# BACKUP_MAX_DELETE objects (0 turns the guard off). A wrong or unlistable source
+# bucket looks empty to rclone and would otherwise empty current/ and report
+# success.
 set -euo pipefail
 
 : "${S3_ENDPOINT_URL:?}"
@@ -32,11 +37,19 @@ set -euo pipefail
 
 BACKUP_MODE="${BACKUP_MODE:-backup-dir}"
 RCLONE_TRANSFERS="${RCLONE_TRANSFERS:-4}"
+BACKUP_MAX_DELETE="${BACKUP_MAX_DELETE:-500}"
 
 case "$BACKUP_MODE" in
     backup-dir | mirror | copy) ;;
     *)
         echo "error: BACKUP_MODE must be backup-dir, mirror or copy, got '${BACKUP_MODE}'" >&2
+        exit 2
+        ;;
+esac
+
+case "$BACKUP_MAX_DELETE" in
+    '' | *[!0-9]*)
+        echo "error: BACKUP_MAX_DELETE must be a number, got '${BACKUP_MAX_DELETE}'" >&2
         exit 2
         ;;
 esac
@@ -67,16 +80,21 @@ export RCLONE_CONFIG_GCS_TYPE=s3 RCLONE_CONFIG_GCS_PROVIDER=GCS \
 src="src:${S3_BUCKET}"
 dest="gcs:${BACKUP_BUCKET}/current"
 common=(--transfers "$RCLONE_TRANSFERS" --stats-one-line --stats 1m -v)
+sync_guard=()
+if [ "$BACKUP_MAX_DELETE" -gt 0 ]; then
+    sync_guard=(--max-delete "$BACKUP_MAX_DELETE")
+fi
+started=$(date +%s)
 
 echo "==> ${BACKUP_MODE}: ${S3_BUCKET} -> ${BACKUP_BUCKET}/current"
 case "$BACKUP_MODE" in
     backup-dir)
-        rclone sync "${common[@]}" \
+        rclone sync "${common[@]}" "${sync_guard[@]}" \
             --backup-dir "gcs:${BACKUP_BUCKET}/deleted/$(date -u +%F)" \
             "$src" "$dest"
         ;;
     mirror)
-        rclone sync "${common[@]}" "$src" "$dest"
+        rclone sync "${common[@]}" "${sync_guard[@]}" "$src" "$dest"
         ;;
     copy)
         rclone copy "${common[@]}" "$src" "$dest"
@@ -84,12 +102,11 @@ case "$BACKUP_MODE" in
 esac
 
 echo "==> verifying"
-# Same objects with the same sizes on both sides. In copy mode the backup may
-# hold more than the source, so only the missing-in-backup side is an error.
-if [ "$BACKUP_MODE" = copy ]; then
-    rclone check --size-only --one-way "$src" "$dest"
-else
-    rclone check --size-only "$src" "$dest"
-fi
+# Every object of the source is in the backup with the same size. The sync can
+# run for hours against a live bucket, so objects written or changed since it
+# started are left out (--min-age is relative to now), and objects that vanished
+# from the source meanwhile are no error (--one-way): neither is a failed backup.
+elapsed=$(($(date +%s) - started + 60))
+rclone check --size-only --one-way --min-age "${elapsed}s" "$src" "$dest"
 
 echo "photo backup complete"

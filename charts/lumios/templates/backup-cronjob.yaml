@@ -116,6 +116,8 @@ spec:
                   value: {{ $job.mode | quote }}
                 - name: RCLONE_TRANSFERS
                   value: {{ $job.transfers | quote }}
+                - name: BACKUP_MAX_DELETE
+                  value: {{ $job.maxDelete | quote }}
                 {{- end }}
               volumeMounts:
                 {{- if eq $name "database" }}
