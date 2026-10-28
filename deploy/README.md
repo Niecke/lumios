@@ -50,6 +50,7 @@ keeps running the previous release.
 | `postgres` | StatefulSet + Service `:5432` | One replica, PVC on `local-path`. |
 | `redis` | Deployment + Service `:6379` | Sessions and rate limits. No persistence. |
 | `purge-deleted-accounts`, `purge-audit-logs` | one CronJob each | The backend image, daily at 02:00 UTC. Replaces the Cloud Run cleanup job. |
+| `backup-database`, `backup-photos` | one CronJob each, **off in staging** | The `backup` image (`backup/`): a daily `pg_dump` and a mirror of the object storage, both shipped to GCS and reported to healthchecks.io. See "Backup and disaster recovery". |
 | Ingress | one per host, plus Traefik Middlewares | cert-manager issues one certificate per host. |
 
 Staging redeploys on two kinds of commit on `main`:
@@ -130,6 +131,18 @@ backend:
   mail:
     brevoApiKey: ...
     adminEmail: ...
+# Off-site backups (see "Backup and disaster recovery"); two keys, two checks
+backup:
+  database:
+    gcs:
+      accessKey: ...
+      secretKey: ...
+    healthcheckUrl: https://hc-ping.com/<uuid>
+  photos:
+    gcs:
+      accessKey: ...
+      secretKey: ...
+    healthcheckUrl: https://hc-ping.com/<uuid>
 # Optional, error tracking (see "Error tracking with Sentry")
 sentry:
   backendDsn: https://<key>@<org>.ingest.de.sentry.io/<backend-project>
@@ -379,19 +392,167 @@ kubectl -n lumios delete job purge-now
 ### Backup and disaster recovery
 
 All state is in two places: the Postgres volume under `/mnt/lumios/local-path`
-on the Hetzner `lumios-data` volume, and the object-storage bucket. Everything
-else is in git, or in the `lumios-values` Secret, which is in the password
-manager.
+on the Hetzner `lumios-data` volume, and the object-storage bucket with the
+photos and videos. Everything else is in git, or in the `lumios-values` Secret,
+which is in the password manager. Both are backed up off-site, to buckets at
+Google Cloud Storage, by two CronJobs of the `backup` image (`backup/`). Neither
+runs in staging (`backup.enabled: false`): its data is disposable.
 
-There is no automated database backup yet. Until there is one, take a dump
-before every release that carries a migration, and keep it off the node:
+| CronJob | Schedule | What it writes |
+|---|---|---|
+| `lumios-backup-database` | daily 03:00 Europe/Berlin | `lumios-postgres-<TS>.tar` (UTC timestamp) with one file, `dump.sql.br`: `pg_dump` as plain SQL, brotli-compressed |
+| `lumios-backup-photos` | daily 04:00 Europe/Berlin | a mirror of the object-storage bucket (`rclone`, streamed from bucket to bucket, no local scratch disk) |
 
-```bash
-kubectl -n lumios exec lumios-postgres-0 -- \
-  pg_dump -U lumios -Fc lumios > lumios-$(date +%F).dump
+Each has its own Secret and its own HMAC key, so one leaked key does not reach
+both buckets. The buckets, service accounts and keys are defined in the
+`Niecke/infrastructure` repository (issue 107 there), not here.
+
+Add the keys to `lumios-values`, then roll it out as in "Rotating a secret":
+
+```yaml
+backup:
+  database:
+    gcs:
+      accessKey: ...    # HMAC key of the database backup service account
+      secretKey: ...
+    healthcheckUrl: https://hc-ping.com/<uuid>
+  photos:
+    gcs:
+      accessKey: ...    # a different key
+      secretKey: ...
+    healthcheckUrl: https://hc-ping.com/<uuid>
 ```
 
-Rebuilding after losing the node:
+The photo job reads the live bucket with `s3.accessKey` / `s3.secretKey`, the
+backend's own key. A read-only key for that bucket is enough and would be the
+better choice.
+
+#### Alerting
+
+Each job pings its own check at healthchecks.io: `/start` when it begins, the
+plain URL on success, `/fail` when it breaks. Create two checks with a period of
+one day and a grace time of a few hours. The alarm is the *missing* ping, so a
+job that never starts, a down node or a deleted CronJob is caught as well. The
+ping URLs are secrets (anyone holding one can turn the check green) and live
+only in `lumios-values`. Without `healthcheckUrl` the jobs run, log a warning
+and raise no alarm.
+
+#### Retention
+
+| What | Kept | Enforced by |
+|---|---|---|
+| Database archives | 14 days | lifecycle rule on the bucket |
+| Photos and videos | the current state, plus what was deleted or overwritten for up to 30 days | depends on `backup.photos.mode`, below |
+
+The database key may add and read archives but not delete or overwrite them
+(`objectCreator` + `objectViewer`; archive names carry a timestamp and never
+collide). A leaked key cannot destroy existing archives. What it cannot do is
+protect against a bad archive: if the database was already damaged, the dump is
+too, which is what the 14 days are for.
+
+`backup.photos.mode` decides how deletes in the object storage reach the backup:
+
+| Mode | Behaviour | What the key needs |
+|---|---|---|
+| `backup-dir` (default) | `rclone sync` into `current/`; objects it would delete or overwrite are moved to `deleted/<date>/`. A lifecycle rule on `deleted/` (30 days) empties it. | Create, read **and delete** on the bucket: the move is a copy plus a delete. A leaked key can therefore remove `current/` and `deleted/`. |
+| `mirror` | `rclone sync` into `current/`, nothing kept aside. For a bucket that versions its objects and expires the old versions itself. | Create, read and delete; deleting a version needs the same right. |
+| `copy` | `rclone copy`: adds and updates, never deletes. | Create and read only, so a leaked key cannot destroy anything. Deleted photos then stay in the backup indefinitely. |
+
+Which mode fits depends on what the bucket offers; the permission model is
+decided in the infrastructure repository. Set the mode in `backup.photos.mode`.
+
+**Deleted photos stay in the backup.** A photo that is deleted, or purged with
+its account by `purge-deleted-accounts`, remains in `deleted/<date>/` for up to
+the retention period (30 days in `backup-dir` mode) and in database archives for
+14 days; in `copy` mode it is never removed. The privacy policy (issue 517)
+has to say so.
+
+#### Running a backup now
+
+```bash
+kubectl -n lumios create job backup-db-now --from=cronjob/lumios-backup-database
+kubectl -n lumios logs -f job/backup-db-now
+kubectl -n lumios delete job backup-db-now
+```
+
+`lumios-backup-photos` works the same way. A run that finishes shows the
+archive name and size (`rclone lsl`) at the end of the log.
+
+#### Restoring the database
+
+The restore was tried against a throwaway PostgreSQL 18: dump, archive upload,
+download, `brotli -d`, restore into a database that still held stale data, then
+a check of the `alembic_version` and row counts. Repeat it from time to time.
+
+1. Fetch the archive. Any machine with `rclone` and the *read* side of the
+   database key works; pick the newest (or the wanted) `lumios-postgres-<TS>.tar`:
+
+   ```bash
+   export RCLONE_CONFIG_GCS_TYPE=s3 RCLONE_CONFIG_GCS_PROVIDER=GCS \
+     RCLONE_CONFIG_GCS_ENDPOINT=https://storage.googleapis.com \
+     RCLONE_CONFIG_GCS_ACCESS_KEY_ID=... RCLONE_CONFIG_GCS_SECRET_ACCESS_KEY=...
+   rclone lsl gcs:niecke-it-lumios-backups
+   rclone copy gcs:niecke-it-lumios-backups/lumios-postgres-<TS>.tar .
+   tar -xf lumios-postgres-<TS>.tar        # -> dump.sql.br
+   brotli -d dump.sql.br                   # -> dump.sql
+   ```
+
+2. Get a running, empty or stale Postgres 18: on a rebuilt cluster wait for
+   `lumios-postgres-0` to be ready (see "Rebuilding after losing the node"); on
+   the existing one, stop the writers first so nothing is written during the
+   restore:
+
+   ```bash
+   kubectl -n lumios scale deploy/lumios-backend deploy/lumios-worker-default \
+     deploy/lumios-worker-video --replicas=0
+   ```
+
+3. Drop the old schema and restore in one transaction. The dump has no owner and
+   no grants, so it restores as the user running `psql`; `ON_ERROR_STOP` with
+   `--single-transaction` leaves the database untouched if anything fails:
+
+   ```bash
+   kubectl -n lumios exec -i lumios-postgres-0 -- \
+     psql -U lumios -d lumios -v ON_ERROR_STOP=1 \
+     -c 'DROP SCHEMA public CASCADE' -c 'CREATE SCHEMA public'
+   kubectl -n lumios exec -i lumios-postgres-0 -- \
+     psql -U lumios -d lumios --single-transaction -v ON_ERROR_STOP=1 < dump.sql
+   ```
+
+4. Check it: the migration revision matches the release you are running and the
+   tables have rows.
+
+   ```bash
+   kubectl -n lumios exec lumios-postgres-0 -- psql -U lumios -d lumios \
+     -c 'SELECT version_num FROM alembic_version' \
+     -c 'SELECT count(*) FROM users' -c 'SELECT count(*) FROM libraries'
+   ```
+
+5. Scale the backend and workers back up (Flux does it on its next reconcile, or
+   `kubectl -n lumios scale ... --replicas=<n>`).
+
+An archive from before a migration restores an older schema than the running
+release expects; the next release's migrate Job upgrades it, or run
+`entrypoint.py migrate` by hand.
+
+#### Restoring photos
+
+The mirror is in `current/` of the photo backup bucket (`backup.photos.gcs.bucket`,
+`niecke-it-lumios-photo-backups` by default) in every mode. Copy it back with
+the *read* side of the photo key; in `backup-dir` mode a file overwritten or
+deleted by mistake is in `deleted/<date>/`:
+
+```bash
+export RCLONE_CONFIG_GCS_TYPE=s3 RCLONE_CONFIG_GCS_PROVIDER=GCS \
+  RCLONE_CONFIG_GCS_ENDPOINT=https://storage.googleapis.com \
+  RCLONE_CONFIG_GCS_ACCESS_KEY_ID=... RCLONE_CONFIG_GCS_SECRET_ACCESS_KEY=...
+export RCLONE_CONFIG_LIVE_TYPE=s3 RCLONE_CONFIG_LIVE_PROVIDER=Other \
+  RCLONE_CONFIG_LIVE_ENDPOINT=https://<object storage endpoint> \
+  RCLONE_CONFIG_LIVE_ACCESS_KEY_ID=... RCLONE_CONFIG_LIVE_SECRET_ACCESS_KEY=...
+rclone copy gcs:niecke-it-lumios-photo-backups/current live:lumios
+```
+
+#### Rebuilding after losing the node
 
 1. Recreate the node from the infrastructure repository; cloud-init mounts the
    volume at `/mnt/lumios` and starts k3s with the same
@@ -402,16 +563,8 @@ Rebuilding after losing the node:
 4. `kubectl apply -k deploy/flux/`. The new cluster has no record of the old
    PVC, so k3s provisions a fresh directory for `lumios-postgres-0`. To reuse
    the data still on the volume, pre-create a PersistentVolume pointing at the
-   old directory before this step; otherwise restore from a dump.
-
-With a fresh database, wait for `lumios-postgres-0` to be ready, then restore:
-
-```bash
-kubectl -n lumios exec -i lumios-postgres-0 -- \
-  pg_restore -U lumios -d lumios --clean --if-exists < lumios-<date>.dump
-```
-
-Photos live in the bucket and are untouched by any of this.
+   old directory before this step; otherwise restore the database as above.
+5. If the object-storage bucket is gone too, restore the photos.
 
 ## Repository settings this depends on
 
