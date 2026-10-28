@@ -1,0 +1,141 @@
+{{- if .Values.backup.enabled }}
+{{- /*
+Two off-site backups, one CronJob and one Secret each so a failure in one does
+not hide the other and one leaked key does not reach both buckets:
+
+  database  pg_dump | brotli, one lumios-postgres-<TS>.tar per run
+  photos    rclone mirror of the object storage (photos and videos)
+
+Both run backup/ (one image, two entrypoints) and ping their own healthchecks.io
+check; see deploy/README.md.
+*/}}
+{{- $jobs := list }}
+{{- if .Values.backup.database.enabled }}{{ $jobs = append $jobs "database" }}{{ end }}
+{{- if .Values.backup.photos.enabled }}{{ $jobs = append $jobs "photos" }}{{ end }}
+{{- range $name := $jobs }}
+{{- $job := index $.Values.backup $name }}
+{{- $accessKey := required (printf "backup.%s.gcs.accessKey is required when the backup is enabled" $name) $job.gcs.accessKey }}
+{{- $secretKey := required (printf "backup.%s.gcs.secretKey is required when the backup is enabled" $name) $job.gcs.secretKey }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "lumios.fullname" $ }}-backup-{{ $name }}
+  labels:
+    {{- include "lumios.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: backup-{{ $name }}
+type: Opaque
+stringData:
+  # HMAC key for the backup bucket, reached over its S3-compatible endpoint.
+  GCS_ACCESS_KEY: {{ $accessKey | quote }}
+  GCS_SECRET_KEY: {{ $secretKey | quote }}
+  {{- if eq $name "database" }}
+  PGPASSWORD: {{ required "postgres.password is required" $.Values.postgres.password | quote }}
+  {{- else }}
+  # The live bucket, read with the backend's own key.
+  S3_ACCESS_KEY: {{ required "s3.accessKey is required for the photo backup" $.Values.s3.accessKey | quote }}
+  S3_SECRET_KEY: {{ required "s3.secretKey is required for the photo backup" $.Values.s3.secretKey | quote }}
+  {{- end }}
+  {{- with $job.healthcheckUrl }}
+  HEALTHCHECK_URL: {{ . | quote }}
+  {{- end }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "lumios.fullname" $ }}-backup-{{ $name }}
+  labels:
+    {{- include "lumios.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: backup-{{ $name }}
+spec:
+  schedule: {{ $job.schedule | quote }}
+  timeZone: {{ $job.timeZone | quote }}
+  # Two overlapping runs would double the load on the database or the egress
+  # for no benefit.
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: {{ $job.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "lumios.selectorLabels" $ | nindent 12 }}
+            app.kubernetes.io/component: backup-{{ $name }}
+        spec:
+          restartPolicy: Never
+          {{- with $.Values.priorityClassName }}
+          priorityClassName: {{ . | quote }}
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            fsGroup: 70
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              image: {{ include "lumios.image" (list "backup" $.Values.backup.image) | quote }}
+              imagePullPolicy: {{ $.Values.backup.image.pullPolicy }}
+              {{- if eq $name "photos" }}
+              command: ["/usr/local/bin/backup-photos.sh"]
+              {{- end }}
+              envFrom:
+                - secretRef:
+                    name: {{ include "lumios.fullname" $ }}-backup-{{ $name }}
+              env:
+                - name: GCS_ENDPOINT
+                  value: {{ $.Values.backup.gcs.endpoint | quote }}
+                - name: BACKUP_BUCKET
+                  value: {{ $job.gcs.bucket | quote }}
+                {{- if eq $name "database" }}
+                - name: DATABASE_HOST
+                  value: {{ include "lumios.postgresHost" $ | quote }}
+                - name: DATABASE_USER
+                  value: {{ $.Values.postgres.username | quote }}
+                - name: DATABASE_NAME
+                  value: {{ $.Values.postgres.database | quote }}
+                - name: BROTLI_QUALITY
+                  value: {{ $.Values.backup.database.brotliQuality | quote }}
+                - name: WORK_DIR
+                  value: /backup
+                {{- else }}
+                - name: S3_ENDPOINT_URL
+                  value: {{ required "s3.endpointUrl is required for the photo backup" $.Values.s3.endpointUrl | quote }}
+                - name: S3_BUCKET
+                  value: {{ $.Values.s3.bucket | quote }}
+                - name: BACKUP_MODE
+                  value: {{ $job.mode | quote }}
+                - name: RCLONE_TRANSFERS
+                  value: {{ $job.transfers | quote }}
+                {{- end }}
+              volumeMounts:
+                {{- if eq $name "database" }}
+                - name: work
+                  mountPath: /backup
+                {{- end }}
+                - name: tmp
+                  mountPath: /tmp
+              resources:
+                {{- toYaml $job.resources | nindent 16 }}
+          volumes:
+            {{- if eq $name "database" }}
+            # Scratch for the compressed dump. emptyDir comes off the node's boot
+            # disk, not the data volume — sizeLimit keeps a grown database from
+            # filling it and evicting the pod.
+            - name: work
+              emptyDir:
+                sizeLimit: {{ $job.workDirSize }}
+            {{- end }}
+            - name: tmp
+              emptyDir: {}
+{{- end }}
+{{- end }}

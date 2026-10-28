@@ -51,6 +51,9 @@ spec:
       bucket: lumios-staging
     cleanup:
       enabled: false
+    # Disposable data: nothing of it goes to the backup buckets.
+    backup:
+      enabled: false
     postgres:
       storage:
         size: 2Gi

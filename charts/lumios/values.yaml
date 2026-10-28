@@ -232,3 +232,70 @@ cleanup:
       memory: 128Mi
     limits:
       memory: 256Mi
+
+# ---------------------------------------------------------------------------
+# Backup — two off-site CronJobs on the backup/ image, each with its own Secret,
+# HMAC key and healthchecks.io check (deploy/README.md, "Backup and disaster
+# recovery"). The buckets and their keys are created in the infrastructure repo.
+#   database  daily pg_dump | brotli, shipped as lumios-postgres-<TS>.tar
+#   photos    rclone mirror of the object storage; the mode decides how deletes
+#             reach the backup
+# Staging turns the whole block off: its data is disposable.
+# ---------------------------------------------------------------------------
+backup:
+  enabled: true
+  image:
+    repository: ghcr.io/niecke/lumios/backup
+    # Required, no default: set by promote.yml (staging) and release.yml (prod).
+    tag: ""
+    pullPolicy: IfNotPresent
+  gcs:
+    # The S3-compatible (XML API) endpoint of GCS; the keys are HMAC keys.
+    endpoint: https://storage.googleapis.com
+  database:
+    enabled: true
+    schedule: "0 3 * * *"
+    timeZone: Europe/Berlin
+    # 5 rather than brotli's 11: the top levels cost minutes on a shared node.
+    brotliQuality: 5
+    # Scratch for the compressed dump (emptyDir).
+    workDirSize: 2Gi
+    activeDeadlineSeconds: 3600
+    gcs:
+      bucket: niecke-it-lumios-backups
+      # Required. HMAC key of the database backup service account, which may add
+      # and read archives but not delete them.
+      accessKey: ""
+      secretKey: ""
+    # Optional but without it a failed or missing backup raises no alarm.
+    # Ping URL of the healthchecks.io check; a secret, so it belongs in the
+    # lumios-values Secret.
+    healthcheckUrl: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+  photos:
+    enabled: true
+    schedule: "0 4 * * *"
+    timeZone: Europe/Berlin
+    # backup-dir | mirror | copy — how deletes in the object storage reach the
+    # backup. See backup/backup-photos.sh and deploy/README.md for what each
+    # needs from the bucket.
+    mode: backup-dir
+    transfers: 4
+    activeDeadlineSeconds: 14400
+    gcs:
+      bucket: niecke-it-lumios-photo-backups
+      # Required. A different key from the database backup's.
+      accessKey: ""
+      secretKey: ""
+    healthcheckUrl: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
