@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.0](https://github.com/Niecke/lumios/compare/v0.3.0...v0.4.0) (2026-10-29)
+
+
+### Features
+
+* **backend:** add Postgres-backed background worker and migrate video processing ([#518](https://github.com/Niecke/lumios/issues/518)) ([64cd166](https://github.com/Niecke/lumios/commit/64cd1662143041be3adf4886c792deecef4af37c))
+* **backend:** send transactional mail through the default worker queue ([#524](https://github.com/Niecke/lumios/issues/524)) ([b501d17](https://github.com/Niecke/lumios/commit/b501d179f44c777d9ace6c578ef128742c71d92d))
+* **backend:** worker dashboard in the admin UI ([#520](https://github.com/Niecke/lumios/issues/520)) ([6ced97d](https://github.com/Niecke/lumios/commit/6ced97d2e5368531a3bcef7140a642e9c521aad9))
+* **deploy:** automated Postgres and photo backup CronJobs with restore runbook ([#528](https://github.com/Niecke/lumios/issues/528)) ([b8efe9b](https://github.com/Niecke/lumios/commit/b8efe9b17c49b12b92bc61bed9ddaa5cedb3cc73))
+* error tracking with Sentry (backend, frontend, mail failures) ([#509](https://github.com/Niecke/lumios/issues/509)) ([c0601db](https://github.com/Niecke/lumios/commit/c0601dbdd029c7ffd0efdac22cff7a7a713900fb))
+* upgrade backend to Python 3.14 and hold Renovate below 3.15 ([#507](https://github.com/Niecke/lumios/issues/507)) ([2718359](https://github.com/Niecke/lumios/commit/2718359f7a582b953e958c6c36e7109dee3c71d3))
+
+
+### Bug Fixes
+
+* **deps:** update dependency boto3 to v1.43.119 ([#536](https://github.com/Niecke/lumios/issues/536)) ([3cc0b23](https://github.com/Niecke/lumios/commit/3cc0b23ef3c75f616c4af95c2669d5e3c7343b94))
+* **frontend:** migrate Sentry to v11 (sendDefaultPii replaced by dataCollection) ([#519](https://github.com/Niecke/lumios/issues/519)) ([8d0e1fe](https://github.com/Niecke/lumios/commit/8d0e1fe40026a0b70ba446ffe8244219cf025bb1))
+
 ## [0.3.0](https://github.com/Niecke/lumios/compare/v0.2.0...v0.3.0) (2026-10-25)
 
 
