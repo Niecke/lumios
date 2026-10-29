@@ -46,7 +46,7 @@ spec:
       image:
         # Written by release.yml from a vX.Y.Z tag — a merge to main never
         # moves production. Rolling back is reverting that Deploy commit.
-        tag: 0.3.0
+        tag: 0.4.0
     workers:
       video:
         # Below the backend and Postgres (priority 0): under memory pressure the
@@ -57,8 +57,11 @@ spec:
       # the app down. Both run on the one node, so this is not node redundancy.
       replicas: 2
       image:
-        tag: 0.3.0
+        tag: 0.4.0
     landingpage:
       replicas: 2
       image:
-        tag: 0.3.0
+        tag: 0.4.0
+    backup:
+      image:
+        tag: 0.4.0
