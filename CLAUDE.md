@@ -586,28 +586,35 @@ tests/
 ├── conftest.py               # Fixtures: app, client, admin_user, regular_user, inactive_user
 ├── test_admin.py
 ├── test_api_auth.py
-├── test_api_images.py
+├── test_api_images.py        # also the merged photo + video media list
 ├── test_api_libraries.py
-├── test_api_public.py
+├── test_api_public.py        # also the public video routes and the ZIP download with videos
+├── test_api_videos.py        # photographer video routes: gate, auth, scoping, init/finalize/get/delete, quotas
 ├── test_api_watermark.py
 ├── test_auth.py
 ├── test_auth_google.py
 ├── test_commands.py
+├── test_entrypoint.py
 ├── test_feedback.py
 ├── test_health.py
+├── test_login_protection.py
+├── test_mail.py
 ├── test_migrations.py
 ├── test_models.py
-├── test_entrypoint.py
 ├── test_procrastinate_schema.py
+├── test_quota.py
 ├── test_redis_client.py
 ├── test_security.py
+├── test_sentry.py
 ├── test_storage.py
 ├── test_support.py
 ├── test_tracing.py
-└── test_worker.py
+├── test_videos.py            # services/videos.py: validation, init, finalize, process_video, ffmpeg parsing, steps
+├── test_worker.py            # queue round trip: enqueue, run, retry, dead letter, health
+└── test_zip_stream.py
 ```
 
-**Thinly tested:** `blueprints/api/videos.py` has only quota tests (`test_api_videos.py`); the enqueue and processing path of `services/videos.py` is covered by `test_worker.py` (ffmpeg and storage are mocked). Do not assume coverage beyond that.
+**Video coverage:** the photographer and public video routes (`test_api_videos.py`, `test_api_public.py`), `services/videos.py` (`test_videos.py`) and `services/zip_stream.py` are covered with storage, ffmpeg and Redis mocked. The queue round trip of `process_video` is in `test_worker.py`. Nothing runs a real ffmpeg binary on a real video file.
 
 Every new blueprint needs a corresponding `tests/test_<blueprint>.py`. Test happy path, auth enforcement, role enforcement, and input validation for every route.
 
