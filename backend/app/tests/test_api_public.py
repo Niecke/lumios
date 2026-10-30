@@ -341,6 +341,14 @@ class TestPublicUpload:
         assert res.status_code == 201
         assert "uuid" in res.get_json()
 
+    def test_upload_invalidates_watermark_previews(self, client, upload_library):
+        with _patch("services.images.storage"), _patch(
+            "services.images.invalidate_watermark_previews"
+        ) as mock_invalidate:
+            res = self._post_jpeg(client, upload_library.uuid)
+        assert res.status_code == 201
+        mock_invalidate.assert_called_once_with(upload_library.id)
+
     def test_upload_marks_image_as_external(self, client, upload_library):
         from models import Image as _Image
         from sqlalchemy import select as _select
