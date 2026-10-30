@@ -614,6 +614,40 @@ class TestExifStripping:
         assert b"tIME" not in types and b"prVT" not in types
         assert b"vendor-secret" not in stored
 
+    @patch("services.images.storage")
+    def test_animated_png_stored_as_static_default_frame(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        frames = [PilImage.new("RGB", (4, 4), c) for c in ("red", "blue")]
+        buf = io.BytesIO()
+        frames[0].save(buf, format="PNG", save_all=True, append_images=frames[1:])
+        png = buf.getvalue()
+        assert {b"acTL", b"fcTL", b"fdAT"} <= set(png_chunk_types(png))
+
+        res = upload(client, library.id, make_token(photographer), png, "a.png", "image/png")
+        assert res.status_code == 201
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        assert not {b"acTL", b"fcTL", b"fdAT"} & set(png_chunk_types(stored))
+
+    @pytest.mark.parametrize("keyword", ["comment", "Comment"])
+    @patch("services.images.storage")
+    def test_png_text_comment_not_copied_to_derivatives(
+        self, mock_storage, keyword, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        info = PngImagePlugin.PngInfo()
+        info.add_text(keyword, "secret-comment-text")
+        buf = io.BytesIO()
+        PilImage.new("RGB", (8, 8), "red").save(buf, format="PNG", pnginfo=info)
+
+        res = upload(client, library.id, make_token(photographer), buf.getvalue(), "c.png", "image/png")
+        assert res.status_code == 201
+        uploads = [c[0][0].read() for c in mock_storage.upload_fileobj.call_args_list]
+        assert len(uploads) == 3
+        for data in uploads:
+            assert b"secret-comment-text" not in data
+
     @pytest.mark.parametrize(
         "corrupt",
         [

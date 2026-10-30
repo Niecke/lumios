@@ -179,6 +179,8 @@ def _strip_webp_metadata(file_data: bytes) -> bytes:
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 # Chunks needed to render the image; every other chunk (tIME, eXIf, tEXt, zTXt,
 # iTXt, vendor chunks) is dropped. eXIf is handled separately (Orientation only).
+# This also drops the APNG chunks (acTL, fcTL, fdAT): an animated PNG is stored as
+# its static default frame. This is intended.
 _PNG_KEPT_CHUNKS = frozenset({
     b"IHDR", b"PLTE", b"IDAT", b"IEND", b"tRNS", b"gAMA", b"cHRM",
     b"sRGB", b"iCCP", b"sBIT", b"pHYs", b"bKGD",
@@ -355,7 +357,8 @@ def _create_watermarked_preview(
 
     def _save_jpeg(img: PilImage.Image, quality: int) -> io.BytesIO:
         buf = io.BytesIO()
-        save_kwargs: dict = {"format": "JPEG", "quality": quality}
+        # comment="" keeps a PNG text comment out of the JPEG COM marker
+        save_kwargs: dict = {"format": "JPEG", "quality": quality, "comment": b""}
         if icc_profile:
             save_kwargs["icc_profile"] = icc_profile
         img.save(buf, **save_kwargs)
@@ -455,7 +458,7 @@ def process_and_store_image(
     if thumb_img.mode in ("RGBA", "P", "LA"):
         thumb_img = thumb_img.convert("RGB")
     thumb_buf = io.BytesIO()
-    thumb_save_kwargs: dict = {"format": "JPEG", "quality": 85}
+    thumb_save_kwargs: dict = {"format": "JPEG", "quality": 85, "comment": b""}
     if icc_profile:
         thumb_save_kwargs["icc_profile"] = icc_profile
     thumb_img.save(thumb_buf, **thumb_save_kwargs)
