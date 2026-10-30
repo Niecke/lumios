@@ -266,11 +266,14 @@ class TestBinaryCache:
 
         mock_r = MagicMock()
         pipe = mock_r.pipeline.return_value
-        pipe.execute.return_value = [True, 1, True, [b"old1", b"old2"]]
+        pipe.execute.return_value = [True, 1, 0, True, [b"old1", b"old2"]]
         with patch.object(mod, "get_redis_bytes", return_value=mock_r):
             mod.cache_set_bytes_capped("k", b"x", "idx", max_entries=3, ttl=60)
         pipe.setex.assert_called_once_with("k", 60, b"x")
         pipe.zrange.assert_called_once_with("idx", 0, -4)
+        # expired-by-TTL entries are dropped before the cap is applied
+        (idx, lo, hi), _ = pipe.zremrangebyscore.call_args
+        assert (idx, lo) == ("idx", 0) and hi > 0
         pipe.delete.assert_called_once_with(b"old1", b"old2")
         pipe.zrem.assert_called_once_with("idx", b"old1", b"old2")
 
@@ -279,7 +282,7 @@ class TestBinaryCache:
 
         mock_r = MagicMock()
         pipe = mock_r.pipeline.return_value
-        pipe.execute.return_value = [True, 1, True, []]
+        pipe.execute.return_value = [True, 1, 0, True, []]
         with patch.object(mod, "get_redis_bytes", return_value=mock_r):
             mod.cache_set_bytes_capped("k", b"x", "idx", max_entries=3)
         pipe.delete.assert_not_called()

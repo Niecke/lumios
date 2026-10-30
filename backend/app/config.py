@@ -97,6 +97,10 @@ REDIS_URL = os.getenv("REDIS_URL", None)
 WATERMARK_PREVIEW_CACHE_MAX_PER_LIBRARY = int(
     os.getenv("WATERMARK_PREVIEW_CACHE_MAX_PER_LIBRARY", "20")
 )
+# Watermark previews above this size (bytes) are served but not cached in Redis
+WATERMARK_PREVIEW_CACHE_MAX_BYTES = int(
+    os.getenv("WATERMARK_PREVIEW_CACHE_MAX_BYTES", "2097152")
+)
 
 # S3-compatible object storage (use Versity Gateway for local dev, Hetzner object storage in production)
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "http://s3:7070")

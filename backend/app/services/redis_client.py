@@ -143,8 +143,11 @@ def cache_set_bytes_capped(
         return
     try:
         pipe = r.pipeline()
+        now = time.time()
         pipe.setex(key, ttl, value)
-        pipe.zadd(index_key, {key: time.time()})
+        pipe.zadd(index_key, {key: now})
+        # entries whose key already expired by TTL must not count toward the cap
+        pipe.zremrangebyscore(index_key, 0, now - ttl)
         pipe.expire(index_key, ttl)
         # everything except the newest max_entries keys
         pipe.zrange(index_key, 0, -(max_entries + 1))

@@ -123,10 +123,25 @@ class TestUploadWatermark:
         res = upload_logo(client, library.id, token, make_png_bytes())
         assert res.status_code == 200
         data = res.get_json()
-        assert data["watermark_gcs_key"] == f"watermarks/{photographer.id}/{library.id}/watermark.png"
+        import re
+
+        assert re.fullmatch(
+            rf"watermarks/{photographer.id}/{library.id}/watermark-[0-9a-f]{{8}}\.png",
+            data["watermark_gcs_key"],
+        )
         assert data["watermark_scale"] == 0.2
         assert data["watermark_position"] == "bottom_right"
         mock_storage.upload_fileobj.assert_called_once()
+
+    @patch("blueprints.api.libraries.storage")
+    def test_replacing_logo_changes_key_and_deletes_old_object(
+        self, mock_storage, client, photographer, library
+    ):
+        token = make_token(photographer)
+        first = upload_logo(client, library.id, token, make_png_bytes()).get_json()
+        second = upload_logo(client, library.id, token, make_png_bytes()).get_json()
+        assert first["watermark_gcs_key"] != second["watermark_gcs_key"]
+        mock_storage.delete_object.assert_called_once_with(first["watermark_gcs_key"])
 
     @patch("blueprints.api.libraries.storage")
     def test_preserves_existing_scale_and_position(self, mock_storage, client, photographer, library):
@@ -365,9 +380,57 @@ class TestWatermarkPreviewCaching:
         args, kwargs = mock_set.call_args
         assert args[0].startswith(f"watermark_preview:{prepared.id}:")
         assert args[0].endswith(":0.20:bottom_right")
+        assert len(args[0].split(":")) == 6  # prefix, library, sample, logo, scale, position
         assert args[1] == res.data
         assert kwargs["index_key"] == f"watermark_preview:{prepared.id}:index"
         assert kwargs["max_entries"] == 20
+
+    @patch("blueprints.api.libraries.cache_set_bytes_capped")
+    @patch("blueprints.api.libraries.cache_get_bytes", return_value=None)
+    @patch("services.images.storage")
+    @patch("blueprints.api.libraries.storage")
+    def test_scale_is_quantised_for_key_and_render(
+        self, lib_storage, img_storage, _get, mock_set, client, photographer, prepared
+    ):
+        lib_storage.get_object_bytes.side_effect = self._get_bytes
+        img_storage.get_object_bytes.side_effect = self._get_bytes
+        res = client.get(
+            f"/api/v1/libraries/{prepared.id}/watermark/preview",
+            query_string={"scale": "0.123", "position": "bottom_right"},
+            headers=auth_header(make_token(photographer)),
+        )
+        assert res.status_code == 200
+        assert mock_set.call_args[0][0].endswith(":0.12:bottom_right")
+
+    @patch("blueprints.api.libraries.WATERMARK_PREVIEW_CACHE_MAX_BYTES", 1)
+    @patch("blueprints.api.libraries.cache_set_bytes_capped")
+    @patch("blueprints.api.libraries.cache_get_bytes", return_value=None)
+    @patch("services.images.storage")
+    @patch("blueprints.api.libraries.storage")
+    def test_oversized_preview_is_served_but_not_cached(
+        self, lib_storage, img_storage, _get, mock_set, client, photographer, prepared
+    ):
+        lib_storage.get_object_bytes.side_effect = self._get_bytes
+        img_storage.get_object_bytes.side_effect = self._get_bytes
+        res = self._request(client, photographer, prepared)
+        assert res.status_code == 200
+        mock_set.assert_not_called()
+
+    @patch("blueprints.api.libraries.cache_set_bytes_capped")
+    @patch("blueprints.api.libraries.cache_get_bytes", return_value=None)
+    @patch("services.images.storage")
+    @patch("blueprints.api.libraries.storage")
+    def test_weak_if_none_match_returns_304(
+        self, lib_storage, img_storage, _get, _set, client, photographer, prepared
+    ):
+        lib_storage.get_object_bytes.side_effect = self._get_bytes
+        img_storage.get_object_bytes.side_effect = self._get_bytes
+        first = self._request(client, photographer, prepared)
+        _get.return_value = first.data
+        res = self._request(
+            client, photographer, prepared, **{"If-None-Match": "W/" + first.headers["ETag"]}
+        )
+        assert res.status_code == 304
 
     @patch("blueprints.api.libraries.invalidate_watermark_previews")
     @patch("blueprints.api.libraries.storage")

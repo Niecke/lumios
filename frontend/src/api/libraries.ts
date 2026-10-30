@@ -112,9 +112,15 @@ export const librariesApi = {
       { method: "POST" }
     ),
 
-  fetchWatermarkPreview: (id: number, scale: number, position: string): Promise<string> => {
+  fetchWatermarkPreview: (
+    id: number,
+    scale: number,
+    position: string,
+    logoVersion: string
+  ): Promise<string> => {
     const token = tokenStore.get();
-    const params = new URLSearchParams({ scale: String(scale), position });
+    // v changes with every logo upload, so the browser cache never serves an old logo
+    const params = new URLSearchParams({ scale: String(scale), position, v: logoVersion });
     return fetch(`/api/v1/libraries/${id}/watermark/preview?${params}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     }).then(async (res) => {

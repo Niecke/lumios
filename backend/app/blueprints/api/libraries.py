@@ -6,9 +6,13 @@ from sqlalchemy import select, func
 from datetime import datetime, timezone
 import hashlib
 import io
+import secrets
 from PIL import Image as PilImage, ImageOps
 from services import storage
-from config import WATERMARK_PREVIEW_CACHE_MAX_PER_LIBRARY
+from config import (
+    WATERMARK_PREVIEW_CACHE_MAX_BYTES,
+    WATERMARK_PREVIEW_CACHE_MAX_PER_LIBRARY,
+)
 from services.redis_client import cache_delete_pattern, cache_get_bytes, cache_set_bytes_capped
 from services.images import (
     _build_placeholder_image,
@@ -263,7 +267,9 @@ def upload_watermark(library_id: int):
     except Exception:
         return jsonify({"error": "File is not a valid PNG image"}), 415
 
-    gcs_key = f"watermarks/{user_id}/{library_id}/watermark.png"
+    # A fresh key per upload doubles as the logo version of the preview URL and cache key
+    gcs_key = f"watermarks/{user_id}/{library_id}/watermark-{secrets.token_hex(4)}.png"
+    old_key = library.watermark_gcs_key
     try:
         storage.ensure_bucket()
         storage.upload_fileobj(io.BytesIO(file_data), gcs_key, "image/png")
@@ -277,6 +283,13 @@ def upload_watermark(library_id: int):
     if library.watermark_position is None:
         library.watermark_position = "bottom_right"
     db.session.commit()
+    if old_key and old_key != gcs_key:
+        try:
+            storage.delete_object(old_key)
+        except Exception:
+            current_app.logger.warning(
+                "Failed to delete replaced watermark from object storage key=%s", old_key
+            )
     invalidate_watermark_previews(library.id)
     return jsonify(library.to_dict()), 200
 
@@ -317,7 +330,7 @@ def _preview_response(preview_bytes: bytes) -> Response:
     """JPEG response with a content-hash ETag; 304 when If-None-Match matches."""
     digest = hashlib.sha256(preview_bytes).hexdigest()[:16]
     headers = {"ETag": f'"{digest}"', "Cache-Control": WATERMARK_PREVIEW_CACHE_CONTROL}
-    if digest in request.if_none_match:
+    if request.if_none_match.contains_weak(digest):
         return Response(status=304, headers=headers)
     return Response(preview_bytes, mimetype="image/jpeg", headers=headers)
 
@@ -342,7 +355,7 @@ def watermark_preview(library_id: int):
 
     try:
         scale = float(request.args.get("scale", library.watermark_scale or 0.2))
-        scale = max(0.05, min(0.50, scale))
+        scale = round(max(0.05, min(0.50, scale)), 2)
     except (TypeError, ValueError):
         return jsonify({"error": "Invalid scale parameter"}), 400
 
@@ -363,7 +376,8 @@ def watermark_preview(library_id: int):
     )
 
     sample_ref = str(sample_image.uuid) if sample_image is not None else "placeholder"
-    cache_key = f"watermark_preview:{library_id}:{sample_ref}:{scale:.2f}:{position}"
+    logo_ref = hashlib.sha256(library.watermark_gcs_key.encode()).hexdigest()[:8]
+    cache_key = f"watermark_preview:{library_id}:{sample_ref}:{logo_ref}:{scale:.2f}:{position}"
     preview_bytes = cache_get_bytes(cache_key)
     if preview_bytes is not None:
         return _preview_response(preview_bytes)
@@ -402,13 +416,14 @@ def watermark_preview(library_id: int):
     pil_img.close()
 
     preview_bytes = preview_buf.getvalue()
-    cache_set_bytes_capped(
-        cache_key,
-        preview_bytes,
-        index_key=f"watermark_preview:{library_id}:index",
-        max_entries=WATERMARK_PREVIEW_CACHE_MAX_PER_LIBRARY,
-        ttl=WATERMARK_PREVIEW_CACHE_TTL,
-    )
+    if len(preview_bytes) <= WATERMARK_PREVIEW_CACHE_MAX_BYTES:
+        cache_set_bytes_capped(
+            cache_key,
+            preview_bytes,
+            index_key=f"watermark_preview:{library_id}:index",
+            max_entries=WATERMARK_PREVIEW_CACHE_MAX_PER_LIBRARY,
+            ttl=WATERMARK_PREVIEW_CACHE_TTL,
+        )
     return _preview_response(preview_bytes)
 
 
