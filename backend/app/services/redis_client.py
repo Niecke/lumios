@@ -9,6 +9,7 @@ rest of the application keeps working without Redis.
 
 import json
 import logging
+import time
 
 import redis as _redis_lib
 
@@ -18,16 +19,15 @@ logger = logging.getLogger(__name__)
 
 # -- connection pool (lazy, created on first call) --------------------------
 
+# One pool for the whole backend.  It does NOT use ``decode_responses``:
+# flask-session and the binary preview cache store raw bytes, so every
+# consumer gets ``bytes`` back and decodes where it needs text.
 _pool: _redis_lib.ConnectionPool | None = None
 _client: _redis_lib.Redis | None = None
 
-# flask-session stores binary data and must NOT use decode_responses.
-_session_pool: _redis_lib.ConnectionPool | None = None
-_session_client: _redis_lib.Redis | None = None
-
 
 def get_redis() -> _redis_lib.Redis | None:
-    """Return a shared Redis client (``decode_responses=True``).
+    """Return the shared Redis client (binary responses, pooled).
 
     Returns ``None`` when ``REDIS_URL`` is not set.
     """
@@ -35,26 +35,19 @@ def get_redis() -> _redis_lib.Redis | None:
     if not REDIS_URL:
         return None
     if _client is None:
-        _pool = _redis_lib.ConnectionPool.from_url(
-            REDIS_URL, decode_responses=True
-        )
+        _pool = _redis_lib.ConnectionPool.from_url(REDIS_URL)
         _client = _redis_lib.Redis(connection_pool=_pool)
     return _client
 
 
-def get_redis_session() -> _redis_lib.Redis | None:
-    """Return a shared Redis client **without** ``decode_responses``.
+def get_redis_bytes() -> _redis_lib.Redis | None:
+    """Return the shared Redis client for raw ``bytes`` values."""
+    return get_redis()
 
-    Intended for flask-session which stores binary pickle data.
-    Returns ``None`` when ``REDIS_URL`` is not set.
-    """
-    global _session_pool, _session_client
-    if not REDIS_URL:
-        return None
-    if _session_client is None:
-        _session_pool = _redis_lib.ConnectionPool.from_url(REDIS_URL)
-        _session_client = _redis_lib.Redis(connection_pool=_session_pool)
-    return _session_client
+
+def get_redis_session() -> _redis_lib.Redis | None:
+    """Return the shared Redis client for flask-session (binary pickle data)."""
+    return get_redis()
 
 
 # -- lightweight cache helpers ----------------------------------------------
@@ -107,5 +100,59 @@ def cache_delete_pattern(pattern: str) -> None:
                 r.delete(*keys)
             if cursor == 0:
                 break
+    except Exception:
+        pass
+
+
+# -- binary cache helpers ---------------------------------------------------
+
+
+def cache_get_bytes(key: str) -> bytes | None:
+    """Return the raw bytes stored under *key*, or ``None`` on miss / no Redis."""
+    r = get_redis_bytes()
+    if r is None:
+        return None
+    try:
+        return r.get(key)
+    except Exception:
+        return None
+
+
+def cache_set_bytes(key: str, value: bytes, ttl: int = 3600) -> None:
+    """Store raw *value* under *key* with a TTL (seconds)."""
+    r = get_redis_bytes()
+    if r is None:
+        return
+    try:
+        r.setex(key, ttl, value)
+    except Exception:
+        pass
+
+
+def cache_set_bytes_capped(
+    key: str, value: bytes, index_key: str, max_entries: int, ttl: int = 3600
+) -> None:
+    """Store *value* and keep at most *max_entries* keys tracked in *index_key*.
+
+    *index_key* is a sorted set (score = insertion time) of the keys of one
+    group, e.g. all cached previews of a library.  When the group grows past
+    *max_entries* the oldest keys are deleted, so the group cannot fill Redis.
+    """
+    r = get_redis_bytes()
+    if r is None:
+        return
+    try:
+        pipe = r.pipeline()
+        pipe.setex(key, ttl, value)
+        pipe.zadd(index_key, {key: time.time()})
+        pipe.expire(index_key, ttl)
+        pipe.zcard(index_key)
+        count = pipe.execute()[-1]
+        excess = int(count) - max_entries
+        if excess > 0:
+            old = r.zrange(index_key, 0, excess - 1)
+            if old:
+                r.delete(*old)
+                r.zrem(index_key, *old)
     except Exception:
         pass
