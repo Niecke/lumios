@@ -14,11 +14,12 @@ Coverage targets:
 import io
 import os
 import tempfile
+import zlib
 from unittest.mock import patch
 
 import piexif
 import pytest
-from PIL import Image as PilImage, ImageOps
+from PIL import Image as PilImage, ImageOps, PngImagePlugin
 
 from datetime import datetime, timezone
 
@@ -86,6 +87,51 @@ def make_png_bytes() -> bytes:
     img = PilImage.new("RGB", (2, 2), color="blue")
     img.save(buf, format="PNG")
     return buf.getvalue()
+
+
+def _private_exif_bytes(orientation: int | None = None) -> bytes:
+    zeroth = {piexif.ImageIFD.Orientation: orientation} if orientation else {}
+    return piexif.dump(
+        {
+            "0th": zeroth,
+            "Exif": {piexif.ExifIFD.BodySerialNumber: b"SN-12345678"},
+            "GPS": {
+                piexif.GPSIFD.GPSLatitude: ((48, 1), (12, 1), (0, 1)),
+                piexif.GPSIFD.GPSLatitudeRef: b"N",
+            },
+            "1st": {},
+            "thumbnail": None,
+        }
+    )
+
+
+def make_png_with_private_metadata(
+    size=(2, 2), mode="RGB", orientation: int | None = None
+) -> bytes:
+    """Create a PNG with tEXt, zTXt, iTXt (XMP) and eXIf (GPS + serial) chunks."""
+    info = PngImagePlugin.PngInfo()
+    info.add_text("Author", "secret-author")
+    info.add_text("Comment", "secret-ztxt" * 10, zip=True)
+    info.add_itxt("XML:com.adobe.xmp", "<x:xmpmeta>secret-owner</x:xmpmeta>")
+    buf = io.BytesIO()
+    PilImage.new(mode, size, color="green").save(
+        buf, format="PNG", pnginfo=info, exif=_private_exif_bytes(orientation)
+    )
+    return buf.getvalue()
+
+
+def _raw_png_chunk(chunk_type: bytes, data: bytes) -> bytes:
+    crc = zlib.crc32(chunk_type + data) & 0xFFFFFFFF
+    return len(data).to_bytes(4, "big") + chunk_type + data + crc.to_bytes(4, "big")
+
+
+def png_chunk_types(data: bytes) -> list[bytes]:
+    types, pos = [], 8
+    while pos < len(data):
+        length = int.from_bytes(data[pos:pos + 4], "big")
+        types.append(data[pos + 4:pos + 8])
+        pos += 12 + length
+    return types
 
 
 def make_webp_bytes() -> bytes:
@@ -472,6 +518,123 @@ class TestExifStripping:
         res = upload(client, library.id, token, webp, "cut.webp", "image/webp")
         assert res.status_code == 415
         mock_storage.upload_fileobj.assert_not_called()
+
+    @patch("services.images.storage")
+    def test_text_exif_and_xmp_stripped_from_png_original(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        png = make_png_with_private_metadata()
+        assert {b"tEXt", b"zTXt", b"iTXt", b"eXIf"} <= set(png_chunk_types(png))
+
+        res = upload(client, library.id, make_token(photographer), png, "geo.png", "image/png")
+        assert res.status_code == 201
+
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        assert not {b"tEXt", b"zTXt", b"iTXt", b"eXIf"} & set(png_chunk_types(stored))
+        for secret in (b"SN-12345678", b"secret-author", b"secret-owner", b"xmpmeta"):
+            assert secret not in stored
+        with PilImage.open(io.BytesIO(stored)) as img, PilImage.open(io.BytesIO(png)) as orig:
+            img.load()
+            orig.load()
+            assert img.size == (2, 2)
+            assert img.tobytes() == orig.tobytes()
+            assert img.info.keys().isdisjoint({"exif", "Author", "Comment", "XML:com.adobe.xmp"})
+
+    @patch("services.images.storage")
+    def test_png_keeps_orientation_and_drops_gps(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        png = make_png_with_private_metadata(size=(8, 4), orientation=6)
+
+        res = upload(client, library.id, make_token(photographer), png, "p.png", "image/png")
+        assert res.status_code == 201
+
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        assert b"SN-12345678" not in stored
+        with PilImage.open(io.BytesIO(stored)) as img:
+            exif = piexif.load(img.info["exif"])
+            assert exif["0th"][piexif.ImageIFD.Orientation] == 6
+            assert exif["GPS"] == {}
+            assert piexif.ExifIFD.BodySerialNumber not in exif["Exif"]
+            assert ImageOps.exif_transpose(img).size == (4, 8)
+
+    @patch("services.images.storage")
+    def test_png_alpha_and_palette_survive_stripping(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        token = make_token(photographer)
+
+        rgba = make_png_with_private_metadata(mode="RGBA")
+        assert upload(client, library.id, token, rgba, "a.png", "image/png").status_code == 201
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        with PilImage.open(io.BytesIO(stored)) as img:
+            assert img.mode == "RGBA"
+            assert img.size == (2, 2)
+
+        pal_src = PilImage.new("RGBA", (4, 4), color=(255, 0, 0, 0)).convert("P")
+        pal_src.info["transparency"] = 0
+        info = PngImagePlugin.PngInfo()
+        info.add_text("Author", "secret-author")
+        buf = io.BytesIO()
+        pal_src.save(buf, format="PNG", pnginfo=info, transparency=0)
+        palette_png = buf.getvalue()
+        assert {b"PLTE", b"tRNS", b"tEXt"} <= set(png_chunk_types(palette_png))
+
+        mock_storage.upload_fileobj.reset_mock()
+        assert upload(client, library.id, token, palette_png, "p.png", "image/png").status_code == 201
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        types = png_chunk_types(stored)
+        assert b"PLTE" in types and b"tRNS" in types and b"tEXt" not in types
+        with PilImage.open(io.BytesIO(stored)) as img:
+            assert img.mode == "P"
+            assert img.info["transparency"] == 0
+
+    @patch("services.images.storage")
+    def test_png_drops_unknown_and_time_chunks_keeps_render_chunks(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        png = make_png_bytes()
+        ihdr_end = 8 + 12 + 13
+        extra = (
+            _raw_png_chunk(b"pHYs", (2835).to_bytes(4, "big") * 2 + b"\x01")
+            + _raw_png_chunk(b"tIME", b"\x07\xe8\x01\x01\x00\x00\x00")
+            + _raw_png_chunk(b"prVT", b"vendor-secret")
+        )
+        png = png[:ihdr_end] + extra + png[ihdr_end:]
+
+        res = upload(client, library.id, make_token(photographer), png, "x.png", "image/png")
+        assert res.status_code == 201
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        types = png_chunk_types(stored)
+        assert b"pHYs" in types
+        assert b"tIME" not in types and b"prVT" not in types
+        assert b"vendor-secret" not in stored
+
+    @pytest.mark.parametrize(
+        "corrupt",
+        [
+            lambda d: d[:-6],  # truncated body
+            lambda d: d[:8] + (0x7FFFFFFF).to_bytes(4, "big") + d[12:],  # length past EOF
+            lambda d: d[:29] + bytes([d[29] ^ 0xFF]) + d[30:],  # bad IHDR CRC
+            lambda d: d + b"trailing",  # data after IEND
+            lambda d: d[:8] + _raw_png_chunk(b"tEXt", b"a\x00b") + d[8:],  # IHDR not first
+        ],
+        ids=["truncated", "length", "crc", "trailing", "no-ihdr-first"],
+    )
+    @patch("services.images.storage")
+    def test_corrupt_png_rejected_fail_closed(
+        self, mock_storage, corrupt, client, photographer, library
+    ):
+        png = corrupt(make_png_with_private_metadata())
+
+        res = upload(client, library.id, make_token(photographer), png, "bad.png", "image/png")
+        assert res.status_code == 415
+        mock_storage.upload_fileobj.assert_not_called()
+        assert db.session.scalar(select(Image).where(Image.library_id == library.id)) is None
 
 
 class TestWebpAlpha:
