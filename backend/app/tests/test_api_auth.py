@@ -896,3 +896,22 @@ class TestGoogleRegisterAdminNotification:
 
         assert res.status_code == 201
         mock_admin.assert_called_once_with(google_email, "Google")
+
+
+class TestConsumeLoginCodeRedis:
+    """The shared Redis pool returns bytes; the exchange must still return a str JWT."""
+
+    def test_exchange_decodes_bytes_from_redis(self, client):
+        mock_r = MagicMock()
+        mock_r.pipeline.return_value.execute.return_value = [b"jwt.token.value", 1]
+        with patch("blueprints.api.auth.get_redis", return_value=mock_r):
+            resp = client.post("/api/v1/auth/exchange", json={"code": "abc"})
+        assert resp.status_code == 200
+        assert resp.get_json() == {"token": "jwt.token.value"}
+
+    def test_exchange_unknown_code_with_redis(self, client):
+        mock_r = MagicMock()
+        mock_r.pipeline.return_value.execute.return_value = [None, 0]
+        with patch("blueprints.api.auth.get_redis", return_value=mock_r):
+            resp = client.post("/api/v1/auth/exchange", json={"code": "abc"})
+        assert resp.status_code == 401

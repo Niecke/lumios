@@ -164,6 +164,9 @@ def _consume_login_code(code: str) -> str | None:
         pipe.get(key)
         pipe.delete(key)
         token, _ = pipe.execute()
+        # the shared Redis pool returns bytes
+        if isinstance(token, bytes):
+            token = token.decode()
         return token if token else None
     return _login_codes.pop(code, None)
 

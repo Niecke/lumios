@@ -146,13 +146,13 @@ def cache_set_bytes_capped(
         pipe.setex(key, ttl, value)
         pipe.zadd(index_key, {key: time.time()})
         pipe.expire(index_key, ttl)
-        pipe.zcard(index_key)
-        count = pipe.execute()[-1]
-        excess = int(count) - max_entries
-        if excess > 0:
-            old = r.zrange(index_key, 0, excess - 1)
-            if old:
-                r.delete(*old)
-                r.zrem(index_key, *old)
+        # everything except the newest max_entries keys
+        pipe.zrange(index_key, 0, -(max_entries + 1))
+        old = pipe.execute()[-1]
+        if old:
+            trim = r.pipeline()
+            trim.delete(*old)
+            trim.zrem(index_key, *old)
+            trim.execute()
     except Exception:
         pass

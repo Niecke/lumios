@@ -266,24 +266,24 @@ class TestBinaryCache:
 
         mock_r = MagicMock()
         pipe = mock_r.pipeline.return_value
-        pipe.execute.return_value = [True, 1, True, 5]
-        mock_r.zrange.return_value = [b"old1", b"old2"]
+        pipe.execute.return_value = [True, 1, True, [b"old1", b"old2"]]
         with patch.object(mod, "get_redis_bytes", return_value=mock_r):
             mod.cache_set_bytes_capped("k", b"x", "idx", max_entries=3, ttl=60)
         pipe.setex.assert_called_once_with("k", 60, b"x")
-        mock_r.zrange.assert_called_once_with("idx", 0, 1)
-        mock_r.delete.assert_called_once_with(b"old1", b"old2")
-        mock_r.zrem.assert_called_once_with("idx", b"old1", b"old2")
+        pipe.zrange.assert_called_once_with("idx", 0, -4)
+        pipe.delete.assert_called_once_with(b"old1", b"old2")
+        pipe.zrem.assert_called_once_with("idx", b"old1", b"old2")
 
     def test_capped_keeps_everything_under_limit(self):
         import services.redis_client as mod
 
         mock_r = MagicMock()
-        mock_r.pipeline.return_value.execute.return_value = [True, 1, True, 2]
+        pipe = mock_r.pipeline.return_value
+        pipe.execute.return_value = [True, 1, True, []]
         with patch.object(mod, "get_redis_bytes", return_value=mock_r):
             mod.cache_set_bytes_capped("k", b"x", "idx", max_entries=3)
-        mock_r.zrange.assert_not_called()
-        mock_r.delete.assert_not_called()
+        pipe.delete.assert_not_called()
+        pipe.zrem.assert_not_called()
 
     def test_capped_handles_exception(self):
         import services.redis_client as mod
