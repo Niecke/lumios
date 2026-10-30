@@ -27,7 +27,7 @@ _DEJAVU_FONT = os.path.join(
     "fonts", "DejaVuSans-Bold.ttf",
 )
 
-ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
+ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 THUMB_SIZE = 600  # longest side in pixels
 PREVIEW_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
@@ -40,7 +40,11 @@ WATERMARK_LOGO_MAGIC = b"\x89PNG\r\n\x1a\n"
 MAGIC_BYTES = {
     "image/jpeg": b"\xff\xd8\xff",
     "image/png": b"\x89PNG\r\n\x1a\n",
+    "image/webp": b"RIFF",
 }
+
+# File extension per allowed content type
+EXTENSIONS = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 
 PREVIEW_MAX_PX = 2048  # max longest side for preview before watermarking
 
@@ -56,11 +60,13 @@ _PRIVATE_EXIF_TAGS = {
 def validate_upload(file_data: bytes, content_type: str) -> None:
     """Raise ValueError with a user-facing message on any rejection."""
     if content_type not in ALLOWED_CONTENT_TYPES:
-        raise ValueError("Only JPEG and PNG images are allowed")
+        raise ValueError("Only JPEG, PNG, and WebP images are allowed")
     if len(file_data) > MAX_FILE_SIZE:
         raise ValueError("File too large (max 20 MB)")
     expected_magic = MAGIC_BYTES[content_type]
     if not file_data.startswith(expected_magic):
+        raise ValueError("File content does not match its declared type")
+    if content_type == "image/webp" and file_data[8:12] != b"WEBP":
         raise ValueError("File content does not match its declared type")
     try:
         img = PilImage.open(io.BytesIO(file_data))
@@ -323,7 +329,7 @@ def process_and_store_image(
     if content_type == "image/jpeg":
         file_data = _strip_private_exif(file_data)
 
-    ext = "jpg" if content_type == "image/jpeg" else "png"
+    ext = EXTENSIONS[content_type]
     photo_uuid = str(uuid_module.uuid4())
     s3_key = f"{photo_uuid}.{ext}"
 

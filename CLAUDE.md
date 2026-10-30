@@ -389,7 +389,7 @@ f"photos/{photographer_id}/{library_id}/thumbs/{uuid}.{ext}"     # 600px longest
 ```
 
 ### Upload validation (images)
-1. MIME type must be `image/jpeg` or `image/png` — reject everything else (videos have their own list, see Video Uploads)
+1. MIME type must be `image/jpeg`, `image/png` or `image/webp` — reject everything else (videos have their own list, see Video Uploads)
 2. Library must have fewer than `max_images_per_library` images (respects subscription tier)
 3. Photographer must own the library
 

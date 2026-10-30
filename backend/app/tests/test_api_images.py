@@ -88,6 +88,14 @@ def make_png_bytes() -> bytes:
     return buf.getvalue()
 
 
+def make_webp_bytes() -> bytes:
+    """Create a minimal valid WebP in memory."""
+    buf = io.BytesIO()
+    img = PilImage.new("RGB", (2, 2), color="green")
+    img.save(buf, format="WEBP")
+    return buf.getvalue()
+
+
 def upload(client, library_id, token, data, filename, content_type):
     """POST a file upload to the images endpoint."""
     return client.post(
@@ -146,7 +154,7 @@ class TestUploadContentTypeValidation:
         token = make_token(photographer)
         res = upload(client, library.id, token, b"hello", "file.txt", "text/plain")
         assert res.status_code == 415
-        assert "Only JPEG and PNG" in res.get_json()["error"]
+        assert "Only JPEG, PNG, and WebP" in res.get_json()["error"]
 
     def test_rejects_application_pdf(self, client, photographer, library):
         token = make_token(photographer)
@@ -206,6 +214,52 @@ class TestUploadMagicByteValidation:
         )
         assert res.status_code == 415
         assert "does not match" in res.get_json()["error"]
+
+    def test_rejects_text_disguised_as_webp(self, client, photographer, library):
+        token = make_token(photographer)
+        res = upload(
+            client, library.id, token,
+            b"this is not a webp", "fake.webp", "image/webp",
+        )
+        assert res.status_code == 415
+        assert "does not match" in res.get_json()["error"]
+
+    def test_rejects_webp_bytes_with_jpeg_content_type(self, client, photographer, library):
+        token = make_token(photographer)
+        res = upload(
+            client, library.id, token,
+            make_webp_bytes(), "photo.jpg", "image/jpeg",
+        )
+        assert res.status_code == 415
+        assert "does not match" in res.get_json()["error"]
+
+    def test_rejects_jpeg_bytes_with_webp_content_type(self, client, photographer, library):
+        token = make_token(photographer)
+        res = upload(
+            client, library.id, token,
+            make_jpeg_bytes(), "photo.webp", "image/webp",
+        )
+        assert res.status_code == 415
+        assert "does not match" in res.get_json()["error"]
+
+    def test_rejects_riff_non_webp_disguised_as_webp(self, client, photographer, library):
+        token = make_token(photographer)
+        res = upload(
+            client, library.id, token,
+            b"RIFF\x00\x00\x00\x00WAVE", "audio.webp", "image/webp",
+        )
+        assert res.status_code == 415
+        assert "does not match" in res.get_json()["error"]
+
+    def test_rejects_webp_magic_bytes_but_corrupt_body(self, client, photographer, library):
+        token = make_token(photographer)
+        corrupt = b"RIFF\x00\x00\x00\x00WEBP" + b"\x00" * 100
+        res = upload(
+            client, library.id, token,
+            corrupt, "corrupt.webp", "image/webp",
+        )
+        assert res.status_code == 415
+        assert "not a valid image" in res.get_json()["error"]
 
     def test_rejects_correct_magic_bytes_but_corrupt_body(
         self, client, photographer, library
@@ -280,6 +334,26 @@ class TestUploadValidImages:
         assert preview_key.endswith(".png")
         assert thumb_key.startswith(f"photos/{photographer.id}/{library.id}/thumbs/")
         assert thumb_key.endswith(".png")
+
+    @patch("services.images.storage")
+    def test_accepts_valid_webp(self, mock_storage, client, photographer, library):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        token = make_token(photographer)
+        res = upload(
+            client, library.id, token,
+            make_webp_bytes(), "photo.webp", "image/webp",
+        )
+        assert res.status_code == 201
+        data = res.get_json()
+        assert data["content_type"] == "image/webp"
+        assert data["width"] == 2
+        assert data["height"] == 2
+        assert mock_storage.upload_fileobj.call_count == 3
+        calls = mock_storage.upload_fileobj.call_args_list
+        assert calls[0][0][1].startswith(f"photos/{photographer.id}/{library.id}/originals/")
+        assert calls[0][0][1].endswith(".webp")
+        assert calls[1][0][1].endswith(".webp")
+        assert calls[2][0][1].endswith(".webp")
 
 
 class TestExifStripping:
