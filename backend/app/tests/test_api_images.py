@@ -96,6 +96,27 @@ def make_webp_bytes() -> bytes:
     return buf.getvalue()
 
 
+def make_webp_with_private_metadata() -> bytes:
+    """Create a WebP that contains GPS + serial number EXIF and an XMP packet."""
+    exif_bytes = piexif.dump(
+        {
+            "0th": {},
+            "Exif": {piexif.ExifIFD.BodySerialNumber: b"SN-12345678"},
+            "GPS": {
+                piexif.GPSIFD.GPSLatitude: ((48, 1), (12, 1), (0, 1)),
+                piexif.GPSIFD.GPSLatitudeRef: b"N",
+            },
+            "1st": {},
+            "thumbnail": None,
+        }
+    )
+    buf = io.BytesIO()
+    PilImage.new("RGB", (2, 2), color="green").save(
+        buf, format="WEBP", exif=exif_bytes, xmp=b"<x:xmpmeta>secret-owner</x:xmpmeta>"
+    )
+    return buf.getvalue()
+
+
 def upload(client, library_id, token, data, filename, content_type):
     """POST a file upload to the images endpoint."""
     return client.post(
@@ -385,6 +406,52 @@ class TestExifStripping:
         assert piexif.ExifIFD.LensSerialNumber not in exif_ifd
         assert piexif.ExifIFD.CameraOwnerName not in exif_ifd
         assert piexif.ExifIFD.MakerNote not in exif_ifd
+
+    @patch("services.images.storage")
+    def test_exif_and_xmp_stripped_from_webp_original(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        token = make_token(photographer)
+        webp = make_webp_with_private_metadata()
+        assert b"EXIF" in webp and b"XMP " in webp and b"SN-12345678" in webp
+
+        res = upload(client, library.id, token, webp, "geotagged.webp", "image/webp")
+        assert res.status_code == 201
+
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        assert b"EXIF" not in stored and b"XMP " not in stored
+        assert b"SN-12345678" not in stored and b"secret-owner" not in stored
+        assert int.from_bytes(stored[4:8], "little") == len(stored) - 8
+        with PilImage.open(io.BytesIO(stored)) as img:
+            img.load()
+            assert img.size == (2, 2)
+            assert "exif" not in img.info and "xmp" not in img.info
+
+    @patch("services.images.storage")
+    def test_truncated_webp_rejected_fail_closed(
+        self, mock_storage, client, photographer, library
+    ):
+        token = make_token(photographer)
+        webp = make_webp_with_private_metadata()[:-6]
+
+        res = upload(client, library.id, token, webp, "cut.webp", "image/webp")
+        assert res.status_code == 415
+        mock_storage.upload_fileobj.assert_not_called()
+
+
+class TestWebpAlpha:
+    @patch("services.images.storage")
+    def test_rgba_webp_upload_accepted(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        token = make_token(photographer)
+        buf = io.BytesIO()
+        PilImage.new("RGBA", (4, 4), color=(255, 0, 0, 100)).save(buf, format="WEBP")
+
+        res = upload(client, library.id, token, buf.getvalue(), "alpha.webp", "image/webp")
+        assert res.status_code == 201
 
 
 # ---------------------------------------------------------------------------

@@ -73,6 +73,12 @@ def validate_upload(file_data: bytes, content_type: str) -> None:
         img.verify()
     except Exception:
         raise ValueError("File is not a valid image")
+    if content_type == "image/webp":
+        # Fail closed: a WebP whose metadata cannot be removed is not stored
+        try:
+            _strip_webp_metadata(file_data)
+        except ValueError:
+            raise ValueError("File is not a valid image")
 
 
 def _strip_private_exif(file_data: bytes) -> bytes:
@@ -95,6 +101,44 @@ def _strip_private_exif(file_data: bytes) -> bytes:
             os.unlink(tmp_path)
     except Exception:
         return file_data
+
+
+_WEBP_METADATA_CHUNKS = (b"EXIF", b"XMP ")
+_WEBP_VP8X_EXIF_FLAG = 0x08
+_WEBP_VP8X_XMP_FLAG = 0x04
+
+
+def _strip_webp_metadata(file_data: bytes) -> bytes:
+    """Remove the EXIF and XMP chunks from a WebP.
+
+    Raises ValueError when the RIFF structure cannot be parsed, so the caller
+    rejects the upload instead of storing metadata unchanged.
+    """
+    if file_data[:4] != b"RIFF" or file_data[8:12] != b"WEBP":
+        raise ValueError("Not a WebP file")
+    riff_end = 8 + int.from_bytes(file_data[4:8], "little")
+    if riff_end > len(file_data):
+        raise ValueError("Truncated WebP file")
+
+    chunks: list[bytes] = []
+    pos = 12
+    while pos < riff_end:
+        if pos + 8 > riff_end:
+            raise ValueError("Malformed WebP chunk")
+        fourcc = file_data[pos:pos + 4]
+        size = int.from_bytes(file_data[pos + 4:pos + 8], "little")
+        end = pos + 8 + size + (size & 1)
+        if end > riff_end:
+            raise ValueError("Malformed WebP chunk")
+        if fourcc not in _WEBP_METADATA_CHUNKS:
+            chunk = bytearray(file_data[pos:end])
+            if fourcc == b"VP8X" and size >= 1:
+                chunk[8] &= ~(_WEBP_VP8X_EXIF_FLAG | _WEBP_VP8X_XMP_FLAG) & 0xFF
+            chunks.append(bytes(chunk))
+        pos = end
+
+    body = b"WEBP" + b"".join(chunks)
+    return b"RIFF" + len(body).to_bytes(4, "little") + body
 
 
 def _build_watermark_tile() -> PilImage.Image:
@@ -328,6 +372,8 @@ def process_and_store_image(
 
     if content_type == "image/jpeg":
         file_data = _strip_private_exif(file_data)
+    elif content_type == "image/webp":
+        file_data = _strip_webp_metadata(file_data)
 
     ext = EXTENSIONS[content_type]
     photo_uuid = str(uuid_module.uuid4())
