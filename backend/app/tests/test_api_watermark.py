@@ -624,6 +624,38 @@ class TestApplyWatermark:
         assert data["total"] == 2
         assert mock_lib_storage.upload_fileobj.call_count == 2
 
+    @patch("services.images.storage")
+    @patch("blueprints.api.libraries.storage")
+    def test_applies_watermark_to_webp_image(
+        self, mock_lib_storage, mock_img_storage, client, photographer, library
+    ):
+        library.watermark_gcs_key = f"watermarks/{photographer.id}/{library.id}/watermark.png"
+        db.session.add(
+            Image(
+                library_id=library.id,
+                s3_key="img.webp",
+                original_filename="photo.webp",
+                content_type="image/webp",
+                size=1000,
+                width=8,
+                height=6,
+            )
+        )
+        db.session.commit()
+        webp = io.BytesIO()
+        PilImage.new("RGB", (8, 6), color="green").save(webp, format="WEBP")
+
+        mock_img_storage.get_object_bytes.return_value = make_png_bytes()
+        mock_lib_storage.get_object_bytes.return_value = webp.getvalue()
+        res = client.post(
+            f"/api/v1/libraries/{library.id}/watermark/apply",
+            headers=auth_header(make_token(photographer)),
+        )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["updated"] == 1
+        assert data["failed"] == 0
+
     def test_requires_auth(self, client, library):
         res = client.post(
             f"/api/v1/libraries/{library.id}/watermark/apply",

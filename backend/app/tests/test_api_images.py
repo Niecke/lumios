@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 import piexif
 import pytest
-from PIL import Image as PilImage
+from PIL import Image as PilImage, ImageOps
 
 from datetime import datetime, timezone
 
@@ -88,6 +88,35 @@ def make_png_bytes() -> bytes:
     return buf.getvalue()
 
 
+def make_webp_bytes() -> bytes:
+    """Create a minimal valid WebP in memory."""
+    buf = io.BytesIO()
+    img = PilImage.new("RGB", (2, 2), color="green")
+    img.save(buf, format="WEBP")
+    return buf.getvalue()
+
+
+def make_webp_with_private_metadata() -> bytes:
+    """Create a WebP that contains GPS + serial number EXIF and an XMP packet."""
+    exif_bytes = piexif.dump(
+        {
+            "0th": {},
+            "Exif": {piexif.ExifIFD.BodySerialNumber: b"SN-12345678"},
+            "GPS": {
+                piexif.GPSIFD.GPSLatitude: ((48, 1), (12, 1), (0, 1)),
+                piexif.GPSIFD.GPSLatitudeRef: b"N",
+            },
+            "1st": {},
+            "thumbnail": None,
+        }
+    )
+    buf = io.BytesIO()
+    PilImage.new("RGB", (2, 2), color="green").save(
+        buf, format="WEBP", exif=exif_bytes, xmp=b"<x:xmpmeta>secret-owner</x:xmpmeta>"
+    )
+    return buf.getvalue()
+
+
 def upload(client, library_id, token, data, filename, content_type):
     """POST a file upload to the images endpoint."""
     return client.post(
@@ -146,7 +175,7 @@ class TestUploadContentTypeValidation:
         token = make_token(photographer)
         res = upload(client, library.id, token, b"hello", "file.txt", "text/plain")
         assert res.status_code == 415
-        assert "Only JPEG and PNG" in res.get_json()["error"]
+        assert "Only JPEG, PNG, and WebP" in res.get_json()["error"]
 
     def test_rejects_application_pdf(self, client, photographer, library):
         token = make_token(photographer)
@@ -206,6 +235,52 @@ class TestUploadMagicByteValidation:
         )
         assert res.status_code == 415
         assert "does not match" in res.get_json()["error"]
+
+    def test_rejects_text_disguised_as_webp(self, client, photographer, library):
+        token = make_token(photographer)
+        res = upload(
+            client, library.id, token,
+            b"this is not a webp", "fake.webp", "image/webp",
+        )
+        assert res.status_code == 415
+        assert "does not match" in res.get_json()["error"]
+
+    def test_rejects_webp_bytes_with_jpeg_content_type(self, client, photographer, library):
+        token = make_token(photographer)
+        res = upload(
+            client, library.id, token,
+            make_webp_bytes(), "photo.jpg", "image/jpeg",
+        )
+        assert res.status_code == 415
+        assert "does not match" in res.get_json()["error"]
+
+    def test_rejects_jpeg_bytes_with_webp_content_type(self, client, photographer, library):
+        token = make_token(photographer)
+        res = upload(
+            client, library.id, token,
+            make_jpeg_bytes(), "photo.webp", "image/webp",
+        )
+        assert res.status_code == 415
+        assert "does not match" in res.get_json()["error"]
+
+    def test_rejects_riff_non_webp_disguised_as_webp(self, client, photographer, library):
+        token = make_token(photographer)
+        res = upload(
+            client, library.id, token,
+            b"RIFF\x00\x00\x00\x00WAVE", "audio.webp", "image/webp",
+        )
+        assert res.status_code == 415
+        assert "does not match" in res.get_json()["error"]
+
+    def test_rejects_webp_magic_bytes_but_corrupt_body(self, client, photographer, library):
+        token = make_token(photographer)
+        corrupt = b"RIFF\x00\x00\x00\x00WEBP" + b"\x00" * 100
+        res = upload(
+            client, library.id, token,
+            corrupt, "corrupt.webp", "image/webp",
+        )
+        assert res.status_code == 415
+        assert "not a valid image" in res.get_json()["error"]
 
     def test_rejects_correct_magic_bytes_but_corrupt_body(
         self, client, photographer, library
@@ -281,6 +356,26 @@ class TestUploadValidImages:
         assert thumb_key.startswith(f"photos/{photographer.id}/{library.id}/thumbs/")
         assert thumb_key.endswith(".png")
 
+    @patch("services.images.storage")
+    def test_accepts_valid_webp(self, mock_storage, client, photographer, library):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        token = make_token(photographer)
+        res = upload(
+            client, library.id, token,
+            make_webp_bytes(), "photo.webp", "image/webp",
+        )
+        assert res.status_code == 201
+        data = res.get_json()
+        assert data["content_type"] == "image/webp"
+        assert data["width"] == 2
+        assert data["height"] == 2
+        assert mock_storage.upload_fileobj.call_count == 3
+        calls = mock_storage.upload_fileobj.call_args_list
+        assert calls[0][0][1].startswith(f"photos/{photographer.id}/{library.id}/originals/")
+        assert calls[0][0][1].endswith(".webp")
+        assert calls[1][0][1].endswith(".webp")
+        assert calls[2][0][1].endswith(".webp")
+
 
 class TestWatermarkPreviewInvalidation:
     """Image changes must drop the library's cached watermark previews."""
@@ -345,6 +440,86 @@ class TestExifStripping:
         assert piexif.ExifIFD.LensSerialNumber not in exif_ifd
         assert piexif.ExifIFD.CameraOwnerName not in exif_ifd
         assert piexif.ExifIFD.MakerNote not in exif_ifd
+
+    @patch("services.images.storage")
+    def test_exif_and_xmp_stripped_from_webp_original(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        token = make_token(photographer)
+        webp = make_webp_with_private_metadata()
+        assert b"EXIF" in webp and b"XMP " in webp and b"SN-12345678" in webp
+
+        res = upload(client, library.id, token, webp, "geotagged.webp", "image/webp")
+        assert res.status_code == 201
+
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        assert b"EXIF" not in stored and b"XMP " not in stored
+        assert b"SN-12345678" not in stored and b"secret-owner" not in stored
+        assert int.from_bytes(stored[4:8], "little") == len(stored) - 8
+        with PilImage.open(io.BytesIO(stored)) as img:
+            img.load()
+            assert img.size == (2, 2)
+            assert "exif" not in img.info and "xmp" not in img.info
+
+    @patch("services.images.storage")
+    def test_webp_keeps_orientation_and_drops_gps(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        exif_bytes = piexif.dump(
+            {
+                "0th": {piexif.ImageIFD.Orientation: 6},
+                "Exif": {piexif.ExifIFD.BodySerialNumber: b"SN-12345678"},
+                "GPS": {
+                    piexif.GPSIFD.GPSLatitude: ((48, 1), (12, 1), (0, 1)),
+                    piexif.GPSIFD.GPSLatitudeRef: b"N",
+                },
+                "1st": {},
+                "thumbnail": None,
+            }
+        )
+        buf = io.BytesIO()
+        PilImage.new("RGB", (8, 4), color="green").save(buf, format="WEBP", exif=exif_bytes)
+
+        res = upload(client, library.id, make_token(photographer), buf.getvalue(), "p.webp", "image/webp")
+        assert res.status_code == 201
+
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        assert b"SN-12345678" not in stored
+        assert int.from_bytes(stored[4:8], "little") == len(stored) - 8
+        with PilImage.open(io.BytesIO(stored)) as img:
+            exif = piexif.load(img.info["exif"])
+            assert exif["0th"][piexif.ImageIFD.Orientation] == 6
+            assert exif["GPS"] == {}
+            assert piexif.ExifIFD.BodySerialNumber not in exif["Exif"]
+            # Same rotation as the watermark apply path (exif_transpose) sees
+            assert ImageOps.exif_transpose(img).size == (4, 8)
+
+    @patch("services.images.storage")
+    def test_truncated_webp_rejected_fail_closed(
+        self, mock_storage, client, photographer, library
+    ):
+        token = make_token(photographer)
+        webp = make_webp_with_private_metadata()[:-6]
+
+        res = upload(client, library.id, token, webp, "cut.webp", "image/webp")
+        assert res.status_code == 415
+        mock_storage.upload_fileobj.assert_not_called()
+
+
+class TestWebpAlpha:
+    @patch("services.images.storage")
+    def test_rgba_webp_upload_accepted(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        token = make_token(photographer)
+        buf = io.BytesIO()
+        PilImage.new("RGBA", (4, 4), color=(255, 0, 0, 100)).save(buf, format="WEBP")
+
+        res = upload(client, library.id, token, buf.getvalue(), "alpha.webp", "image/webp")
+        assert res.status_code == 201
 
 
 # ---------------------------------------------------------------------------
