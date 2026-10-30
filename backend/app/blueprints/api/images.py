@@ -8,6 +8,7 @@ from services import storage
 from services.quota import check_upload_allowed
 from services.redis_client import cache_delete, cache_delete_pattern
 from services.images import (
+    invalidate_watermark_previews,
     validate_upload,
     process_and_store_image,
 )
@@ -228,5 +229,6 @@ def delete_image(library_id: int, image_id: int):
     )
     db.session.commit()
     cache_delete_pattern(f"public:library:{library.uuid}:*")
+    invalidate_watermark_previews(library.id)
     cache_delete(f"user:storage:{user_id}")
     return "", 204

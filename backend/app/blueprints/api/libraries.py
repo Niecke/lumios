@@ -4,14 +4,17 @@ from models import db, User, Library, Image, AuditLogType
 from services.audit import write_audit_log
 from sqlalchemy import select, func
 from datetime import datetime, timezone
+import hashlib
 import io
 from PIL import Image as PilImage, ImageOps
 from services import storage
-from services.redis_client import cache_delete_pattern
+from config import WATERMARK_PREVIEW_CACHE_MAX_PER_LIBRARY
+from services.redis_client import cache_delete_pattern, cache_get_bytes, cache_set_bytes_capped
 from services.images import (
     _build_placeholder_image,
     _create_watermarked_preview,
     _load_library_logo,
+    invalidate_watermark_previews,
     WATERMARK_LOGO_MAX_BYTES,
     WATERMARK_LOGO_MAGIC,
 )
@@ -274,6 +277,7 @@ def upload_watermark(library_id: int):
     if library.watermark_position is None:
         library.watermark_position = "bottom_right"
     db.session.commit()
+    invalidate_watermark_previews(library.id)
     return jsonify(library.to_dict()), 200
 
 
@@ -301,7 +305,21 @@ def delete_watermark(library_id: int):
             )
         library.watermark_gcs_key = None
         db.session.commit()
+    invalidate_watermark_previews(library.id)
     return jsonify(library.to_dict()), 200
+
+
+WATERMARK_PREVIEW_CACHE_TTL = 3600
+WATERMARK_PREVIEW_CACHE_CONTROL = "private, max-age=60"
+
+
+def _preview_response(preview_bytes: bytes) -> Response:
+    """JPEG response with a content-hash ETag; 304 when If-None-Match matches."""
+    digest = hashlib.sha256(preview_bytes).hexdigest()[:16]
+    headers = {"ETag": f'"{digest}"', "Cache-Control": WATERMARK_PREVIEW_CACHE_CONTROL}
+    if digest in request.if_none_match:
+        return Response(status=304, headers=headers)
+    return Response(preview_bytes, mimetype="image/jpeg", headers=headers)
 
 
 @libraries_api.route("/<int:library_id>/watermark/preview", methods=["GET"])
@@ -344,6 +362,12 @@ def watermark_preview(library_id: int):
         .first()
     )
 
+    sample_ref = str(sample_image.uuid) if sample_image is not None else "placeholder"
+    cache_key = f"watermark_preview:{library_id}:{sample_ref}:{scale:.2f}:{position}"
+    preview_bytes = cache_get_bytes(cache_key)
+    if preview_bytes is not None:
+        return _preview_response(preview_bytes)
+
     if sample_image is not None:
         try:
             original_data = storage.get_object_bytes(sample_image.storage_path("originals"))
@@ -377,7 +401,15 @@ def watermark_preview(library_id: int):
     logo.close()
     pil_img.close()
 
-    return Response(preview_buf.read(), mimetype="image/jpeg")
+    preview_bytes = preview_buf.getvalue()
+    cache_set_bytes_capped(
+        cache_key,
+        preview_bytes,
+        index_key=f"watermark_preview:{library_id}:index",
+        max_entries=WATERMARK_PREVIEW_CACHE_MAX_PER_LIBRARY,
+        ttl=WATERMARK_PREVIEW_CACHE_TTL,
+    )
+    return _preview_response(preview_bytes)
 
 
 @libraries_api.route("/<int:library_id>/watermark/apply", methods=["POST"])

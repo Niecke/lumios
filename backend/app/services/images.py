@@ -53,6 +53,11 @@ _PRIVATE_EXIF_TAGS = {
 }
 
 
+def invalidate_watermark_previews(library_id: int) -> None:
+    """Drop all cached watermark previews (and their index) of a library."""
+    cache_delete_pattern(f"watermark_preview:{library_id}:*")
+
+
 def validate_upload(file_data: bytes, content_type: str) -> None:
     """Raise ValueError with a user-facing message on any rejection."""
     if content_type not in ALLOWED_CONTENT_TYPES:
@@ -359,5 +364,6 @@ def process_and_store_image(
     )
     db.session.commit()
     cache_delete_pattern(f"public:library:{library.uuid}:*")
+    invalidate_watermark_previews(library.id)
     cache_delete(f"user:storage:{owner.id}")
     return image

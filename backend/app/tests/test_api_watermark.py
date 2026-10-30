@@ -284,6 +284,120 @@ class TestWatermarkPreview:
         assert res.status_code == 401
 
 
+class TestWatermarkPreviewCaching:
+
+    @pytest.fixture
+    def prepared(self, photographer, library_with_image):
+        library_with_image.watermark_gcs_key = (
+            f"watermarks/{photographer.id}/{library_with_image.id}/watermark.png"
+        )
+        db.session.commit()
+        return library_with_image
+
+    @staticmethod
+    def _get_bytes(key: str) -> bytes:
+        return make_png_bytes() if "watermarks" in key else make_jpeg_bytes()
+
+    def _request(self, client, photographer, library, **headers):
+        return client.get(
+            f"/api/v1/libraries/{library.id}/watermark/preview",
+            query_string={"scale": "0.2", "position": "bottom_right"},
+            headers={**auth_header(make_token(photographer)), **headers},
+        )
+
+    @patch("blueprints.api.libraries.cache_set_bytes_capped")
+    @patch("blueprints.api.libraries.cache_get_bytes", return_value=None)
+    @patch("services.images.storage")
+    @patch("blueprints.api.libraries.storage")
+    def test_sets_cache_control_and_etag(
+        self, lib_storage, img_storage, _get, _set, client, photographer, prepared
+    ):
+        lib_storage.get_object_bytes.side_effect = self._get_bytes
+        img_storage.get_object_bytes.side_effect = self._get_bytes
+        res = self._request(client, photographer, prepared)
+        assert res.status_code == 200
+        assert res.headers["Cache-Control"] == "private, max-age=60"
+        assert res.headers["ETag"].startswith('"')
+
+    @patch("blueprints.api.libraries.cache_set_bytes_capped")
+    @patch("blueprints.api.libraries.cache_get_bytes", return_value=None)
+    @patch("services.images.storage")
+    @patch("blueprints.api.libraries.storage")
+    def test_matching_if_none_match_returns_304(
+        self, lib_storage, img_storage, _get, _set, client, photographer, prepared
+    ):
+        lib_storage.get_object_bytes.side_effect = self._get_bytes
+        img_storage.get_object_bytes.side_effect = self._get_bytes
+        first = self._request(client, photographer, prepared)
+        etag = first.headers["ETag"]
+        # same bytes via the cache path
+        _get.return_value = first.data
+        res = self._request(client, photographer, prepared, **{"If-None-Match": etag})
+        assert res.status_code == 304
+        assert res.data == b""
+        assert res.headers["ETag"] == etag
+        assert res.headers["Cache-Control"] == "private, max-age=60"
+
+    @patch("blueprints.api.libraries.cache_get_bytes", return_value=b"\xff\xd8cached")
+    @patch("services.images.storage")
+    @patch("blueprints.api.libraries.storage")
+    def test_cache_hit_skips_storage(
+        self, lib_storage, img_storage, _get, client, photographer, prepared
+    ):
+        res = self._request(client, photographer, prepared)
+        assert res.status_code == 200
+        assert res.data == b"\xff\xd8cached"
+        assert res.content_type == "image/jpeg"
+        lib_storage.get_object_bytes.assert_not_called()
+        img_storage.get_object_bytes.assert_not_called()
+
+    @patch("blueprints.api.libraries.cache_set_bytes_capped")
+    @patch("blueprints.api.libraries.cache_get_bytes", return_value=None)
+    @patch("services.images.storage")
+    @patch("blueprints.api.libraries.storage")
+    def test_cache_miss_populates_cache(
+        self, lib_storage, img_storage, _get, mock_set, client, photographer, prepared
+    ):
+        lib_storage.get_object_bytes.side_effect = self._get_bytes
+        img_storage.get_object_bytes.side_effect = self._get_bytes
+        res = self._request(client, photographer, prepared)
+        mock_set.assert_called_once()
+        args, kwargs = mock_set.call_args
+        assert args[0].startswith(f"watermark_preview:{prepared.id}:")
+        assert args[0].endswith(":0.20:bottom_right")
+        assert args[1] == res.data
+        assert kwargs["index_key"] == f"watermark_preview:{prepared.id}:index"
+        assert kwargs["max_entries"] == 20
+
+    @patch("blueprints.api.libraries.invalidate_watermark_previews")
+    @patch("blueprints.api.libraries.storage")
+    def test_upload_watermark_invalidates_cache(
+        self, mock_storage, mock_inv, client, photographer, library
+    ):
+        res = upload_logo(client, library.id, make_token(photographer), make_png_bytes())
+        assert res.status_code == 200
+        mock_inv.assert_called_once_with(library.id)
+
+    @patch("blueprints.api.libraries.invalidate_watermark_previews")
+    @patch("blueprints.api.libraries.storage")
+    def test_delete_watermark_invalidates_cache(
+        self, mock_storage, mock_inv, client, photographer, prepared
+    ):
+        res = client.delete(
+            f"/api/v1/libraries/{prepared.id}/watermark",
+            headers=auth_header(make_token(photographer)),
+        )
+        assert res.status_code == 200
+        mock_inv.assert_called_once_with(prepared.id)
+
+    @patch("services.images.cache_delete_pattern")
+    def test_invalidate_deletes_library_pattern(self, mock_del):
+        from services.images import invalidate_watermark_previews
+
+        invalidate_watermark_previews(7)
+        mock_del.assert_called_once_with("watermark_preview:7:*")
+
+
 # ---------------------------------------------------------------------------
 # PATCH /libraries/<id> — watermark_scale and watermark_position
 # ---------------------------------------------------------------------------
