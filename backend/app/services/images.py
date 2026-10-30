@@ -108,8 +108,24 @@ _WEBP_VP8X_EXIF_FLAG = 0x08
 _WEBP_VP8X_XMP_FLAG = 0x04
 
 
+def _orientation_only_exif(exif_data: bytes) -> bytes | None:
+    """Build an EXIF payload holding only the Orientation tag, or None if absent."""
+    try:
+        if exif_data.startswith(b"Exif\x00\x00"):
+            exif_data = exif_data[6:]
+        orientation = piexif.load(b"Exif\x00\x00" + exif_data)["0th"].get(
+            piexif.ImageIFD.Orientation
+        )
+        if orientation is None:
+            return None
+        clean = piexif.dump({"0th": {piexif.ImageIFD.Orientation: orientation}})
+        return clean[6:]
+    except Exception:
+        return None
+
+
 def _strip_webp_metadata(file_data: bytes) -> bytes:
-    """Remove the EXIF and XMP chunks from a WebP.
+    """Remove the EXIF and XMP chunks from a WebP, keeping only the EXIF Orientation.
 
     Raises ValueError when the RIFF structure cannot be parsed, so the caller
     rejects the upload instead of storing metadata unchanged.
@@ -121,6 +137,8 @@ def _strip_webp_metadata(file_data: bytes) -> bytes:
         raise ValueError("Truncated WebP file")
 
     chunks: list[bytes] = []
+    exif_chunk: bytes | None = None
+    vp8x_index: int | None = None
     pos = 12
     while pos < riff_end:
         if pos + 8 > riff_end:
@@ -130,12 +148,27 @@ def _strip_webp_metadata(file_data: bytes) -> bytes:
         end = pos + 8 + size + (size & 1)
         if end > riff_end:
             raise ValueError("Malformed WebP chunk")
-        if fourcc not in _WEBP_METADATA_CHUNKS:
+        if fourcc == b"EXIF":
+            kept = _orientation_only_exif(file_data[pos + 8:pos + 8 + size])
+            if kept is not None:
+                exif_chunk = b"EXIF" + len(kept).to_bytes(4, "little") + kept + (b"\x00" * (len(kept) & 1))
+        elif fourcc not in _WEBP_METADATA_CHUNKS:
             chunk = bytearray(file_data[pos:end])
             if fourcc == b"VP8X" and size >= 1:
                 chunk[8] &= ~(_WEBP_VP8X_EXIF_FLAG | _WEBP_VP8X_XMP_FLAG) & 0xFF
+                vp8x_index = len(chunks)
             chunks.append(bytes(chunk))
         pos = end
+
+    if exif_chunk is not None:
+        if vp8x_index is None:
+            # Simple-format WebP has no VP8X, so there is nowhere to flag EXIF
+            exif_chunk = None
+        else:
+            vp8x = bytearray(chunks[vp8x_index])
+            vp8x[8] |= _WEBP_VP8X_EXIF_FLAG
+            chunks[vp8x_index] = bytes(vp8x)
+            chunks.append(exif_chunk)
 
     body = b"WEBP" + b"".join(chunks)
     return b"RIFF" + len(body).to_bytes(4, "little") + body

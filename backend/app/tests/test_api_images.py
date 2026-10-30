@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 import piexif
 import pytest
-from PIL import Image as PilImage
+from PIL import Image as PilImage, ImageOps
 
 from datetime import datetime, timezone
 
@@ -427,6 +427,40 @@ class TestExifStripping:
             img.load()
             assert img.size == (2, 2)
             assert "exif" not in img.info and "xmp" not in img.info
+
+    @patch("services.images.storage")
+    def test_webp_keeps_orientation_and_drops_gps(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        exif_bytes = piexif.dump(
+            {
+                "0th": {piexif.ImageIFD.Orientation: 6},
+                "Exif": {piexif.ExifIFD.BodySerialNumber: b"SN-12345678"},
+                "GPS": {
+                    piexif.GPSIFD.GPSLatitude: ((48, 1), (12, 1), (0, 1)),
+                    piexif.GPSIFD.GPSLatitudeRef: b"N",
+                },
+                "1st": {},
+                "thumbnail": None,
+            }
+        )
+        buf = io.BytesIO()
+        PilImage.new("RGB", (8, 4), color="green").save(buf, format="WEBP", exif=exif_bytes)
+
+        res = upload(client, library.id, make_token(photographer), buf.getvalue(), "p.webp", "image/webp")
+        assert res.status_code == 201
+
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        assert b"SN-12345678" not in stored
+        assert int.from_bytes(stored[4:8], "little") == len(stored) - 8
+        with PilImage.open(io.BytesIO(stored)) as img:
+            exif = piexif.load(img.info["exif"])
+            assert exif["0th"][piexif.ImageIFD.Orientation] == 6
+            assert exif["GPS"] == {}
+            assert piexif.ExifIFD.BodySerialNumber not in exif["Exif"]
+            # Same rotation as the watermark apply path (exif_transpose) sees
+            assert ImageOps.exif_transpose(img).size == (4, 8)
 
     @patch("services.images.storage")
     def test_truncated_webp_rejected_fail_closed(
