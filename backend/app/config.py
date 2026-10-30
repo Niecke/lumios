@@ -93,6 +93,14 @@ RATELIMIT_ENABLED = os.getenv("RATELIMIT_ENABLED", "true").lower() not in (
 
 # Redis (optional — enables Redis-backed sessions when set, falls back to filesystem)
 REDIS_URL = os.getenv("REDIS_URL", None)
+# Max cached watermark previews per library (scale/position combinations); oldest are evicted
+WATERMARK_PREVIEW_CACHE_MAX_PER_LIBRARY = int(
+    os.getenv("WATERMARK_PREVIEW_CACHE_MAX_PER_LIBRARY", "20")
+)
+# Watermark previews above this size (bytes) are served but not cached in Redis
+WATERMARK_PREVIEW_CACHE_MAX_BYTES = int(
+    os.getenv("WATERMARK_PREVIEW_CACHE_MAX_BYTES", "2097152")
+)
 
 # S3-compatible object storage (use Versity Gateway for local dev, Hetzner object storage in production)
 S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "http://s3:7070")

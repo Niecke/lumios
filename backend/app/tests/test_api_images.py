@@ -377,6 +377,40 @@ class TestUploadValidImages:
         assert calls[2][0][1].endswith(".webp")
 
 
+class TestWatermarkPreviewInvalidation:
+    """Image changes must drop the library's cached watermark previews."""
+
+    @patch("services.images.invalidate_watermark_previews")
+    @patch("services.images.storage")
+    def test_upload_invalidates_previews(
+        self, _storage, mock_invalidate, client, photographer, library
+    ):
+        res = upload(
+            client, library.id, make_token(photographer),
+            make_jpeg_bytes(), "photo.jpg", "image/jpeg",
+        )
+        assert res.status_code == 201
+        mock_invalidate.assert_called_once_with(library.id)
+
+    @patch("blueprints.api.images.invalidate_watermark_previews")
+    def test_delete_invalidates_previews(self, mock_invalidate, client, photographer, library):
+        image = Image(
+            library_id=library.id,
+            s3_key="d.jpg",
+            original_filename="d.jpg",
+            content_type="image/jpeg",
+            size=10,
+        )
+        db.session.add(image)
+        db.session.commit()
+        res = client.delete(
+            f"/api/v1/libraries/{library.id}/images/{image.id}",
+            headers=auth_header(make_token(photographer)),
+        )
+        assert res.status_code == 204
+        mock_invalidate.assert_called_once_with(library.id)
+
+
 class TestExifStripping:
     """GPS and device-identifying EXIF tags must be removed from JPEG originals."""
 

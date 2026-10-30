@@ -543,7 +543,12 @@ function WatermarkSettings({
     setPreviewError(null);
     const timer = setTimeout(() => {
       librariesApi
-        .fetchWatermarkPreview(library.id, pendingScale / 100, pendingPosition)
+        .fetchWatermarkPreview(
+          library.id,
+          pendingScale / 100,
+          pendingPosition,
+          library.watermark_gcs_key ?? ""
+        )
         .then((url) => {
           if (prevObjectUrl.current) URL.revokeObjectURL(prevObjectUrl.current);
           prevObjectUrl.current = url;

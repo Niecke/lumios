@@ -169,7 +169,9 @@ Defined and validated in `backend/app/config.py`. The app **refuses to start** i
 | `POSTGRES_HOST` | `postgres` | DB host |
 | `POSTGRES_PORT` | `5432` | DB port |
 | `POSTGRES_DB` | `lumios` | DB name |
-| `REDIS_URL` | `None` | Falls back to filesystem sessions if unset |
+| `REDIS_URL` | `None` | Falls back to filesystem sessions if unset. One shared connection pool (`services/redis_client.py`) serves sessions, caches and the binary preview cache |
+| `WATERMARK_PREVIEW_CACHE_MAX_PER_LIBRARY` | `20` | Max cached watermark preview JPEGs per library in Redis (1 h TTL); the oldest are evicted first |
+| `WATERMARK_PREVIEW_CACHE_MAX_BYTES` | `2097152` | Watermark previews larger than this (bytes) are served but not cached in Redis |
 | `DEBUG` | `false` | Enables hot-reload, disables HTTPS enforcement |
 | `GIT_HASH` | `dev` | Injected at Docker build time |
 | `APP_VERSION` | `dev` | Release version, set at runtime by the Helm chart from the image tag |

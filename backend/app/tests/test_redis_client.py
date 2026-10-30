@@ -39,8 +39,8 @@ class TestNoRedis:
     def test_get_redis_session_returns_none(self):
         import services.redis_client as mod
 
-        mod._session_client = None
-        mod._session_pool = None
+        mod._client = None
+        mod._pool = None
         with patch.object(mod, "REDIS_URL", None):
             assert mod.get_redis_session() is None
 
@@ -185,3 +185,113 @@ class TestWithRedis:
         with patch.object(mod, "get_redis", return_value=mock_r):
             result = mod.cache_get("presigned:abc")
             assert result == "https://example.com/signed"
+
+
+# ---------------------------------------------------------------------------
+# Binary helpers and the single shared pool
+# ---------------------------------------------------------------------------
+
+
+class TestSharedPool:
+    def test_all_getters_share_one_client(self):
+        import services.redis_client as mod
+
+        mod._client = None
+        mod._pool = None
+        with patch.object(mod, "REDIS_URL", "redis://localhost:6379/0"):
+            client = mod.get_redis()
+            assert mod.get_redis_bytes() is client
+            assert mod.get_redis_session() is client
+            assert client.connection_pool.connection_kwargs.get("decode_responses") in (None, False)
+        mod._client = None
+        mod._pool = None
+
+
+class TestBinaryCache:
+    def test_cache_get_bytes_returns_none_when_no_redis(self):
+        import services.redis_client as mod
+
+        with patch.object(mod, "get_redis_bytes", return_value=None):
+            assert mod.cache_get_bytes("k") is None
+
+    def test_cache_set_bytes_noop_when_no_redis(self):
+        import services.redis_client as mod
+
+        with patch.object(mod, "get_redis_bytes", return_value=None):
+            mod.cache_set_bytes("k", b"\xff\xd8")
+            mod.cache_set_bytes_capped("k", b"x", "idx", 5)
+
+    def test_cache_get_bytes_hit(self):
+        import services.redis_client as mod
+
+        mock_r = MagicMock()
+        mock_r.get.return_value = b"\xff\xd8\xff"
+        with patch.object(mod, "get_redis_bytes", return_value=mock_r):
+            assert mod.cache_get_bytes("k") == b"\xff\xd8\xff"
+
+    def test_cache_get_bytes_miss(self):
+        import services.redis_client as mod
+
+        mock_r = MagicMock()
+        mock_r.get.return_value = None
+        with patch.object(mod, "get_redis_bytes", return_value=mock_r):
+            assert mod.cache_get_bytes("k") is None
+
+    def test_cache_get_bytes_handles_exception(self):
+        import services.redis_client as mod
+
+        mock_r = MagicMock()
+        mock_r.get.side_effect = ConnectionError("down")
+        with patch.object(mod, "get_redis_bytes", return_value=mock_r):
+            assert mod.cache_get_bytes("k") is None
+
+    def test_cache_set_bytes_stores_raw_bytes(self):
+        import services.redis_client as mod
+
+        mock_r = MagicMock()
+        with patch.object(mod, "get_redis_bytes", return_value=mock_r):
+            mod.cache_set_bytes("k", b"\xff\xd8", ttl=60)
+            mock_r.setex.assert_called_once_with("k", 60, b"\xff\xd8")
+
+    def test_cache_set_bytes_handles_exception(self):
+        import services.redis_client as mod
+
+        mock_r = MagicMock()
+        mock_r.setex.side_effect = ConnectionError("down")
+        with patch.object(mod, "get_redis_bytes", return_value=mock_r):
+            mod.cache_set_bytes("k", b"x")
+
+    def test_capped_evicts_oldest_over_limit(self):
+        import services.redis_client as mod
+
+        mock_r = MagicMock()
+        pipe = mock_r.pipeline.return_value
+        pipe.execute.return_value = [True, 1, 0, True, [b"old1", b"old2"]]
+        with patch.object(mod, "get_redis_bytes", return_value=mock_r):
+            mod.cache_set_bytes_capped("k", b"x", "idx", max_entries=3, ttl=60)
+        pipe.setex.assert_called_once_with("k", 60, b"x")
+        pipe.zrange.assert_called_once_with("idx", 0, -4)
+        # expired-by-TTL entries are dropped before the cap is applied
+        (idx, lo, hi), _ = pipe.zremrangebyscore.call_args
+        assert (idx, lo) == ("idx", 0) and hi > 0
+        pipe.delete.assert_called_once_with(b"old1", b"old2")
+        pipe.zrem.assert_called_once_with("idx", b"old1", b"old2")
+
+    def test_capped_keeps_everything_under_limit(self):
+        import services.redis_client as mod
+
+        mock_r = MagicMock()
+        pipe = mock_r.pipeline.return_value
+        pipe.execute.return_value = [True, 1, 0, True, []]
+        with patch.object(mod, "get_redis_bytes", return_value=mock_r):
+            mod.cache_set_bytes_capped("k", b"x", "idx", max_entries=3)
+        pipe.delete.assert_not_called()
+        pipe.zrem.assert_not_called()
+
+    def test_capped_handles_exception(self):
+        import services.redis_client as mod
+
+        mock_r = MagicMock()
+        mock_r.pipeline.side_effect = ConnectionError("down")
+        with patch.object(mod, "get_redis_bytes", return_value=mock_r):
+            mod.cache_set_bytes_capped("k", b"x", "idx", 3)

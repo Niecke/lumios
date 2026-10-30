@@ -341,6 +341,14 @@ class TestPublicUpload:
         assert res.status_code == 201
         assert "uuid" in res.get_json()
 
+    def test_upload_invalidates_watermark_previews(self, client, upload_library):
+        with _patch("services.images.storage"), _patch(
+            "services.images.invalidate_watermark_previews"
+        ) as mock_invalidate:
+            res = self._post_jpeg(client, upload_library.uuid)
+        assert res.status_code == 201
+        mock_invalidate.assert_called_once_with(upload_library.id)
+    
     def test_upload_enabled_accepts_webp(self, client, upload_library):
         from PIL import Image as _PilImage
 
