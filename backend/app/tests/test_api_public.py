@@ -341,6 +341,24 @@ class TestPublicUpload:
         assert res.status_code == 201
         assert "uuid" in res.get_json()
 
+    def test_upload_enabled_accepts_webp(self, client, upload_library):
+        from PIL import Image as _PilImage
+
+        buf = _io.BytesIO()
+        _PilImage.new("RGB", (2, 2), color="green").save(buf, format="WEBP")
+        with _patch("services.images.storage"):
+            res = client.post(
+                f"{BASE}/libraries/{upload_library.uuid}/images",
+                data={"file": (_io.BytesIO(buf.getvalue()), "photo.webp", "image/webp")},
+                content_type="multipart/form-data",
+            )
+        assert res.status_code == 201
+        from models import Image as _Image
+
+        image = _Image.query.filter_by(uuid=res.get_json()["uuid"]).one()
+        assert image.content_type == "image/webp"
+        assert image.s3_key.endswith(".webp")
+
     def test_upload_marks_image_as_external(self, client, upload_library):
         from models import Image as _Image
         from sqlalchemy import select as _select

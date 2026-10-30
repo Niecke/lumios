@@ -27,7 +27,7 @@ _DEJAVU_FONT = os.path.join(
     "fonts", "DejaVuSans-Bold.ttf",
 )
 
-ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
+ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
 THUMB_SIZE = 600  # longest side in pixels
 PREVIEW_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
@@ -40,7 +40,11 @@ WATERMARK_LOGO_MAGIC = b"\x89PNG\r\n\x1a\n"
 MAGIC_BYTES = {
     "image/jpeg": b"\xff\xd8\xff",
     "image/png": b"\x89PNG\r\n\x1a\n",
+    "image/webp": b"RIFF",
 }
+
+# File extension per allowed content type
+EXTENSIONS = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 
 PREVIEW_MAX_PX = 2048  # max longest side for preview before watermarking
 
@@ -56,17 +60,25 @@ _PRIVATE_EXIF_TAGS = {
 def validate_upload(file_data: bytes, content_type: str) -> None:
     """Raise ValueError with a user-facing message on any rejection."""
     if content_type not in ALLOWED_CONTENT_TYPES:
-        raise ValueError("Only JPEG and PNG images are allowed")
+        raise ValueError("Only JPEG, PNG, and WebP images are allowed")
     if len(file_data) > MAX_FILE_SIZE:
         raise ValueError("File too large (max 20 MB)")
     expected_magic = MAGIC_BYTES[content_type]
     if not file_data.startswith(expected_magic):
+        raise ValueError("File content does not match its declared type")
+    if content_type == "image/webp" and file_data[8:12] != b"WEBP":
         raise ValueError("File content does not match its declared type")
     try:
         img = PilImage.open(io.BytesIO(file_data))
         img.verify()
     except Exception:
         raise ValueError("File is not a valid image")
+    if content_type == "image/webp":
+        # Fail closed: a WebP whose metadata cannot be removed is not stored
+        try:
+            _strip_webp_metadata(file_data)
+        except ValueError:
+            raise ValueError("File is not a valid image")
 
 
 def _strip_private_exif(file_data: bytes) -> bytes:
@@ -89,6 +101,77 @@ def _strip_private_exif(file_data: bytes) -> bytes:
             os.unlink(tmp_path)
     except Exception:
         return file_data
+
+
+_WEBP_METADATA_CHUNKS = (b"EXIF", b"XMP ")
+_WEBP_VP8X_EXIF_FLAG = 0x08
+_WEBP_VP8X_XMP_FLAG = 0x04
+
+
+def _orientation_only_exif(exif_data: bytes) -> bytes | None:
+    """Build an EXIF payload holding only the Orientation tag, or None if absent."""
+    try:
+        if exif_data.startswith(b"Exif\x00\x00"):
+            exif_data = exif_data[6:]
+        orientation = piexif.load(b"Exif\x00\x00" + exif_data)["0th"].get(
+            piexif.ImageIFD.Orientation
+        )
+        if orientation is None:
+            return None
+        clean = piexif.dump({"0th": {piexif.ImageIFD.Orientation: orientation}})
+        return clean[6:]
+    except Exception:
+        return None
+
+
+def _strip_webp_metadata(file_data: bytes) -> bytes:
+    """Remove the EXIF and XMP chunks from a WebP, keeping only the EXIF Orientation.
+
+    Raises ValueError when the RIFF structure cannot be parsed, so the caller
+    rejects the upload instead of storing metadata unchanged.
+    """
+    if file_data[:4] != b"RIFF" or file_data[8:12] != b"WEBP":
+        raise ValueError("Not a WebP file")
+    riff_end = 8 + int.from_bytes(file_data[4:8], "little")
+    if riff_end > len(file_data):
+        raise ValueError("Truncated WebP file")
+
+    chunks: list[bytes] = []
+    exif_chunk: bytes | None = None
+    vp8x_index: int | None = None
+    pos = 12
+    while pos < riff_end:
+        if pos + 8 > riff_end:
+            raise ValueError("Malformed WebP chunk")
+        fourcc = file_data[pos:pos + 4]
+        size = int.from_bytes(file_data[pos + 4:pos + 8], "little")
+        end = pos + 8 + size + (size & 1)
+        if end > riff_end:
+            raise ValueError("Malformed WebP chunk")
+        if fourcc == b"EXIF":
+            kept = _orientation_only_exif(file_data[pos + 8:pos + 8 + size])
+            if kept is not None:
+                exif_chunk = b"EXIF" + len(kept).to_bytes(4, "little") + kept + (b"\x00" * (len(kept) & 1))
+        elif fourcc not in _WEBP_METADATA_CHUNKS:
+            chunk = bytearray(file_data[pos:end])
+            if fourcc == b"VP8X" and size >= 1:
+                chunk[8] &= ~(_WEBP_VP8X_EXIF_FLAG | _WEBP_VP8X_XMP_FLAG) & 0xFF
+                vp8x_index = len(chunks)
+            chunks.append(bytes(chunk))
+        pos = end
+
+    if exif_chunk is not None:
+        if vp8x_index is None:
+            # Simple-format WebP has no VP8X, so there is nowhere to flag EXIF
+            exif_chunk = None
+        else:
+            vp8x = bytearray(chunks[vp8x_index])
+            vp8x[8] |= _WEBP_VP8X_EXIF_FLAG
+            chunks[vp8x_index] = bytes(vp8x)
+            chunks.append(exif_chunk)
+
+    body = b"WEBP" + b"".join(chunks)
+    return b"RIFF" + len(body).to_bytes(4, "little") + body
 
 
 def _build_watermark_tile() -> PilImage.Image:
@@ -322,8 +405,10 @@ def process_and_store_image(
 
     if content_type == "image/jpeg":
         file_data = _strip_private_exif(file_data)
+    elif content_type == "image/webp":
+        file_data = _strip_webp_metadata(file_data)
 
-    ext = "jpg" if content_type == "image/jpeg" else "png"
+    ext = EXTENSIONS[content_type]
     photo_uuid = str(uuid_module.uuid4())
     s3_key = f"{photo_uuid}.{ext}"
 

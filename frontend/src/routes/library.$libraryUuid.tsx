@@ -29,10 +29,10 @@ export const Route = createFileRoute("/library/$libraryUuid")({
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 const ACCEPTED_TYPES = new Set([
-  "image/jpeg", "image/png", "image/jpg", "image/x-png",
+  "image/jpeg", "image/png", "image/webp", "image/jpg", "image/x-png",
   "video/mp4", "video/quicktime", "video/webm", "video/x-m4v",
 ]);
-const ACCEPTED_EXTS = new Set(["jpg", "jpeg", "png", "mp4", "mov", "webm", "m4v"]);
+const ACCEPTED_EXTS = new Set(["jpg", "jpeg", "png", "webp", "mp4", "mov", "webm", "m4v"]);
 const VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm", "video/x-m4v"]);
 const VIDEO_EXTS = new Set(["mp4", "mov", "webm", "m4v"]);
 
@@ -389,7 +389,7 @@ function DropZone({ onFiles, compact = false }: DropZoneProps) {
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png,video/mp4,video/quicktime,video/webm,video/x-m4v"
+        accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,video/x-m4v"
         multiple
         style={{ display: "none" }}
         onChange={handleChange}
@@ -398,7 +398,7 @@ function DropZone({ onFiles, compact = false }: DropZoneProps) {
       {!compact && (
         <>
           <p className="drop-zone__title">Drop photos or videos here</p>
-          <p className="drop-zone__hint">JPEG/PNG up to 20 MB · MP4/MOV/WebM/M4V up to 200 MB</p>
+          <p className="drop-zone__hint">JPEG/PNG/WebP up to 20 MB · MP4/MOV/WebM/M4V up to 200 MB</p>
         </>
       )}
       {compact && <p className="drop-zone__hint">Drop to add photos or videos</p>}
@@ -1088,7 +1088,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png,video/mp4,video/quicktime,video/webm,video/x-m4v"
+          accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,video/x-m4v"
           multiple
           style={{ display: "none" }}
           onChange={(e) => {
