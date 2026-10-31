@@ -16,6 +16,7 @@ export interface UserInfo {
   created_at: string | null;
   account_type: string | null;
   subscription: string | null;
+  language: "de" | "en";
   storage_used_bytes: number;
   storage_limit_bytes: number | null;
   max_libraries: number | null;
@@ -23,6 +24,8 @@ export interface UserInfo {
   name?: string;
   picture?: string;
 }
+
+import { applyAccountLocale } from "../i18n/index.ts";
 
 const TOKEN_KEY = "lumios_token";
 
@@ -92,7 +95,18 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const authApi = {
   // Verify the current JWT and return user info (guards protected routes).
-  me: () => apiFetch<UserInfo>("/api/v1/auth/me"),
+  me: async () => {
+    const user = await apiFetch<UserInfo>("/api/v1/auth/me");
+    applyAccountLocale(user.language);
+    return user;
+  },
+
+  // Store the UI language on the account (kept across devices).
+  updateMe: (data: { language: "de" | "en" }) =>
+    apiFetch<UserInfo>("/api/v1/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
 
   // Register a new local account (agb_accepted must be true).
   register: (email: string, password: string) =>

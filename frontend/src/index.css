@@ -888,6 +888,7 @@ body {
 
 /* ── Login page ────────────────────────────────────── */
 .login-page {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1673,4 +1674,31 @@ body {
   font-size: 0.9rem;
   box-shadow: var(--dp4);
   white-space: nowrap;
+}
+/* ── Language switcher ─────────────────────────────────────────────────────── */
+.lang-switch {
+  display: inline-flex;
+  border: 1px solid var(--clr-outline, #ccc);
+  border-radius: 999px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.lang-switch__btn {
+  background: transparent;
+  border: 0;
+  padding: 0.25rem 0.65rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--clr-on-surface-var, inherit);
+  cursor: pointer;
+}
+.lang-switch__btn--active {
+  background: var(--clr-primary, #1a73e8);
+  color: var(--clr-on-primary, #fff);
+}
+.lang-switch--corner {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
 }
