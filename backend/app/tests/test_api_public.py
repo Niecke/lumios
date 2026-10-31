@@ -341,6 +341,26 @@ class TestPublicUpload:
         assert res.status_code == 201
         assert "uuid" in res.get_json()
 
+    def test_public_upload_strips_jpeg_metadata(self, client, upload_library):
+        from test_api_images import make_jpeg_with_private_metadata, PRIVATE_JPEG_STRINGS
+
+        jpeg = make_jpeg_with_private_metadata(orientation=6)
+        with _patch("services.images.storage") as mock_storage:
+            res = self._post_jpeg(client, upload_library.uuid, jpeg)
+            assert res.status_code == 201
+            stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        for needle in PRIVATE_JPEG_STRINGS:
+            assert needle not in stored
+        import piexif
+        assert piexif.load(stored)["0th"] == {piexif.ImageIFD.Orientation: 6}
+
+    def test_public_upload_corrupt_jpeg_rejected(self, client, upload_library):
+        jpeg = _make_jpeg_bytes() + b"trailing-data"
+        with _patch("services.images.storage") as mock_storage:
+            res = self._post_jpeg(client, upload_library.uuid, jpeg)
+        assert res.status_code == 415
+        mock_storage.upload_fileobj.assert_not_called()
+
     def test_upload_invalidates_watermark_previews(self, client, upload_library):
         with _patch("services.images.storage"), _patch(
             "services.images.invalidate_watermark_previews"

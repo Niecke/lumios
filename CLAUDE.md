@@ -394,6 +394,7 @@ f"photos/{photographer_id}/{library_id}/thumbs/{uuid}.{ext}"     # 600px longest
 1. MIME type must be `image/jpeg`, `image/png` or `image/webp` — reject everything else (videos have their own list, see Video Uploads)
 2. Library must have fewer than `max_images_per_library` images (respects subscription tier)
 3. Photographer must own the library
+4. JPEG originals are rewritten with an allowlist of segments (structure, JFIF, ICC profile, Adobe APP14); the EXIF block keeps only the Orientation tag, and the embedded thumbnail, XMP, IPTC, comments and other APPn segments are dropped. This fails closed: a JPEG whose segments or EXIF cannot be parsed is rejected with 415 in `validate_upload`, nothing is stored
 
 ### Thumbnail generation for images (inline, no queue)
 1. Validate MIME type and library capacity
