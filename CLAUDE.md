@@ -81,7 +81,8 @@ lumios/
 ├── frontend/                 # React SPA (TanStack Router file-based routing)
 │   ├── src/
 │   │   ├── api/              # API client modules (auth, images, libraries, etc.)
-│   │   ├── components/       # AppBar, CookieBanner, FeedbackWidget
+│   │   ├── components/       # AppBar, CookieBanner, FeedbackWidget, LanguageSwitcher
+│   │   ├── i18n/             # i18next setup (index.ts) + locales/de.json, locales/en.json
 │   │   ├── routes/           # File-based routes (TanStack Router): __root, index, login, register, activate, account, support, library.$libraryUuid
 │   │   └── main.tsx
 │   ├── Dockerfile
@@ -265,7 +266,7 @@ User                --> AuditLog                # append-only
 
 ### Tables
 
-**users** — `id, email, active, activation_pending, activation_token, account_type ('local' | 'google'), auth_string, created_at, last_login, deleted_at, agb_accepted_at, agb_version, is_system, subscription (SubscriptionType, default free)`
+**users** — `id, email, active, activation_pending, activation_token, account_type ('local' | 'google'), auth_string, created_at, last_login, deleted_at, agb_accepted_at, agb_version, language ('de' | 'en', default 'de'), is_system, subscription (SubscriptionType, default free)`
 
 `account_type` determines how the user authenticates:
 - `'local'` — `auth_string` holds an Argon2id-hashed password. Used only for the seeded admin account.
@@ -438,6 +439,19 @@ Jobs are enqueued by the backend and run by separate worker pods. Queue and resu
 
 ---
 
+## Frontend Translations (i18n)
+
+The SPA is available in German (default) and English with `i18next` + `react-i18next`; the `/admin` Jinja pages stay English. Messages live in `frontend/src/i18n/locales/{de,en}.json` (nested keys, e.g. `libraries.title`).
+
+- **Default:** first visit is always German, `navigator.language` is ignored. The choice is stored in `localStorage` (`lumios_locale`) and, for a logged-in photographer, in `users.language` (`PATCH /api/v1/auth/me`); `authApi.me()` applies the account language. `LanguageSwitcher` does both.
+- **Add a string:** use `const { t } = useTranslation()` and `t("section.key")`, add the key to **both** `en.json` and `de.json` (plural keys as `key_one` / `key_other`, pass `count`; markup via `<Trans i18nKey=… components={{ strong: <strong /> }} />`). Dates and sizes: `formatDate`, `formatDateTime`, `formatBytes`, `formatTimeAgo` from `i18n/index.ts` (never `toLocaleDateString(undefined, …)`).
+- **Backend errors:** the API keeps returning English strings. Map new ones in `frontend/src/api/errors.ts` (`EXACT` table → `errors.*` key) and show them with `getApiErrorMessage(err, t)`; unknown messages are shown as sent.
+- **Checks (`npm test`):** `tests/i18n.test.ts` fails when `de.json` and `en.json` differ in keys, a value is empty, a `t("…")` key used in `src/` is missing, or a component has a hard-coded text / `title` / `placeholder` / `aria-label` / `alt`. In `npm run dev` a key missing in German shows the English text prefixed with `[EN] `.
+- **Add a language (e.g. `fr`):** copy `en.json` to `locales/fr.json` and translate it; register it in `i18n/index.ts` (import, `resources`, `SUPPORTED_LOCALES`); allow it in `SUPPORTED_LANGUAGES` in `blueprints/api/auth.py` (and the `users.language` length if needed); add `language.fr` to all locale files; extend `UserInfo.language` in `api/auth.ts`.
+- German wording: Library → *Galerie*, photo → *Foto*, watermark → *Wasserzeichen*, selection → *Auswahl*, share link → *Freigabe-Link*, formal address (*Sie*). Transactional mails (`services/mail.py`) are German only.
+
+---
+
 ## Share Link Mechanism
 
 ```
@@ -464,7 +478,8 @@ GET  /auth/callback                                 # OAuth callback, sets sessi
 POST /logout                                        # Clear session
 
 # API Auth (/api/v1/auth, JWT)
-GET  /api/v1/auth/me                                # Current user info
+GET  /api/v1/auth/me                                # Current user info (incl. `language`)
+PATCH /api/v1/auth/me                               # Update own preferences {language: 'de' | 'en'}
 POST /api/v1/auth/login                             # JWT login (email/password)
 POST /api/v1/auth/google/verify                     # Verify Google ID token
 POST /api/v1/auth/google/callback                   # Google OAuth code exchange

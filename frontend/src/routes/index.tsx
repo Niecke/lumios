@@ -7,6 +7,9 @@
 import { createFileRoute, redirect, Link } from "@tanstack/react-router";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { getApiErrorMessage } from "../api/errors";
+import { formatDate } from "../i18n";
 import { authApi, type UserInfo } from "../api/auth";
 import { librariesApi, type Library } from "../api/libraries";
 import { AppBar } from "../components/AppBar";
@@ -24,16 +27,6 @@ export const Route = createFileRoute("/")({
   component: LibrariesPage,
 });
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
 // ── Create dialog ─────────────────────────────────────────────────────────────
 
 interface CreateDialogProps {
@@ -42,6 +35,7 @@ interface CreateDialogProps {
 }
 
 function CreateDialog({ onClose, onCreated }: CreateDialogProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -51,7 +45,7 @@ function CreateDialog({ onClose, onCreated }: CreateDialogProps) {
       onCreated();
       onClose();
     },
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => setError(getApiErrorMessage(err, t)),
   });
 
   function handleSubmit(e: { preventDefault(): void }) {
@@ -65,17 +59,17 @@ function CreateDialog({ onClose, onCreated }: CreateDialogProps) {
   return (
     <div className="dialog-overlay" onClick={onClose}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
-        <h2>New Library</h2>
+        <h2>{t("libraries.newTitle")}</h2>
 
         <form onSubmit={handleSubmit}>
           <div className="text-field">
-            <label htmlFor="lib-name">Library name</label>
+            <label htmlFor="lib-name">{t("libraries.name")}</label>
             <input
               id="lib-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Wedding – Smith & Jones"
+              placeholder={t("libraries.namePlaceholder")}
               maxLength={255}
               autoFocus
               disabled={create.isPending}
@@ -90,14 +84,14 @@ function CreateDialog({ onClose, onCreated }: CreateDialogProps) {
               onClick={onClose}
               disabled={create.isPending}
             >
-              Cancel
+              {t("common.cancel")}
             </button>
             <button
               type="submit"
               className="btn btn-contained"
               disabled={!name.trim() || create.isPending}
             >
-              {create.isPending ? "Creating…" : "Create"}
+              {create.isPending ? t("common.creating") : t("common.create")}
             </button>
           </div>
         </form>
@@ -115,6 +109,7 @@ interface LibraryCardProps {
 }
 
 function LibraryCard({ lib, onRenamed, onDeleted }: LibraryCardProps) {
+  const { t, i18n } = useTranslation();
   const [renaming, setRenaming] = useState(false);
   const [editName, setEditName] = useState(lib.name);
 
@@ -163,7 +158,7 @@ function LibraryCard({ lib, onRenamed, onDeleted }: LibraryCardProps) {
             type="submit"
             className="icon-btn"
             disabled={!editName.trim() || rename.isPending}
-            title="Save"
+            title={t("common.save")}
           >
             <span className="material-icons">check</span>
           </button>
@@ -171,7 +166,7 @@ function LibraryCard({ lib, onRenamed, onDeleted }: LibraryCardProps) {
             type="button"
             className="icon-btn"
             onClick={() => setRenaming(false)}
-            title="Cancel"
+            title={t("common.cancel")}
           >
             <span className="material-icons">close</span>
           </button>
@@ -182,11 +177,11 @@ function LibraryCard({ lib, onRenamed, onDeleted }: LibraryCardProps) {
             {lib.name}
           </div>
           <div className="library-card__meta">
-            Created {formatDate(lib.created_at)}
+            {t("libraries.created", { date: formatDate(lib.created_at, i18n.language) })}
             {lib.finished_at && (
               <span className="reviewed-chip">
                 <span className="material-icons">check_circle</span>
-                Reviewed
+                {t("libraries.reviewed")}
               </span>
             )}
           </div>
@@ -198,7 +193,7 @@ function LibraryCard({ lib, onRenamed, onDeleted }: LibraryCardProps) {
           <button
             className="icon-btn"
             onClick={startRename}
-            title="Rename"
+            title={t("libraries.rename")}
           >
             <span className="material-icons">edit</span>
           </button>
@@ -206,7 +201,7 @@ function LibraryCard({ lib, onRenamed, onDeleted }: LibraryCardProps) {
             className="icon-btn icon-btn--danger"
             onClick={() => remove.mutate()}
             disabled={remove.isPending}
-            title="Delete"
+            title={t("common.delete")}
           >
             <span className="material-icons">delete</span>
           </button>
@@ -231,6 +226,7 @@ function SkeletonGrid() {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 function LibrariesPage() {
+  const { t } = useTranslation();
   const { user } = Route.useRouteContext() as { user: UserInfo };
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
@@ -264,28 +260,28 @@ function LibrariesPage() {
 
       <main className="page-content">
         <div className="page-header">
-          <h1>Libraries</h1>
+          <h1>{t("libraries.title")}</h1>
           <button
             className="btn btn-contained"
             onClick={() => setShowCreate(true)}
             disabled={atLimit}
-            title={atLimit ? `Limit of ${maxLibraries} libraries reached` : undefined}
+            title={atLimit ? t("libraries.limitTitle", { max: maxLibraries }) : undefined}
           >
             <span className="material-icons">add</span>
-            New Library
+            {t("libraries.new")}
           </button>
         </div>
 
         <p className="library-count-hint">
-          {count} of {maxLibraries ?? "∞"} libraries in use
-          {atLimit && " · limit reached"}
+          {t("libraries.inUse", { used: count, max: maxLibraries ?? "∞" })}
+          {atLimit && ` · ${t("libraries.limitReached")}`}
         </p>
 
         {isLoading && <SkeletonGrid />}
 
         {isError && (
           <div className="alert alert--error">
-            Failed to load libraries. Please refresh the page.
+            {t("libraries.loadFailed")}
           </div>
         )}
 
@@ -294,7 +290,7 @@ function LibrariesPage() {
             {allLibraries.length === 0 ? (
               <div className="empty-state">
                 <span className="material-icons">photo_library</span>
-                <p>No libraries yet — create your first one above.</p>
+                <p>{t("libraries.empty")}</p>
               </div>
             ) : (
               allLibraries.map((lib) => (

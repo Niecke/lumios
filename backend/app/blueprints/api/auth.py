@@ -40,6 +40,9 @@ _GOOGLE_JWKS_URI = "https://www.googleapis.com/oauth2/v3/certs"
 _google_jwks = PyJWKClient(_GOOGLE_JWKS_URI, cache_keys=True, timeout=5)
 
 
+SUPPORTED_LANGUAGES = ("de", "en")
+
+
 @auth_api.route("/me")
 @require_api_auth
 @require_api_role("photographer")
@@ -68,6 +71,7 @@ def me():
         "created_at": user.created_at.isoformat() if user else None,
         "account_type": user.account_type if user else None,
         "subscription": user.subscription.value if user else None,
+        "language": user.language if user else "de",
         "storage_used_bytes": storage_used,
         "storage_limit_bytes": limits.get("max_storage_bytes"),
         "max_libraries": limits.get("max_libraries"),
@@ -78,6 +82,27 @@ def me():
     if payload.get("picture"):
         result["picture"] = payload["picture"]
     return jsonify(result)
+
+
+@auth_api.route("/me", methods=["PATCH"])
+@require_api_auth
+@require_api_role("photographer")
+def update_me():
+    """Update the current user's preferences (currently only the UI language)."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Unsupported language"}), 400
+    language = data.get("language")
+    if language not in SUPPORTED_LANGUAGES:
+        return jsonify({"error": "Unsupported language"}), 400
+
+    user_id = int(g.token_payload["sub"])
+    user = db.session.execute(select(User).filter_by(id=user_id)).scalar_one_or_none()
+    if user is None:
+        return jsonify({"error": "User not found"}), 404
+    user.language = language
+    db.session.commit()
+    return me()
 
 
 @auth_api.route("/google/verify", methods=["POST"])

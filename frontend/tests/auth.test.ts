@@ -59,3 +59,35 @@ test("authApi.logout() clears tokenStore and resets GSI state", async () => {
   assert.equal(tokenStore.get(), null);
   assert.equal(isGsiInitialized(), false);
 });
+
+test("authApi.me() waits for a pending language update and keeps a failed choice", async () => {
+  const { currentLocale, setLocale } = await import("../src/i18n/index.ts");
+  setLocale("en");
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const calls: string[] = [];
+  globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+    calls.push(init?.method ?? "GET");
+    if (init?.method === "PATCH") {
+      await gate;
+      return new Response(JSON.stringify({ error: "boom" }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ email: "a@example.com", language: "de" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  const update = authApi.updateMe({ language: "en" }).catch(() => {});
+  const me = authApi.me();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(calls, ["PATCH"]); // me() has not fetched yet
+  release();
+  await update;
+  await me;
+  assert.deepEqual(calls, ["PATCH", "GET"]);
+  assert.equal(currentLocale(), "en"); // failed save does not revert to the stored "de"
+});

@@ -4,8 +4,11 @@
 // and shows a success or error message.
 
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
+import { getApiErrorMessage } from "../api/errors";
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
 
 export const Route = createFileRoute("/activate")({
   component: ActivatePage,
@@ -14,6 +17,7 @@ export const Route = createFileRoute("/activate")({
 type State = "pending" | "success" | "error" | "expired";
 
 function ActivatePage() {
+  const { t } = useTranslation();
   const [state, setState] = useState<State>("pending");
   const [email, setEmail] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -22,12 +26,17 @@ function ActivatePage() {
   const [resendError, setResendError] = useState<string | null>(null);
   const [resendEmail, setResendEmail] = useState("");
 
+  // The token is single-use: run the activation once, not on every language change.
+  const started = useRef(false);
+
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token") ?? "";
 
     if (!token) {
-      setErrorMsg("No activation token found in the URL.");
+      setErrorMsg(t("activate.noToken"));
       setState("error");
       return;
     }
@@ -42,7 +51,7 @@ function ActivatePage() {
         if ((err as any).code === "token_expired") {
           setState("expired");
         } else {
-          setErrorMsg((err as Error).message);
+          setErrorMsg(getApiErrorMessage(err, t));
           setState("error");
         }
       });
@@ -55,53 +64,51 @@ function ActivatePage() {
     authApi
       .resendActivation({ email: resendEmail })
       .then(() => setResendSuccess(true))
-      .catch((err) => setResendError((err as Error).message))
+      .catch((err) => setResendError(getApiErrorMessage(err, t)))
       .finally(() => setResending(false));
   };
 
   return (
     <main className="login-page">
+      <LanguageSwitcher className="lang-switch--corner" />
       <div className="login-box">
         {state === "pending" && (
           <>
-            <h2>Activating your account…</h2>
-            <p className="login-pending">Please wait.</p>
+            <h2>{t("activate.activating")}</h2>
+            <p className="login-pending">{t("activate.wait")}</p>
           </>
         )}
         {state === "success" && (
           <>
-            <h2>Account activated!</h2>
+            <h2>{t("activate.successTitle")}</h2>
             <p style={{ textAlign: "center", lineHeight: 1.6 }}>
-              Your account{email ? ` (${email})` : ""} has been activated successfully.
-              You can now sign in.
+              {email ? t("activate.successWithEmail", { email }) : t("activate.success")}
             </p>
             <Link
               to="/login"
               className="btn btn-contained"
               style={{ width: "100%", justifyContent: "center", marginTop: "1rem" }}
             >
-              Sign in
+              {t("login.signIn")}
             </Link>
           </>
         )}
         {(state === "expired" || state === "error") && (
           <>
-            <h2>{state === "expired" ? "Link expired" : "Activation failed"}</h2>
-            {state === "error" && <div className="flash">{errorMsg ?? "Unknown error"}</div>}
+            <h2>{state === "expired" ? t("activate.expiredTitle") : t("activate.failedTitle")}</h2>
+            {state === "error" && <div className="flash">{errorMsg ?? t("errors.unknown")}</div>}
             <p style={{ textAlign: "center", lineHeight: 1.6, marginTop: "1rem" }}>
-              {state === "expired"
-                ? "Your activation link has expired. "
-                : "The link may have already been used or is invalid. "}
-              Enter your email address to receive a new one.
+              {state === "expired" ? t("activate.expiredText") : t("activate.invalidText")}{" "}
+              {t("activate.enterEmail")}
             </p>
             {resendSuccess ? (
               <p style={{ textAlign: "center", marginTop: "0.75rem", color: "var(--color-success, green)" }}>
-                If an account exists and is pending activation, a new activation link has been sent.
+                {t("login.resendDone")}
               </p>
             ) : (
               <form className="login-form" onSubmit={handleResend}>
                 <div className="text-field">
-                  <label htmlFor="resend-email">Email</label>
+                  <label htmlFor="resend-email">{t("common.email")}</label>
                   <input
                     id="resend-email"
                     autoComplete="email"
@@ -116,7 +123,7 @@ function ActivatePage() {
                   style={{ width: "100%", justifyContent: "center" }}
                   disabled={resending}
                 >
-                  {resending ? "Sending…" : "Resend activation email"}
+                  {resending ? t("common.sending") : t("login.resend")}
                 </button>
               </form>
             )}
@@ -128,7 +135,7 @@ function ActivatePage() {
               className="btn btn-outlined"
               style={{ width: "100%", justifyContent: "center", marginTop: "1rem" }}
             >
-              Back to sign in
+              {t("activate.backToSignIn")}
             </Link>
           </>
         )}

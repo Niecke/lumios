@@ -1,9 +1,13 @@
 // AppBar.tsx — sticky top navigation shared across all authenticated pages
 
+import type { TFunction } from "i18next";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
+import { formatTimeAgo } from "../i18n";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 import { notificationsApi, type Notification } from "../api/notifications";
 
 interface AppBarProps {
@@ -11,31 +15,23 @@ interface AppBarProps {
   picture?: string;
 }
 
-function formatTimeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-function notificationMessage(n: Notification): string {
+function notificationMessage(n: Notification, t: TFunction): string {
   if (n.type === "library_marked") {
-    return `Library "${n.library_name ?? "Unknown"}" was marked as finished by the customer`;
+    return t("notifications.libraryMarked", { name: n.library_name ?? t("notifications.unknown") });
   }
   if (n.type === "library_viewed") {
-    return `Library "${n.library_name ?? "Unknown"}" was viewed by a customer`;
+    return t("notifications.libraryViewed", { name: n.library_name ?? t("notifications.unknown") });
   }
   if (n.type === "ticket_comment_added") {
-    return `New reply on your ticket "${n.ticket_subject ?? "support ticket"}"`;
+    return t("notifications.ticketComment", {
+      subject: n.ticket_subject ?? t("notifications.supportTicket"),
+    });
   }
-  return "New notification";
+  return t("notifications.generic");
 }
 
 export function AppBar({ name, picture }: AppBarProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showDropdown, setShowDropdown] = useState(false);
@@ -98,7 +94,7 @@ export function AppBar({ name, picture }: AppBarProps) {
         <button
           className="icon-btn notification-bell"
           onClick={() => setShowDropdown((v) => !v)}
-          title="Notifications"
+          title={t("notifications.title")}
         >
           <span className="material-icons">
             {unseenCount > 0 ? "notifications_active" : "notifications_none"}
@@ -111,11 +107,11 @@ export function AppBar({ name, picture }: AppBarProps) {
         {showDropdown && (
           <div className="notification-dropdown">
             <div className="notification-dropdown__header">
-              <span>Notifications</span>
+              <span>{t("notifications.title")}</span>
             </div>
             {(!data || data.notifications.length === 0) ? (
               <div className="notification-dropdown__empty">
-                No notifications yet
+                {t("notifications.empty")}
               </div>
             ) : (
               <div className="notification-dropdown__list">
@@ -130,7 +126,7 @@ export function AppBar({ name, picture }: AppBarProps) {
                     </span>
                     <div className="notification-item__body">
                       <span className="notification-item__text">
-                        {notificationMessage(n)}
+                        {notificationMessage(n, t)}
                       </span>
                       <span className="notification-item__time">
                         {formatTimeAgo(n.created_at)}
@@ -144,9 +140,11 @@ export function AppBar({ name, picture }: AppBarProps) {
         )}
       </div>
 
+      <LanguageSwitcher />
+
       <Link to="/support" className="btn btn-text">
         <span className="material-icons">help_outline</span>
-        <span className="app-bar__label">Support</span>
+        <span className="app-bar__label">{t("nav.support")}</span>
       </Link>
 
       <Link to="/account" className="btn btn-text app-bar__account-btn">
@@ -160,17 +158,17 @@ export function AppBar({ name, picture }: AppBarProps) {
         ) : (
           <span className="material-icons">account_circle</span>
         )}
-        <span className="app-bar__label">{name ?? "Account"}</span>
+        <span className="app-bar__label">{name ?? t("nav.account")}</span>
       </Link>
 
       <button
         className="btn btn-outlined"
         onClick={() => logout.mutate()}
         disabled={logout.isPending}
-        title="Logout"
+        title={t("nav.logout")}
       >
         <span className="material-icons">logout</span>
-        <span className="app-bar__label">{logout.isPending ? "…" : "Logout"}</span>
+        <span className="app-bar__label">{logout.isPending ? "…" : t("nav.logout")}</span>
       </button>
     </header>
   );

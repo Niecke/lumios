@@ -70,6 +70,33 @@ def google_user(photographer_role):
     return user
 
 
+class TestApiMeLanguage:
+    def test_me_includes_default_language(self, client, photographer_user):
+        res = client.get(f"{BASE}/me", headers=auth_header(make_token(photographer_user)))
+        assert res.get_json()["language"] == "de"
+
+    def test_patch_me_updates_language(self, client, photographer_user):
+        headers = auth_header(make_token(photographer_user))
+        res = client.patch(f"{BASE}/me", json={"language": "en"}, headers=headers)
+        assert res.status_code == 200
+        assert res.get_json()["language"] == "en"
+        db.session.refresh(photographer_user)
+        assert photographer_user.language == "en"
+        assert client.get(f"{BASE}/me", headers=headers).get_json()["language"] == "en"
+
+    @pytest.mark.parametrize("body", [{"language": "fr"}, {"language": ""}, {}, {"language": 1}, [1], "en", None])
+    def test_patch_me_invalid_language(self, client, photographer_user, body):
+        headers = auth_header(make_token(photographer_user))
+        res = client.patch(f"{BASE}/me", json=body, headers=headers)
+        assert res.status_code == 400
+        db.session.refresh(photographer_user)
+        assert photographer_user.language == "de"
+
+    def test_patch_me_unauthorized(self, client):
+        res = client.patch(f"{BASE}/me", json={"language": "en"})
+        assert res.status_code == 401
+
+
 # ---------------------------------------------------------------------------
 # GET /api/v1/auth/me
 # ---------------------------------------------------------------------------

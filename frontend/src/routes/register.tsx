@@ -9,7 +9,10 @@
 
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { config } from "../config";
+import { getApiErrorMessage } from "../api/errors";
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { authApi, isGsiInitialized, markGsiInitialized, resetGsiInitialized } from "../api/auth";
 
 const LANDING_URL = config.LANDING_URL;
@@ -19,6 +22,7 @@ export const Route = createFileRoute("/register")({
 });
 
 function RegisterPage() {
+  const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
   const [successEmail, setSuccessEmail] = useState<string | null>(null);
   const [localPending, setLocalPending] = useState(false);
@@ -34,16 +38,16 @@ function RegisterPage() {
 
     function handleGoogleCredential(response: { credential: string }) {
       if (!agbAccepted) {
-        setError("Please accept the Terms of Service and Privacy Policy before continuing.");
+        setError(t("register.acceptFirst"));
         return;
       }
       setError(null);
       setGooglePending(true);
       authApi
         .registerGoogle(response.credential)
-        .then(() => setSuccessEmail("your Google account"))
+        .then(() => setSuccessEmail(t("register.yourGoogleAccount")))
         .catch((err) => {
-          setError((err as Error).message);
+          setError(getApiErrorMessage(err, t));
           setGooglePending(false);
         });
     }
@@ -74,18 +78,18 @@ function RegisterPage() {
       return () => script?.removeEventListener("load", initGsi);
     }
   // Re-initialise GIS when agbAccepted changes so the callback closure is fresh.
-  }, [agbAccepted]);
+  }, [agbAccepted, t]);
 
   async function handleLocalRegister(e: { preventDefault(): void }) {
     e.preventDefault();
     setError(null);
 
     if (!agbAccepted) {
-      setError("Please accept the Terms of Service and Privacy Policy.");
+      setError(t("register.acceptRequired"));
       return;
     }
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError(t("register.passwordMismatch"));
       return;
     }
 
@@ -94,7 +98,7 @@ function RegisterPage() {
       await authApi.register(email, password);
       setSuccessEmail(email);
     } catch (err) {
-      setError((err as Error).message);
+      setError(getApiErrorMessage(err, t));
       setLocalPending(false);
     }
   }
@@ -102,18 +106,22 @@ function RegisterPage() {
   if (successEmail) {
     return (
       <main className="login-page">
+        <LanguageSwitcher className="lang-switch--corner" />
         <div className="login-box">
-          <h2>Check your email</h2>
+          <h2>{t("register.checkEmail")}</h2>
           <p style={{ textAlign: "center", lineHeight: 1.6 }}>
-            We sent an activation link to <strong>{successEmail}</strong>.
-            Please click the link in the email to activate your account before signing in.
+            <Trans
+              i18nKey="register.activationSent"
+              values={{ email: successEmail }}
+              components={{ strong: <strong /> }}
+            />
           </p>
           <Link
             to="/login"
             className="btn btn-outlined"
             style={{ width: "100%", justifyContent: "center", marginTop: "1rem" }}
           >
-            Back to sign in
+            {t("activate.backToSignIn")}
           </Link>
         </div>
       </main>
@@ -122,25 +130,26 @@ function RegisterPage() {
 
   const agbLabel = (
     <span style={{ fontSize: "0.875rem" }}>
-      I accept the{" "}
+      {t("register.accept")}{" "}
       <a href={`${LANDING_URL}/agb.html`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--clr-primary)" }}>
-        Terms of Service
+        {t("register.terms")}
       </a>
       ,{" "}
       <a href={`${LANDING_URL}/datenschutz.html`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--clr-primary)" }}>
-        Privacy Policy
+        {t("register.privacy")}
       </a>
-      , and the{" "}
+      {t("register.andThe")}{" "}
       <a href={`${LANDING_URL}/avv.html`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--clr-primary)" }}>
-        Data Processing Agreement (AVV)
+        {t("register.avv")}
       </a>
     </span>
   );
 
   return (
     <main className="login-page">
+      <LanguageSwitcher className="lang-switch--corner" />
       <div className="login-box">
-        <h2>Create account</h2>
+        <h2>{t("register.title")}</h2>
         {error && <div className="flash">{error}</div>}
 
         {/* AGB checkbox — shared gate for both paths */}
@@ -156,11 +165,11 @@ function RegisterPage() {
 
         {/* Google sign-up button */}
         {googlePending ? (
-          <p className="login-pending" style={{ textAlign: "center" }}>Registering…</p>
+          <p className="login-pending" style={{ textAlign: "center" }}>{t("register.registering")}</p>
         ) : (
           <div
             style={{ cursor: agbAccepted ? undefined : "not-allowed" }}
-            title={agbAccepted ? undefined : "Bitte akzeptiere zuerst die AGB und Datenschutzerklärung."}
+            title={agbAccepted ? undefined : t("register.acceptFirstHint")}
           >
             <div
               className="google-btn-wrapper"
@@ -170,11 +179,11 @@ function RegisterPage() {
           </div>
         )}
 
-        <div className="divider">or</div>
+        <div className="divider">{t("login.or")}</div>
 
         <form className="login-form" onSubmit={handleLocalRegister}>
           <div className="text-field">
-            <label htmlFor="reg-email">Email</label>
+            <label htmlFor="reg-email">{t("common.email")}</label>
             <input
               id="reg-email"
               type="email"
@@ -185,7 +194,7 @@ function RegisterPage() {
             />
           </div>
           <div className="text-field">
-            <label htmlFor="reg-password">Password</label>
+            <label htmlFor="reg-password">{t("common.password")}</label>
             <input
               id="reg-password"
               type="password"
@@ -196,7 +205,7 @@ function RegisterPage() {
             />
           </div>
           <div className="text-field">
-            <label htmlFor="reg-confirm">Confirm password</label>
+            <label htmlFor="reg-confirm">{t("register.confirmPassword")}</label>
             <input
               id="reg-confirm"
               type="password"
@@ -207,7 +216,7 @@ function RegisterPage() {
             />
           </div>
           <span
-            title={agbAccepted ? undefined : "Bitte akzeptiere zuerst die AGB und Datenschutzerklärung."}
+            title={agbAccepted ? undefined : t("register.acceptFirstHint")}
             style={{ display: "block", cursor: agbAccepted ? undefined : "not-allowed" }}
           >
             <button
@@ -216,15 +225,15 @@ function RegisterPage() {
               disabled={localPending}
               style={{ width: "100%", justifyContent: "center", fontSize: "1rem", fontWeight: 600, pointerEvents: agbAccepted ? undefined : "none" }}
             >
-              {localPending ? "Creating account…" : "Create account"}
+              {localPending ? t("register.creating") : t("register.title")}
             </button>
           </span>
         </form>
 
         <p style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.875rem" }}>
-          Already have an account?{" "}
+          {t("register.haveAccount")}{" "}
           <Link to="/login" style={{ color: "var(--clr-primary)" }}>
-            Sign in
+            {t("login.signIn")}
           </Link>
         </p>
       </div>
