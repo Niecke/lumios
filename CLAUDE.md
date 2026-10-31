@@ -392,7 +392,7 @@ f"photos/{photographer_id}/{library_id}/thumbs/{uuid}.{ext}"     # 600px longest
 1. MIME type must be `image/jpeg`, `image/png` or `image/webp` — reject everything else (videos have their own list, see Video Uploads)
 2. Library must have fewer than `max_images_per_library` images (respects subscription tier)
 3. Photographer must own the library
-4. JPEG, PNG and WebP originals are stored with private metadata stripped (`_strip_private_exif`, `_strip_png_metadata`, `_strip_webp_metadata`); only the EXIF Orientation is kept. PNG keeps an allowlist of rendering chunks and a PNG with a malformed chunk structure (bad length or CRC, data after IEND) is rejected with 415, as is a WebP that cannot be parsed
+4. Originals are stored with private metadata stripped. PNG (`_strip_png_metadata`) and WebP (`_strip_webp_metadata`) keep only the EXIF Orientation and fail closed. JPEG (`_strip_private_exif`) removes GPS and the device/owner/serial tags only and returns the file unchanged on any error (stricter, fail-closed JPEG stripping is tracked in lumios #545). PNG keeps an allowlist of rendering chunks and a PNG with a malformed chunk structure (bad length or CRC, data after IEND) is rejected with 415, as is a WebP that cannot be parsed
 
 ### Thumbnail generation for images (inline, no queue)
 1. Validate MIME type and library capacity
