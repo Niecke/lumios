@@ -6,7 +6,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
+import { getApiErrorMessage } from "../api/errors";
+import { formatBytes } from "../i18n";
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { librariesApi } from "../api/libraries";
 import { imagesApi, type Image } from "../api/images";
 import { publicApi, type PublicImage } from "../api/public";
@@ -44,12 +48,6 @@ function filterFiles(files: FileList | File[]): File[] {
   });
 }
 
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 // ── Upload queue item ─────────────────────────────────────────────────────────
 
 interface UploadItem {
@@ -70,6 +68,7 @@ interface ImageTileProps {
 }
 
 function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
+  const { t, i18n } = useTranslation();
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -94,7 +93,7 @@ function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
   return (
     <div className="photo-tile">
       {isLiked && (
-        <div className="photo-tile__liked-badge" title="Liked by customer">
+        <div className="photo-tile__liked-badge" title={t("library.likedByCustomer")}>
           <span className="material-icons">favorite</span>
         </div>
       )}
@@ -109,7 +108,7 @@ function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
         </div>
       )}
       {isVideo && image.hevc_warning && (
-        <div className="photo-tile__hevc-badge" title="HEVC/H.265 — may not play in all browsers">
+        <div className="photo-tile__hevc-badge" title={t("library.hevcTile")}>
           <span className="material-icons">warning</span>
         </div>
       )}
@@ -136,19 +135,19 @@ function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
       <div className="photo-tile__overlay">
         {confirming ? (
           <div className="photo-tile__confirm">
-            <span>Delete?</span>
+            <span>{t("library.deleteQuestion")}</span>
             <button
               className="icon-btn icon-btn--danger"
               onClick={handleDelete}
               disabled={deleting}
-              title="Confirm delete"
+              title={t("library.confirmDelete")}
             >
               <span className="material-icons">check</span>
             </button>
             <button
               className="icon-btn"
               onClick={() => setConfirming(false)}
-              title="Cancel"
+              title={t("common.cancel")}
             >
               <span className="material-icons">close</span>
             </button>
@@ -157,7 +156,7 @@ function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
           <button
             className="icon-btn icon-btn--danger photo-tile__delete"
             onClick={() => setConfirming(true)}
-            title="Delete image"
+            title={t("library.deleteMedia")}
           >
             <span className="material-icons">delete</span>
           </button>
@@ -167,7 +166,7 @@ function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
         {image.width && image.height
           ? `${image.width}×${image.height}`
           : image.filename}{" "}
-        · {formatBytes(image.size)}
+        · {formatBytes(image.size, i18n.language)}
       </div>
     </div>
   );
@@ -176,10 +175,11 @@ function ImageTile({ image, libraryId, onDeleted, onView }: ImageTileProps) {
 // ── Lightbox (authenticated — original + preview) ────────────────────────────
 
 function Lightbox({ image, onClose }: { image: Image; onClose: () => void }) {
+  const { t } = useTranslation();
   const isVideo = image.media_type === "video";
   return (
     <div className="lightbox" onClick={onClose}>
-      <button className="lightbox__close" onClick={onClose} title="Close">
+      <button className="lightbox__close" onClick={onClose} title={t("common.close")}>
         <span className="material-icons">close</span>
       </button>
       <div className="lightbox__pair" onClick={(e) => e.stopPropagation()}>
@@ -187,7 +187,7 @@ function Lightbox({ image, onClose }: { image: Image; onClose: () => void }) {
           <div className="lightbox__side" style={{ flex: 1 }}>
             {image.hevc_warning && (
               <p className="lightbox__label" style={{ color: "var(--clr-warning, #f59e0b)" }}>
-                ⚠ HEVC/H.265 — may not play in Chrome/Firefox without hardware decoder
+                ⚠ {t("library.hevcOwner")}
               </p>
             )}
             <video
@@ -202,18 +202,18 @@ function Lightbox({ image, onClose }: { image: Image; onClose: () => void }) {
         ) : (
           <>
             <div className="lightbox__side">
-              <p className="lightbox__label">Original</p>
+              <p className="lightbox__label">{t("library.original")}</p>
               <img
                 src={image.original_url ?? undefined}
-                alt={`${image.filename} — original`}
+                alt={t("library.originalAlt", { name: image.filename })}
                 className="lightbox__img"
               />
             </div>
             <div className="lightbox__side">
-              <p className="lightbox__label">Preview</p>
+              <p className="lightbox__label">{t("library.preview")}</p>
               <img
                 src={image.preview_url ?? undefined}
-                alt={`${image.filename} — preview`}
+                alt={t("library.previewAlt", { name: image.filename })}
                 className="lightbox__img"
               />
             </div>
@@ -247,6 +247,7 @@ function PublicLightbox({
   isFetchingNextPage,
   fetchNextPage,
 }: PublicLightboxProps) {
+  const { t } = useTranslation();
   const image = images[currentIndex];
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex < images.length - 1;
@@ -284,7 +285,7 @@ function PublicLightbox({
 
   return (
     <div className="lightbox" onClick={onClose}>
-      <button className="lightbox__close" onClick={onClose} title="Close">
+      <button className="lightbox__close" onClick={onClose} title={t("common.close")}>
         <span className="material-icons">close</span>
       </button>
 
@@ -292,7 +293,7 @@ function PublicLightbox({
         <button
           className="lightbox__nav lightbox__nav--prev"
           onClick={(e) => { e.stopPropagation(); goPrev(); }}
-          title="Previous"
+          title={t("library.previous")}
         >
           <span className="material-icons">chevron_left</span>
         </button>
@@ -303,7 +304,7 @@ function PublicLightbox({
           <>
             {image.hevc_warning && (
               <p style={{ color: "var(--clr-warning, #f59e0b)", marginBottom: "0.5rem", fontSize: "0.85rem" }}>
-                ⚠ HEVC/H.265 — may not play in all browsers
+                ⚠ {t("library.hevcPublic")}
               </p>
             )}
             <video
@@ -328,7 +329,7 @@ function PublicLightbox({
         <button
           className="lightbox__nav lightbox__nav--next"
           onClick={(e) => { e.stopPropagation(); goNext(); }}
-          title="Next"
+          title={t("library.next")}
         >
           <span className="material-icons">chevron_right</span>
         </button>
@@ -341,7 +342,7 @@ function PublicLightbox({
       <button
         className={`lightbox__like ${isLiked ? "lightbox__like--active" : ""}`}
         onClick={(e) => { e.stopPropagation(); onToggleLike(image); }}
-        title={isLiked ? "Remove like" : "Like this photo"}
+        title={isLiked ? t("library.removeLike") : t("library.like")}
       >
         <span className="material-icons">
           {isLiked ? "favorite" : "favorite_border"}
@@ -359,6 +360,7 @@ interface DropZoneProps {
 }
 
 function DropZone({ onFiles, compact = false }: DropZoneProps) {
+  const { t } = useTranslation();
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -397,11 +399,11 @@ function DropZone({ onFiles, compact = false }: DropZoneProps) {
       <span className="material-icons drop-zone__icon">cloud_upload</span>
       {!compact && (
         <>
-          <p className="drop-zone__title">Drop photos or videos here</p>
-          <p className="drop-zone__hint">JPEG/PNG/WebP up to 20 MB · MP4/MOV/WebM/M4V up to 200 MB</p>
+          <p className="drop-zone__title">{t("library.dropTitle")}</p>
+          <p className="drop-zone__hint">{t("library.dropHint")}</p>
         </>
       )}
-      {compact && <p className="drop-zone__hint">Drop to add photos or videos</p>}
+      {compact && <p className="drop-zone__hint">{t("library.dropCompact")}</p>}
     </div>
   );
 }
@@ -409,6 +411,7 @@ function DropZone({ onFiles, compact = false }: DropZoneProps) {
 // ── Upload progress list ──────────────────────────────────────────────────────
 
 function UploadQueue({ items }: { items: UploadItem[] }) {
+  const { t } = useTranslation();
   const active = items.filter((i) => i.status !== "done");
   if (!active.length) return null;
 
@@ -430,7 +433,7 @@ function UploadQueue({ items }: { items: UploadItem[] }) {
             <span className="upload-item__progress">{item.progress}%</span>
           )}
           {item.status === "processing" && (
-            <span className="upload-item__progress">Processing…</span>
+            <span className="upload-item__progress">{t("library.processing")}</span>
           )}
           {item.status === "error" && (
             <span className="upload-item__error">{item.error}</span>
@@ -444,6 +447,7 @@ function UploadQueue({ items }: { items: UploadItem[] }) {
 // ── Share dialog ──────────────────────────────────────────────────────────────
 
 function ShareDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const shareUrl = window.location.href;
 
@@ -456,9 +460,9 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
   return (
     <div className="dialog-overlay" onClick={onClose}>
       <div className="dialog" onClick={(e) => e.stopPropagation()}>
-        <h2>Share Library</h2>
+        <h2>{t("library.shareTitle")}</h2>
         <p style={{ marginBottom: "0.75rem", color: "var(--clr-on-surface-var)" }}>
-          Anyone with this link can view the photos in this library.
+          {t("library.shareText")}
         </p>
         <input
           type="text"
@@ -470,16 +474,16 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
         <div className="dialog__actions">
           <a className="btn btn-outlined" href={shareUrl} target="_blank" rel="noopener noreferrer">
             <span className="material-icons" style={{ fontSize: 18 }}>open_in_new</span>
-            Open
+            {t("common.open")}
           </a>
           <button className="btn btn-contained" onClick={copyToClipboard}>
             <span className="material-icons" style={{ fontSize: 18 }}>
               {copied ? "check" : "content_copy"}
             </span>
-            {copied ? "Copied!" : "Copy"}
+            {copied ? t("library.copied") : t("common.copy")}
           </button>
           <button className="btn btn-text" onClick={onClose}>
-            Close
+            {t("common.close")}
           </button>
         </div>
       </div>
@@ -490,11 +494,11 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
 // ── Watermark settings ────────────────────────────────────────────────────────
 
 const WATERMARK_POSITIONS = [
-  { value: "top_left",     icon: "north_west",  label: "Top left" },
-  { value: "top_right",    icon: "north_east",  label: "Top right" },
-  { value: "center",       icon: "filter_center_focus", label: "Center" },
-  { value: "bottom_left",  icon: "south_west",  label: "Bottom left" },
-  { value: "bottom_right", icon: "south_east",  label: "Bottom right" },
+  { value: "top_left",     icon: "north_west" },
+  { value: "top_right",    icon: "north_east" },
+  { value: "center",       icon: "filter_center_focus" },
+  { value: "bottom_left",  icon: "south_west" },
+  { value: "bottom_right", icon: "south_east" },
 ];
 
 function WatermarkSettings({
@@ -504,6 +508,7 @@ function WatermarkSettings({
   library: { id: number; watermark_gcs_key: string | null; watermark_scale: number | null; watermark_position: string | null };
   onUpdate: () => void;
 }) {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -556,12 +561,12 @@ function WatermarkSettings({
           setPreviewLoading(false);
         })
         .catch((err) => {
-          setPreviewError(err instanceof Error ? err.message : "Failed to load preview");
+          setPreviewError(err instanceof Error ? getApiErrorMessage(err, t) : t("watermark.previewFailed"));
           setPreviewLoading(false);
         });
     }, 600);
     return () => clearTimeout(timer);
-  }, [library.id, library.watermark_gcs_key, pendingScale, pendingPosition]);
+  }, [library.id, library.watermark_gcs_key, pendingScale, pendingPosition, t]);
 
   // Revoke object URL on unmount
   useEffect(() => {
@@ -578,7 +583,7 @@ function WatermarkSettings({
       onUpdate();
       setWatermarkChanged(true);
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed");
+      setUploadError(err instanceof Error ? getApiErrorMessage(err, t) : t("watermark.uploadFailed"));
     } finally {
       setUploading(false);
     }
@@ -632,13 +637,13 @@ function WatermarkSettings({
     <div style={{ marginBottom: "0.5rem", background: "var(--clr-surface)", borderRadius: "var(--radius-sm)", border: "1px solid var(--clr-outline)", padding: "0.75rem 1rem" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
         <span className="material-icons" style={{ fontSize: 20, color: "var(--clr-on-surface-var)" }}>branding_watermark</span>
-        <span style={{ fontWeight: 500, fontSize: "0.9rem" }}>Watermark / Logo</span>
+        <span style={{ fontWeight: 500, fontSize: "0.9rem" }}>{t("watermark.title")}</span>
       </div>
 
       {/* Logo upload row */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
         {hasLogo && (
-          <span style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)" }}>Logo set</span>
+          <span style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)" }}>{t("watermark.logoSet")}</span>
         )}
         <button
           className="btn btn-outlined"
@@ -647,7 +652,7 @@ function WatermarkSettings({
           disabled={uploading}
         >
           <span className="material-icons" style={{ fontSize: 16 }}>upload</span>
-          {uploading ? "Uploading…" : hasLogo ? "Replace PNG" : "Upload PNG"}
+          {uploading ? t("common.uploading") : hasLogo ? t("watermark.replace") : t("watermark.upload")}
         </button>
         {hasLogo && (
           <button
@@ -657,7 +662,7 @@ function WatermarkSettings({
             disabled={deleting}
           >
             <span className="material-icons" style={{ fontSize: 16 }}>delete</span>
-            {deleting ? "Removing…" : "Remove"}
+            {deleting ? t("common.removing") : t("common.remove")}
           </button>
         )}
         <input
@@ -679,7 +684,7 @@ function WatermarkSettings({
       {/* Scale slider */}
       <div style={{ marginBottom: "0.75rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem" }}>
-          <span style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)" }}>Size</span>
+          <span style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)" }}>{t("watermark.size")}</span>
           <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>{pendingScale}%</span>
         </div>
         <input
@@ -699,12 +704,12 @@ function WatermarkSettings({
 
       {/* Position picker */}
       <div style={{ marginBottom: "0.75rem" }}>
-        <div style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)", marginBottom: "0.4rem" }}>Position</div>
+        <div style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)", marginBottom: "0.4rem" }}>{t("watermark.position")}</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 2rem)", gap: "0.25rem" }}>
-          {WATERMARK_POSITIONS.map(({ value, icon, label }) => (
+          {WATERMARK_POSITIONS.map(({ value, icon }) => (
             <button
               key={value}
-              title={label}
+              title={t(`watermark.positions.${value}`)}
               onClick={() => setPendingPosition(value)}
               className={`btn ${pendingPosition === value ? "btn-contained" : "btn-outlined"}`}
               style={{ padding: "0.25rem", minWidth: 0, width: "2rem", height: "2rem" }}
@@ -723,7 +728,7 @@ function WatermarkSettings({
           onClick={handleSave}
           disabled={saving || !isDirty}
         >
-          {saving ? "Saving…" : "Save position & size"}
+          {saving ? t("common.saving") : t("watermark.save")}
         </button>
       )}
 
@@ -737,11 +742,11 @@ function WatermarkSettings({
             disabled={applying}
           >
             <span className="material-icons" style={{ fontSize: 16 }}>refresh</span>
-            {applying ? "Updating watermarks…" : "Update existing images"}
+            {applying ? t("watermark.updating") : t("watermark.updateExisting")}
           </button>
           {applyResult && (
             <div style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)", marginTop: "0.4rem" }}>
-              Updated {applyResult.updated} of {applyResult.updated + applyResult.failed} images.
+              {t("watermark.updated", { updated: applyResult.updated, total: applyResult.updated + applyResult.failed })}
             </div>
           )}
         </div>
@@ -750,7 +755,7 @@ function WatermarkSettings({
       {/* Preview */}
       {hasLogo && (
         <div>
-          <div style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)", marginBottom: "0.4rem" }}>Preview</div>
+          <div style={{ fontSize: "0.8rem", color: "var(--clr-on-surface-var)", marginBottom: "0.4rem" }}>{t("library.preview")}</div>
           <div style={{ position: "relative", background: "var(--clr-surface-var)", borderRadius: "var(--radius-sm)", minHeight: "6rem", maxHeight: "35vh", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
             {previewLoading && (
               <span className="material-icons" style={{ fontSize: 24, color: "var(--clr-on-surface-var)", animation: "spin 1s linear infinite" }}>hourglass_top</span>
@@ -761,7 +766,7 @@ function WatermarkSettings({
             {!previewLoading && !previewError && previewUrl && (
               <img
                 src={previewUrl}
-                alt="Watermark preview"
+                alt={t("watermark.previewAlt")}
                 style={{ maxWidth: "100%", maxHeight: "35vh", borderRadius: "var(--radius-sm)", display: "block", objectFit: "contain" }}
               />
             )}
@@ -785,52 +790,53 @@ function LibrarySettingsOverlay({
   onClose: () => void;
   updateLibrary: { mutate: (patch: { use_original_as_preview?: boolean; download_enabled?: boolean; is_private?: boolean; public_upload_enabled?: boolean }) => void; isPending: boolean };
 }) {
+  const { t } = useTranslation();
   return (
     <div className="dialog-overlay" onClick={onClose}>
       <div className="dialog dialog--settings" onClick={(e) => e.stopPropagation()}>
         <div className="dialog__header">
-          <h2>Library Settings</h2>
-          <button className="icon-btn" onClick={onClose} title="Close">
+          <h2>{t("settings.title")}</h2>
+          <button className="icon-btn" onClick={onClose} title={t("common.close")}>
             <span className="material-icons">close</span>
           </button>
         </div>
 
-        <div className="settings-section-label">Sharing</div>
+        <div className="settings-section-label">{t("settings.sharing")}</div>
         <div style={{ background: "var(--clr-background)", borderRadius: "var(--radius-sm)", border: "1px solid var(--clr-outline)", overflow: "hidden" }}>
           {[
             {
               icon: "photo_filter",
-              label: "Use originals as preview",
+              label: t("settings.originalsLabel"),
               description: library.use_original_as_preview
-                ? "Customers see the original, uncompressed photos"
-                : "Customers see watermarked preview images",
+                ? t("settings.originalsOn")
+                : t("settings.originalsOff"),
               checked: library.use_original_as_preview,
               onChange: (v: boolean) => updateLibrary.mutate({ use_original_as_preview: v }),
             },
             {
               icon: "download",
-              label: "Allow download",
+              label: t("settings.downloadLabel"),
               description: library.download_enabled
-                ? "Customers see a download button on each photo"
-                : "No download button shown to customers",
+                ? t("settings.downloadOn")
+                : t("settings.downloadOff"),
               checked: library.download_enabled,
               onChange: (v: boolean) => updateLibrary.mutate({ download_enabled: v }),
             },
             {
               icon: "lock",
-              label: "Private library",
+              label: t("settings.privateLabel"),
               description: library.is_private
-                ? "Only you can access this library — share link is disabled"
-                : "Anyone with the link can view this library",
+                ? t("settings.privateOn")
+                : t("settings.privateOff"),
               checked: library.is_private,
               onChange: (v: boolean) => updateLibrary.mutate({ is_private: v }),
             },
             {
               icon: "cloud_upload",
-              label: "Allow visitor uploads",
+              label: t("settings.uploadsLabel"),
               description: library.public_upload_enabled
-                ? "Visitors can upload photos to this library"
-                : "Only you can upload photos",
+                ? t("settings.uploadsOn")
+                : t("settings.uploadsOff"),
               checked: library.public_upload_enabled,
               onChange: (v: boolean) => updateLibrary.mutate({ public_upload_enabled: v }),
             },
@@ -861,7 +867,7 @@ function LibrarySettingsOverlay({
           ))}
         </div>
 
-        <div className="settings-section-label">Watermark / Logo</div>
+        <div className="settings-section-label">{t("watermark.title")}</div>
         <WatermarkSettings library={library} onUpdate={onUpdate} />
       </div>
     </div>
@@ -886,6 +892,7 @@ function LibraryPage() {
 // ── Authenticated view (full management) ─────────────────────────────────────
 
 function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; user: { email: string; name?: string; picture?: string } }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -989,7 +996,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
         }
         invalidate();
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Upload failed";
+        const message = err instanceof Error ? getApiErrorMessage(err, t) : t("watermark.uploadFailed");
         setQueue((q) =>
           q.map((i) =>
             i.id === item.id ? { ...i, status: "error", error: message } : i
@@ -1032,18 +1039,18 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
                   disabled={updateLibrary.isPending}
                   style={{ fontSize: "1.25rem", fontWeight: 600, padding: "0.2rem 0.4rem", borderRadius: "var(--radius-sm)", border: "1px solid var(--clr-outline)" }}
                 />
-                <button type="submit" className="icon-btn" disabled={!editLibName.trim() || updateLibrary.isPending} title="Save">
+                <button type="submit" className="icon-btn" disabled={!editLibName.trim() || updateLibrary.isPending} title={t("common.save")}>
                   <span className="material-icons">check</span>
                 </button>
-                <button type="button" className="icon-btn" onClick={() => setRenamingLib(false)} title="Cancel">
+                <button type="button" className="icon-btn" onClick={() => setRenamingLib(false)} title={t("common.cancel")}>
                   <span className="material-icons">close</span>
                 </button>
               </form>
             ) : (
               <>
-                <h1>{library?.name ?? "Library"}</h1>
+                <h1>{library?.name ?? t("library.fallbackName")}</h1>
                 {library && (
-                  <button className="icon-btn" onClick={startRenameLib} title="Rename library">
+                  <button className="icon-btn" onClick={startRenameLib} title={t("library.renameLibrary")}>
                     <span className="material-icons" style={{ fontSize: 18 }}>edit</span>
                   </button>
                 )}
@@ -1052,7 +1059,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
             {library?.finished_at && (
               <span className="reviewed-chip">
                 <span className="material-icons">check_circle</span>
-                Reviewed
+                {t("libraries.reviewed")}
               </span>
             )}
           </div>
@@ -1069,15 +1076,15 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
             )}
             <button className="btn btn-outlined" onClick={() => setShowShare(true)}>
               <span className="material-icons">share</span>
-              Share
+              {t("library.share")}
             </button>
-            <button className="btn btn-outlined" onClick={() => setShowSettings(true)} title="Library settings">
+            <button className="btn btn-outlined" onClick={() => setShowSettings(true)} title={t("settings.title")}>
               <span className="material-icons">settings</span>
             </button>
             {hasImages && (
               <button className="btn btn-contained" onClick={() => fileInputRef.current?.click()}>
                 <span className="material-icons">add_photo_alternate</span>
-                Add photos
+                {t("library.addMedia")}
               </button>
             )}
           </div>
@@ -1086,7 +1093,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
 
         {data && (
           <p className="library-count-hint">
-            {totalImages} of {maxImagesPerLibrary ?? "\u221e"} media items
+            {t("library.mediaCount", { total: totalImages, max: maxImagesPerLibrary ?? "\u221e" })}
           </p>
         )}
 
@@ -1114,7 +1121,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
         )}
 
         {isError && (
-          <div className="alert alert--error">Failed to load photos. Please refresh.</div>
+          <div className="alert alert--error">{t("library.loadFailed")}</div>
         )}
 
         {!isLoading && !isError && !hasImages && (
@@ -1150,7 +1157,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
         {hasImages && showLikedOnly && images.length === 0 && (
           <div className="empty-state">
             <span className="material-icons">favorite_border</span>
-            <p>No liked photos yet.</p>
+            <p>{t("library.noLiked")}</p>
           </div>
         )}
 
@@ -1178,6 +1185,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
 // ── Public view (read-only gallery) ──────────────────────────────────────────
 
 function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [viewImageIndex, setViewImageIndex] = useState<number | null>(null);
   const [showLikedOnly, setShowLikedOnly] = useState(false);
@@ -1240,7 +1248,7 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
       await publicApi.finishLibrary(libraryUuid);
       queryClient.invalidateQueries({ queryKey: ["public-library", libraryUuid] });
     } catch (err) {
-      setFinishError(err instanceof Error ? err.message : "Failed to mark as complete");
+      setFinishError(err instanceof Error ? getApiErrorMessage(err, t) : t("public.finishFailed"));
     } finally {
       setFinishing(false);
     }
@@ -1292,7 +1300,7 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
         );
         queryClient.invalidateQueries({ queryKey: ["public-library", libraryUuid] });
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Upload failed";
+        const message = err instanceof Error ? getApiErrorMessage(err, t) : t("watermark.uploadFailed");
         setPublicQueue((q) =>
           q.map((i) =>
             i.id === item.id ? { ...i, status: "error", error: message } : i
@@ -1329,12 +1337,12 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
       <header className="app-bar">
         <span className="app-bar__brand">Lumios</span>
         <div className="app-bar__title">
-          {library?.name ?? "Library"}
+          {library?.name ?? t("library.fallbackName")}
         </div>
         {isFinished && (
           <span className="reviewed-chip">
             <span className="material-icons">check_circle</span>
-            Reviewed
+            {t("libraries.reviewed")}
           </span>
         )}
         {(likedCount > 0 || showLikedOnly) && (
@@ -1351,26 +1359,27 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
             className="btn btn-contained"
             onClick={handleFinish}
             disabled={finishing}
-            title="Mark your selection as complete"
+            title={t("public.doneTitle")}
           >
             <span className="material-icons">done_all</span>
-            {finishing ? "Submitting…" : "Done selecting"}
+            {finishing ? t("common.sending") : t("public.done")}
           </button>
         )}
         {library?.download_enabled && allImages.length > 0 && (
           <a
             className="btn btn-outlined"
             href={`/api/v1/public/libraries/${libraryUuid}/download`}
-            title="Download all photos as ZIP"
+            title={t("public.downloadAllTitle")}
           >
             <span className="material-icons">download</span>
-            Download all
+            {t("public.downloadAll")}
           </a>
         )}
         <a className="btn btn-text" href="/login" target="_blank" rel="noopener noreferrer">
           <span className="material-icons">login</span>
-          Login
+          {t("public.login")}
         </a>
+        <LanguageSwitcher />
       </header>
       {finishError && (
         <div className="alert alert--error" style={{ margin: "0.5rem 1.5rem" }}>
@@ -1397,14 +1406,14 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
         {isError && (
           <div className="empty-state">
             <span style={{ fontSize: 72, opacity: 0.50 }}>😔</span>
-            <p style={{ fontSize: "1.5rem", fontWeight: 600 }}>Sorry, we haven't found your photos.</p>
+            <p style={{ fontSize: "1.5rem", fontWeight: 600 }}>{t("public.notFound")}</p>
           </div>
         )}
 
         {!isLoading && !isError && allImages.length === 0 && !library?.public_upload_enabled && (
           <div className="empty-state">
             <span className="material-icons">photo_library</span>
-            <p>No photos in this library yet.</p>
+            <p>{t("public.empty")}</p>
           </div>
         )}
 
@@ -1424,7 +1433,7 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
                     </div>
                   )}
                   {isVideo && img.hevc_warning && (
-                    <div className="photo-tile__hevc-badge" title="HEVC — may not play in all browsers">
+                    <div className="photo-tile__hevc-badge" title={t("library.hevcShort")}>
                       <span className="material-icons">warning</span>
                     </div>
                   )}
@@ -1448,7 +1457,7 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
                     <button
                       className={`photo-tile__like ${img.customer_state === "liked" ? "photo-tile__like--active" : ""}`}
                       onClick={() => toggleLike(img)}
-                      title={img.customer_state === "liked" ? "Remove like" : `Like this ${isVideo ? "video" : "photo"}`}
+                      title={img.customer_state === "liked" ? t("library.removeLike") : isVideo ? t("public.likeVideo") : t("public.likePhoto")}
                     >
                       <span className="material-icons">
                         {img.customer_state === "liked" ? "favorite" : "favorite_border"}
@@ -1459,7 +1468,7 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
                     <a
                       className="photo-tile__download"
                       href={img.download_url}
-                      title={`Download ${isVideo ? "video" : "photo"}`}
+                      title={isVideo ? t("public.downloadVideo") : t("public.downloadPhoto")}
                     >
                       <span className="material-icons">download</span>
                     </a>
@@ -1470,7 +1479,7 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
           ) : (
             <div className="empty-state">
               <span className="material-icons">favorite_border</span>
-              <p>No liked photos yet.</p>
+              <p>{t("library.noLiked")}</p>
             </div>
           )
         )}

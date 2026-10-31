@@ -6,6 +6,10 @@
 import { createFileRoute, redirect, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
+import { getApiErrorMessage } from "../api/errors";
+import { formatBytes, formatDate } from "../i18n";
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { authApi, type UserInfo } from "../api/auth";
 import { AppBar } from "../components/AppBar";
 
@@ -21,15 +25,6 @@ export const Route = createFileRoute("/account")({
   component: AccountPage,
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
 // ── Progress bar ──────────────────────────────────────────────────────────────
 
 interface StorageProgressProps {
@@ -38,6 +33,7 @@ interface StorageProgressProps {
 }
 
 function StorageProgress({ used, limit }: StorageProgressProps) {
+  const { t } = useTranslation();
   const pct = limit ? Math.min(100, (used / limit) * 100) : 0;
   const fillClass =
     pct >= 100 ? "progress-fill--full" : pct >= 75 ? "progress-fill--warning" : "";
@@ -45,7 +41,7 @@ function StorageProgress({ used, limit }: StorageProgressProps) {
   return (
     <div className="progress-section">
       <div className="progress-header">
-        <span className="progress-header__label">Storage</span>
+        <span className="progress-header__label">{t("account.storage")}</span>
         <span className="progress-header__count">
           {formatBytes(used)} / {limit != null ? formatBytes(limit) : "\u221e"}
         </span>
@@ -58,10 +54,10 @@ function StorageProgress({ used, limit }: StorageProgressProps) {
       </div>
       <p className="progress-caption">
         {limit === null
-          ? "No storage limit set."
+          ? t("account.noLimit")
           : pct >= 100
-          ? "Storage limit reached — delete photos to free up space."
-          : `${formatBytes(limit - used)} remaining.`}
+          ? t("account.limitReached")
+          : t("account.remaining", { size: formatBytes(limit - used) })}
       </p>
     </div>
   );
@@ -70,6 +66,7 @@ function StorageProgress({ used, limit }: StorageProgressProps) {
 // ── Change password card (local accounts only) ────────────────────────────────
 
 function ChangePasswordCard() {
+  const { t } = useTranslation();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -80,7 +77,7 @@ function ChangePasswordCard() {
   async function handleSubmit(e: { preventDefault(): void }) {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
-      setError("New passwords do not match.");
+      setError(t("account.passwordMismatch"));
       return;
     }
     setError(null);
@@ -93,7 +90,7 @@ function ChangePasswordCard() {
       setNewPassword("");
       setConfirmPassword("");
     } catch (err) {
-      setError((err as Error).message);
+      setError(getApiErrorMessage(err, t));
     } finally {
       setPending(false);
     }
@@ -103,7 +100,7 @@ function ChangePasswordCard() {
     <div className="account-card">
       <div style={{ padding: "1.25rem 1.5rem" }}>
         <h2 style={{ fontSize: "1.1rem", fontWeight: 500, marginBottom: "1rem" }}>
-          Change Password
+          {t("account.changePasswordTitle")}
         </h2>
         {error && (
           <div className="alert alert--error" style={{ marginBottom: "1rem" }}>
@@ -112,12 +109,12 @@ function ChangePasswordCard() {
         )}
         {success && (
           <div className="alert alert--success" style={{ marginBottom: "1rem" }}>
-            Password changed successfully.
+            {t("account.passwordChanged")}
           </div>
         )}
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           <div className="text-field">
-            <label htmlFor="current-password">Current password</label>
+            <label htmlFor="current-password">{t("account.currentPassword")}</label>
             <input
               id="current-password"
               type="password"
@@ -128,7 +125,7 @@ function ChangePasswordCard() {
             />
           </div>
           <div className="text-field">
-            <label htmlFor="new-password">New password</label>
+            <label htmlFor="new-password">{t("account.newPassword")}</label>
             <input
               id="new-password"
               type="password"
@@ -139,7 +136,7 @@ function ChangePasswordCard() {
             />
           </div>
           <div className="text-field">
-            <label htmlFor="confirm-password">Confirm new password</label>
+            <label htmlFor="confirm-password">{t("account.confirmNewPassword")}</label>
             <input
               id="confirm-password"
               type="password"
@@ -155,7 +152,7 @@ function ChangePasswordCard() {
             disabled={pending}
             style={{ alignSelf: "flex-start" }}
           >
-            {pending ? "Saving…" : "Change password"}
+            {pending ? t("common.saving") : t("account.changePassword")}
           </button>
         </form>
       </div>
@@ -166,6 +163,7 @@ function ChangePasswordCard() {
 // ── Deactivate account card (Danger Zone) ────────────────────────────────────
 
 function DeactivateAccountCard() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -179,7 +177,7 @@ function DeactivateAccountCard() {
       authApi.logout();
       navigate({ to: "/login" });
     } catch (err) {
-      setError((err as Error).message);
+      setError(getApiErrorMessage(err, t));
       setPending(false);
     }
   }
@@ -188,12 +186,10 @@ function DeactivateAccountCard() {
     <div className="account-card" style={{ borderColor: "#dc2626" }}>
       <div style={{ padding: "1.25rem 1.5rem" }}>
         <h2 style={{ fontSize: "1.1rem", fontWeight: 500, marginBottom: "0.5rem", color: "#dc2626" }}>
-          Danger Zone
+          {t("account.dangerZone")}
         </h2>
         <p style={{ marginBottom: "1rem", color: "#555", fontSize: "0.9rem" }}>
-          Deactivating your account will <strong>immediately</strong> prevent you
-          from logging in. All your data (libraries, photos) will be{" "}
-          <strong>permanently deleted after 30 days</strong> and cannot be recovered.
+          <Trans i18nKey="account.deactivateWarning" components={{ strong: <strong /> }} />
         </p>
 
         {error && (
@@ -209,12 +205,12 @@ function DeactivateAccountCard() {
             style={{ background: "#dc2626", borderColor: "#dc2626" }}
             onClick={() => setConfirming(true)}
           >
-            Deactivate my account
+            {t("account.deactivate")}
           </button>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
             <p style={{ fontWeight: 500, color: "#dc2626", margin: 0 }}>
-              Are you sure? This cannot be undone.
+              {t("account.deactivateConfirm")}
             </p>
             <div style={{ display: "flex", gap: "0.75rem" }}>
               <button
@@ -224,7 +220,7 @@ function DeactivateAccountCard() {
                 disabled={pending}
                 onClick={handleDeactivate}
               >
-                {pending ? "Deactivating…" : "Yes, deactivate my account"}
+                {pending ? t("account.deactivating") : t("account.deactivateYes")}
               </button>
               <button
                 type="button"
@@ -232,7 +228,7 @@ function DeactivateAccountCard() {
                 disabled={pending}
                 onClick={() => { setConfirming(false); setError(null); }}
               >
-                Cancel
+                {t("common.cancel")}
               </button>
             </div>
           </div>
@@ -245,6 +241,7 @@ function DeactivateAccountCard() {
 // ── Account page ──────────────────────────────────────────────────────────────
 
 function AccountPage() {
+  const { t, i18n } = useTranslation();
   const { user } = Route.useRouteContext() as { user: UserInfo };
 
   const displayName = user.name ?? user.email;
@@ -259,7 +256,7 @@ function AccountPage() {
             <Link to="/" className="btn btn-text" style={{ padding: "0 0.5rem" }}>
               <span className="material-icons" style={{ fontSize: 20 }}>arrow_back</span>
             </Link>
-            <h1>Account</h1>
+            <h1>{t("account.title")}</h1>
           </div>
         </div>
 
@@ -284,20 +281,22 @@ function AccountPage() {
 
             <div className="account-card__body">
               <div className="info-row">
-                <span className="info-row__label">Subscription</span>
+                <span className="info-row__label">{t("account.subscription")}</span>
                 <span className="chip">{user.subscription ?? "—"}</span>
               </div>
               <div className="info-row">
-                <span className="info-row__label">Account type</span>
+                <span className="info-row__label">{t("account.accountType")}</span>
                 <span>{user.account_type ?? "—"}</span>
               </div>
               <div className="info-row">
-                <span className="info-row__label">Member since</span>
+                <span className="info-row__label">{t("account.memberSince")}</span>
                 <span>
-                  {user.created_at
-                    ? new Date(user.created_at).toLocaleDateString()
-                    : "—"}
+                  {user.created_at ? formatDate(user.created_at, i18n.language) : "—"}
                 </span>
+              </div>
+              <div className="info-row">
+                <span className="info-row__label">{t("account.language")}</span>
+                <LanguageSwitcher />
               </div>
             </div>
 

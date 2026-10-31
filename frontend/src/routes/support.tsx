@@ -6,6 +6,9 @@
 import { createFileRoute, redirect, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { getApiErrorMessage } from "../api/errors";
+import { formatDateTime } from "../i18n";
 import { authApi, type UserInfo } from "../api/auth";
 import { supportApi, type SupportTicket } from "../api/support";
 import { AppBar } from "../components/AppBar";
@@ -22,21 +25,10 @@ export const Route = createFileRoute("/support")({
   component: SupportPage,
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 // ── New ticket form ───────────────────────────────────────────────────────────
 
 function NewTicketForm({ onCreated }: { onCreated: () => void }) {
+  const { t } = useTranslation();
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [open, setOpen] = useState(false);
@@ -55,7 +47,7 @@ function NewTicketForm({ onCreated }: { onCreated: () => void }) {
     return (
       <button className="btn btn-contained" onClick={() => setOpen(true)}>
         <span className="material-icons">add</span>
-        New ticket
+        {t("support.newTicket")}
       </button>
     );
   }
@@ -64,32 +56,32 @@ function NewTicketForm({ onCreated }: { onCreated: () => void }) {
     <div className="account-card" style={{ marginBottom: "1.5rem" }}>
       <div style={{ padding: "1.25rem 1.5rem" }}>
         <h2 style={{ fontSize: "1.1rem", fontWeight: 500, marginBottom: "1rem" }}>
-          New support ticket
+          {t("support.newTitle")}
         </h2>
         {create.isError && (
           <div className="alert alert--error" style={{ marginBottom: "1rem" }}>
-            {(create.error as Error).message}
+            {getApiErrorMessage(create.error, t)}
           </div>
         )}
         <div className="text-field" style={{ marginBottom: "1rem" }}>
-          <label htmlFor="support-subject">Subject</label>
+          <label htmlFor="support-subject">{t("support.subject")}</label>
           <input
             id="support-subject"
             type="text"
             maxLength={255}
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            placeholder="Brief description of your issue"
+            placeholder={t("support.subjectPlaceholder")}
           />
         </div>
         <div className="text-field" style={{ marginBottom: "1.25rem" }}>
-          <label htmlFor="support-body">Message</label>
+          <label htmlFor="support-body">{t("support.message")}</label>
           <textarea
             id="support-body"
             rows={5}
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder="Describe your issue in detail…"
+            placeholder={t("support.messagePlaceholder")}
           />
         </div>
         <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
@@ -98,14 +90,14 @@ function NewTicketForm({ onCreated }: { onCreated: () => void }) {
             disabled={create.isPending || !subject.trim() || !body.trim()}
             onClick={() => create.mutate()}
           >
-            {create.isPending ? "Submitting…" : "Submit ticket"}
+            {create.isPending ? t("common.sending") : t("support.submit")}
           </button>
           <button
             className="btn btn-outlined"
             onClick={() => setOpen(false)}
             disabled={create.isPending}
           >
-            Cancel
+            {t("common.cancel")}
           </button>
         </div>
       </div>
@@ -116,6 +108,7 @@ function NewTicketForm({ onCreated }: { onCreated: () => void }) {
 // ── Ticket card ───────────────────────────────────────────────────────────────
 
 function TicketCard({ ticket }: { ticket: SupportTicket }) {
+  const { t, i18n } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const hasReplies = ticket.comments.length > 0;
 
@@ -137,7 +130,7 @@ function TicketCard({ ticket }: { ticket: SupportTicket }) {
             className={`chip ${ticket.status === "closed" ? "chip--muted" : ""}`}
             style={{ marginRight: "0.5rem" }}
           >
-            {ticket.status}
+            {t(`support.status.${ticket.status}`, { defaultValue: ticket.status })}
           </span>
           <strong>{ticket.subject}</strong>
         </div>
@@ -152,11 +145,10 @@ function TicketCard({ ticket }: { ticket: SupportTicket }) {
             flexShrink: 0,
           }}
         >
-          {formatDate(ticket.created_at)}
+          {formatDateTime(ticket.created_at, i18n.language)}
           {hasReplies && (
             <span>
-              · {ticket.comments.length}{" "}
-              {ticket.comments.length === 1 ? "reply" : "replies"}
+              · {t("support.replies", { count: ticket.comments.length })}
             </span>
           )}
           <span className="material-icons" style={{ fontSize: "1.1rem" }}>
@@ -186,7 +178,7 @@ function TicketCard({ ticket }: { ticket: SupportTicket }) {
                   marginBottom: "0.5rem",
                 }}
               >
-                Replies
+                {t("support.repliesHeading")}
               </p>
               {ticket.comments.map((c) => (
                 <div
@@ -205,7 +197,7 @@ function TicketCard({ ticket }: { ticket: SupportTicket }) {
                       marginBottom: "0.25rem",
                     }}
                   >
-                    {formatDate(c.created_at)}
+                    {formatDateTime(c.created_at, i18n.language)}
                   </div>
                   <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{c.body}</p>
                 </div>
@@ -221,6 +213,7 @@ function TicketCard({ ticket }: { ticket: SupportTicket }) {
 // ── Support page ──────────────────────────────────────────────────────────────
 
 function SupportPage() {
+  const { t } = useTranslation();
   const { user } = Route.useRouteContext() as { user: UserInfo };
   const queryClient = useQueryClient();
 
@@ -230,7 +223,7 @@ function SupportPage() {
   });
 
   const tickets = data?.tickets ?? [];
-  const openCount = tickets.filter((t) => t.status === "open").length;
+  const openCount = tickets.filter((tk) => tk.status === "open").length;
 
   return (
     <>
@@ -242,7 +235,7 @@ function SupportPage() {
             <Link to="/" className="btn btn-text" style={{ padding: "0 0.5rem" }}>
               <span className="material-icons" style={{ fontSize: 20 }}>arrow_back</span>
             </Link>
-            <h1>Support</h1>
+            <h1>{t("support.title")}</h1>
           </div>
         </div>
 
@@ -254,14 +247,14 @@ function SupportPage() {
               }
             />
 
-            {isLoading && <p style={{ color: "var(--clr-on-surface-var)" }}>Loading tickets…</p>}
+            {isLoading && <p style={{ color: "var(--clr-on-surface-var)" }}>{t("support.loading")}</p>}
             {isError && (
-              <p className="alert alert--error">Failed to load tickets.</p>
+              <p className="alert alert--error">{t("support.loadFailed")}</p>
             )}
 
             {!isLoading && !isError && tickets.length === 0 && (
               <p style={{ color: "var(--clr-on-surface-var)", marginTop: "1rem" }}>
-                No tickets yet. Use the button above to get in touch.
+                {t("support.empty")}
               </p>
             )}
 
@@ -274,10 +267,10 @@ function SupportPage() {
                     margin: "0.75rem 0 1rem",
                   }}
                 >
-                  {openCount} open · {tickets.length - openCount} closed
+                  {t("support.counts", { open: openCount, closed: tickets.length - openCount })}
                 </p>
-                {tickets.map((t) => (
-                  <TicketCard key={t.id} ticket={t} />
+                {tickets.map((ticket) => (
+                  <TicketCard key={ticket.id} ticket={ticket} />
                 ))}
               </>
             )}
