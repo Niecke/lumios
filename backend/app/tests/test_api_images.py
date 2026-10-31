@@ -770,6 +770,20 @@ class TestExifStripping:
         mock_storage.upload_fileobj.assert_not_called()
         assert db.session.scalar(select(Image).where(Image.library_id == library.id)) is None
 
+    @patch("services.images.storage")
+    def test_png_with_unparseable_exif_rejected(
+        self, mock_storage, client, photographer, library
+    ):
+        png = make_png_with_private_metadata()
+        iend = png.rindex(b"\x00\x00\x00\x00IEND")
+        bad = png[:8 + 25] + _raw_png_chunk(b"eXIf", b"not-a-tiff-header") + png[8 + 25:]
+        assert b"eXIf" in bad and iend > 0
+
+        res = upload(client, library.id, make_token(photographer), bad, "bad.png", "image/png")
+        assert res.status_code == 415
+        mock_storage.upload_fileobj.assert_not_called()
+        assert db.session.scalar(select(Image).where(Image.library_id == library.id)) is None
+
 
 class TestJpegMetadataStripping:
     @staticmethod
@@ -862,7 +876,7 @@ class TestJpegMetadataStripping:
 
     @pytest.mark.parametrize("variant", [
         "corrupt_exif", "truncated_segment_length", "corrupt_marker",
-        "truncated_body", "data_after_eoi", "missing_sos",
+        "truncated_body", "no_eoi", "missing_sos",
     ])
     @patch("services.images.storage")
     def test_corrupt_jpeg_fail_closed(
@@ -879,8 +893,8 @@ class TestJpegMetadataStripping:
             data = good[:2] + b"\x12\x34" + good[2:]
         elif variant == "truncated_body":
             data = good[:-40]
-        elif variant == "data_after_eoi":
-            data = good + b"trailing-secret"
+        elif variant == "no_eoi":
+            data = good[:-2]
         else:
             sos = good.index(b"\xff\xda")
             data = good[:sos] + b"\xff\xd9"
@@ -888,6 +902,27 @@ class TestJpegMetadataStripping:
         assert res.status_code == 415
         mock_storage.upload_fileobj.assert_not_called()
         assert db.session.execute(select(Image)).scalars().all() == []
+
+    @pytest.mark.parametrize("trailer", ["second_image", "padding", "mp4_trailer"])
+    @patch("services.images.storage")
+    def test_data_after_eoi_truncated_not_rejected(
+        self, mock_storage, trailer, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        good = make_jpeg_with_private_metadata(orientation=6)
+        extra = {
+            "second_image": make_jpeg_with_private_metadata(orientation=3),
+            "padding": b"\x00\x00",
+            "mp4_trailer": b"\x00\x00\x00\x18ftypmp42secret-trailer",
+        }[trailer]
+
+        res = upload(client, library.id, make_token(photographer), good + extra, "mpo.jpg", "image/jpeg")
+        assert res.status_code == 201
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        assert stored.endswith(b"\xff\xd9")
+        assert stored.count(b"\xff\xd8") == 1
+        assert b"secret-trailer" not in stored
+        assert piexif.load(stored)["0th"] == {piexif.ImageIFD.Orientation: 6}
 
 
 class TestWebpAlpha:

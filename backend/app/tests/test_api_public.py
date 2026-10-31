@@ -355,7 +355,7 @@ class TestPublicUpload:
         assert piexif.load(stored)["0th"] == {piexif.ImageIFD.Orientation: 6}
 
     def test_public_upload_corrupt_jpeg_rejected(self, client, upload_library):
-        jpeg = _make_jpeg_bytes() + b"trailing-data"
+        jpeg = _make_jpeg_bytes()[:-2]  # no EOI
         with _patch("services.images.storage") as mock_storage:
             res = self._post_jpeg(client, upload_library.uuid, jpeg)
         assert res.status_code == 415

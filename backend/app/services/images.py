@@ -97,11 +97,12 @@ def _strip_jpeg_metadata(file_data: bytes) -> bytes:
     and an EXIF APP1 holding only the Orientation tag. Everything else (other EXIF
     data, thumbnail, XMP, IPTC, comments, other APPn) is dropped.
 
-    Raises ValueError when the segment structure cannot be parsed, so the caller
-    rejects the upload instead of storing metadata unchanged.
+    Data after the first EOI following the scan is truncated. Raises ValueError
+    when the segment structure cannot be parsed (or there is no EOI), so the
+    caller rejects the upload instead of storing metadata unchanged.
     """
     n = len(file_data)
-    if n < 4 or file_data[:2] != b"\xff\xd8" or file_data[-2:] != b"\xff\xd9":
+    if n < 4 or file_data[:2] != b"\xff\xd8":
         raise ValueError("Not a complete JPEG file")
 
     out = [b"\xff\xd8"]
@@ -117,7 +118,9 @@ def _strip_jpeg_metadata(file_data: bytes) -> bytes:
         marker = file_data[pos + 1]
         pos += 2
         if marker == _JPEG_EOI:
-            if pos != n or not seen_sos:
+            # Anything after this first EOI (second image of an MPO / gain map,
+            # motion photo trailer, padding) is dropped
+            if not seen_sos:
                 raise ValueError("Unexpected end of JPEG")
             out.append(b"\xff\xd9")
             return b"".join(out)
