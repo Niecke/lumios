@@ -23,7 +23,7 @@ dependencies = [
     "piexif==1.1.3",
     "PyJWT==2.15.1",
     "boto3==1.43.120",
-    "imageio-ffmpeg==0.6.0",
+    "imageio-ffmpeg==0.7.0",
     # Pinned exactly: a bump needs a new Alembic revision calling
     # migrations/procrastinate_schema.ensure_schema (see CLAUDE.md, Background worker).
     "procrastinate[psycopg]==3.10.0",
