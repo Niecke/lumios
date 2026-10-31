@@ -367,6 +367,37 @@ class TestPublicUpload:
         assert image.content_type == "image/webp"
         assert image.s3_key.endswith(".webp")
 
+    def test_public_upload_strips_png_metadata(self, client, upload_library):
+        from test_api_images import make_png_with_private_metadata, png_chunk_types
+
+        png = make_png_with_private_metadata()
+        with _patch("services.images.storage") as mock_storage:
+            res = client.post(
+                f"{BASE}/libraries/{upload_library.uuid}/images",
+                data={"file": (_io.BytesIO(png), "photo.png", "image/png")},
+                content_type="multipart/form-data",
+            )
+        assert res.status_code == 201
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        assert not {b"tEXt", b"zTXt", b"iTXt", b"eXIf"} & set(png_chunk_types(stored))
+        assert b"SN-12345678" not in stored and b"secret-owner" not in stored
+        with _PilImage.open(_io.BytesIO(stored)) as img:
+            img.load()
+            assert img.size == (2, 2)
+
+    def test_public_upload_corrupt_png_rejected(self, client, upload_library):
+        from test_api_images import make_png_with_private_metadata
+
+        png = make_png_with_private_metadata()[:-6]
+        with _patch("services.images.storage") as mock_storage:
+            res = client.post(
+                f"{BASE}/libraries/{upload_library.uuid}/images",
+                data={"file": (_io.BytesIO(png), "photo.png", "image/png")},
+                content_type="multipart/form-data",
+            )
+        assert res.status_code == 415
+        mock_storage.upload_fileobj.assert_not_called()
+
     def test_upload_marks_image_as_external(self, client, upload_library):
         from models import Image as _Image
         from sqlalchemy import select as _select

@@ -6,6 +6,7 @@ import io
 import os
 import tempfile
 import uuid as uuid_module
+import zlib
 
 from flask import current_app
 from PIL import Image as PilImage, ImageDraw, ImageFont, ImageOps
@@ -78,10 +79,11 @@ def validate_upload(file_data: bytes, content_type: str) -> None:
         img.verify()
     except Exception:
         raise ValueError("File is not a valid image")
-    if content_type == "image/webp":
-        # Fail closed: a WebP whose metadata cannot be removed is not stored
+    if content_type in ("image/webp", "image/png"):
+        # Fail closed: a file whose metadata cannot be removed is not stored
+        strip = _strip_webp_metadata if content_type == "image/webp" else _strip_png_metadata
         try:
-            _strip_webp_metadata(file_data)
+            strip(file_data)
         except ValueError:
             raise ValueError("File is not a valid image")
 
@@ -177,6 +179,77 @@ def _strip_webp_metadata(file_data: bytes) -> bytes:
 
     body = b"WEBP" + b"".join(chunks)
     return b"RIFF" + len(body).to_bytes(4, "little") + body
+
+
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+# Chunks needed to render the image; every other chunk (tIME, eXIf, tEXt, zTXt,
+# iTXt, vendor chunks) is dropped. eXIf is handled separately (Orientation only).
+# This also drops the APNG chunks (acTL, fcTL, fdAT): an animated PNG is stored as
+# its static default frame. This is intended.
+_PNG_KEPT_CHUNKS = frozenset({
+    b"IHDR", b"PLTE", b"IDAT", b"IEND", b"tRNS", b"gAMA", b"cHRM",
+    b"sRGB", b"iCCP", b"sBIT", b"pHYs", b"bKGD",
+})
+
+
+def _png_chunk(chunk_type: bytes, data: bytes) -> bytes:
+    crc = zlib.crc32(chunk_type + data) & 0xFFFFFFFF
+    return len(data).to_bytes(4, "big") + chunk_type + data + crc.to_bytes(4, "big")
+
+
+def _strip_png_metadata(file_data: bytes) -> bytes:
+    """Rewrite a PNG keeping only the rendering chunks and the EXIF Orientation.
+
+    Raises ValueError when the chunk structure is malformed (bad length or CRC,
+    missing IHDR/IDAT/IEND, data after IEND), so the caller rejects the upload
+    instead of storing metadata unchanged.
+    """
+    if not file_data.startswith(_PNG_SIGNATURE):
+        raise ValueError("Not a PNG file")
+
+    chunks: list[bytes] = []
+    pos = len(_PNG_SIGNATURE)
+    total = len(file_data)
+    first = True
+    has_idat = False
+    ended = False
+    while pos < total:
+        if pos + 12 > total:
+            raise ValueError("Truncated PNG chunk")
+        length = int.from_bytes(file_data[pos:pos + 4], "big")
+        chunk_type = file_data[pos + 4:pos + 8]
+        end = pos + 12 + length
+        if end > total:
+            raise ValueError("Malformed PNG chunk length")
+        data = file_data[pos + 8:pos + 8 + length]
+        expected_crc = int.from_bytes(file_data[pos + 8 + length:end], "big")
+        if zlib.crc32(chunk_type + data) & 0xFFFFFFFF != expected_crc:
+            raise ValueError("Corrupt PNG chunk CRC")
+        if first and chunk_type != b"IHDR":
+            raise ValueError("PNG does not start with IHDR")
+        first = False
+
+        if chunk_type == b"IEND":
+            if length != 0:
+                raise ValueError("Malformed IEND chunk")
+            ended = True
+        if chunk_type == b"IDAT":
+            has_idat = True
+        if chunk_type == b"eXIf":
+            kept = _orientation_only_exif(data)
+            if kept is not None:
+                chunks.append(_png_chunk(b"eXIf", kept))
+        elif chunk_type in _PNG_KEPT_CHUNKS:
+            chunks.append(file_data[pos:end])
+        pos = end
+        if ended:
+            break
+
+    if not ended or pos != total:
+        raise ValueError("PNG is truncated or has data after IEND")
+    if not has_idat:
+        raise ValueError("PNG has no image data")
+    return _PNG_SIGNATURE + b"".join(chunks)
 
 
 def _build_watermark_tile() -> PilImage.Image:
@@ -289,7 +362,8 @@ def _create_watermarked_preview(
 
     def _save_jpeg(img: PilImage.Image, quality: int) -> io.BytesIO:
         buf = io.BytesIO()
-        save_kwargs: dict = {"format": "JPEG", "quality": quality}
+        # comment="" keeps a PNG text comment out of the JPEG COM marker
+        save_kwargs: dict = {"format": "JPEG", "quality": quality, "comment": b""}
         if icc_profile:
             save_kwargs["icc_profile"] = icc_profile
         img.save(buf, **save_kwargs)
@@ -389,7 +463,7 @@ def process_and_store_image(
     if thumb_img.mode in ("RGBA", "P", "LA"):
         thumb_img = thumb_img.convert("RGB")
     thumb_buf = io.BytesIO()
-    thumb_save_kwargs: dict = {"format": "JPEG", "quality": 85}
+    thumb_save_kwargs: dict = {"format": "JPEG", "quality": 85, "comment": b""}
     if icc_profile:
         thumb_save_kwargs["icc_profile"] = icc_profile
     thumb_img.save(thumb_buf, **thumb_save_kwargs)
@@ -412,6 +486,8 @@ def process_and_store_image(
         file_data = _strip_private_exif(file_data)
     elif content_type == "image/webp":
         file_data = _strip_webp_metadata(file_data)
+    elif content_type == "image/png":
+        file_data = _strip_png_metadata(file_data)
 
     ext = EXTENSIONS[content_type]
     photo_uuid = str(uuid_module.uuid4())
