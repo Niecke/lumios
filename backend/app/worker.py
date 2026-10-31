@@ -10,6 +10,7 @@ worker --queue <name>), so heavy work cannot starve light work:
 """
 
 import asyncio
+import atexit
 import logging
 import re
 import socket
@@ -96,6 +97,27 @@ def get_flask_app():
 def open_for_defer() -> None:
     """Open the sync connection pool of this process; a no-op once open."""
     worker_app.open()
+
+
+def close_worker_app() -> None:
+    """Close the sync connection pool opened by open_for_defer(); safe to call repeatedly.
+
+    An open psycopg_pool.ConnectionPool that is garbage collected during interpreter
+    shutdown fails with PythonFinalizationError, so it is closed explicitly. The sync
+    connector is closed directly: PsycopgConnector.close() raises NotImplementedError
+    once the async pool was used. open_for_defer() creates a fresh pool afterwards.
+    """
+    connector = worker_app.connector
+    sync_connector = getattr(connector, "_sync_connector", None)
+    if sync_connector is None:
+        return
+    try:
+        sync_connector.close()
+    finally:
+        connector._sync_connector = None
+
+
+atexit.register(close_worker_app)
 
 
 def summarize_error(exc: BaseException) -> str:

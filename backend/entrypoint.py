@@ -109,6 +109,7 @@ def run_worker(argv: list[str]) -> int:
     finally:
         stop_heartbeat.set()
         heartbeat.join(timeout=5)
+        worker.close_worker_app()
     return 0
 
 

@@ -158,13 +158,16 @@ def fake_worker(entrypoint, monkeypatch):
         worker_app=types.SimpleNamespace(run_worker=lambda **kw: runs.append(kw)),
         check_worker_health=lambda: health["code"],
         start_heartbeat=start_heartbeat,
+        close_worker_app=lambda: closed.append(True),
     )
     runs = []
+    closed = []
     beats = []
     health = {"code": 0}
     monkeypatch.setattr(entrypoint, "_import_worker", lambda: module)
     module.runs = runs
     module.beats = beats
+    module.closed = closed
     module.health = health
     return module
 
@@ -187,6 +190,8 @@ def test_worker_command_waits_for_database_then_runs_worker(
     # the pod reports a heartbeat for its queue while the worker runs, and stops it after
     assert [b["queue"] for b in fake_worker.beats] == ["video"]
     assert fake_worker.beats[0]["stop"].is_set()
+    # the connection pool is closed on shutdown
+    assert fake_worker.closed == [True]
     assert calls["execv"] == []
 
 
