@@ -83,6 +83,9 @@ class User(db.Model):
     deleted_at = db.Column(db.DateTime, nullable=True)
     agb_accepted_at = db.Column(db.DateTime, nullable=True)
     agb_version = db.Column(db.String(50), nullable=True)
+    language = db.Column(
+        db.String(5), nullable=False, default="de", server_default="de"
+    )
     is_system = db.Column(
         db.Boolean, nullable=False, default=False, server_default=db.false()
     )
