@@ -68,7 +68,12 @@ def test_migration_downgrade_and_upgrade(app):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         downgrade(directory=MIGRATIONS_DIR, revision="-1")
-        upgrade(directory=MIGRATIONS_DIR, revision="head")
+        try:
+            upgrade(directory=MIGRATIONS_DIR, revision="head")
+        finally:
+            # Restore head even if the upgrade failed halfway, so later tests
+            # in the session do not run against a broken schema.
+            upgrade(directory=MIGRATIONS_DIR, revision="head")
     assert [w for w in caught if "get_engine" in str(w.message)] == []
 
     with db.engine.connect() as conn:
