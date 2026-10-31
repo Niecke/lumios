@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 import os
-import tempfile
 import uuid as uuid_module
 import zlib
 
@@ -49,15 +48,6 @@ EXTENSIONS = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 
 PREVIEW_MAX_PX = 2048  # max longest side for preview before watermarking
 
-# Exif IFD tags that identify the specific device or its owner
-_PRIVATE_EXIF_TAGS = {
-    piexif.ExifIFD.MakerNote,
-    piexif.ExifIFD.CameraOwnerName,
-    piexif.ExifIFD.BodySerialNumber,
-    piexif.ExifIFD.LensSerialNumber,
-}
-
-
 def invalidate_watermark_previews(library_id: int) -> None:
     """Drop all cached watermark previews (and their index) of a library."""
     cache_delete_pattern(f"watermark_preview:{library_id}:*")
@@ -79,35 +69,99 @@ def validate_upload(file_data: bytes, content_type: str) -> None:
         img.verify()
     except Exception:
         raise ValueError("File is not a valid image")
-    if content_type in ("image/webp", "image/png"):
+    if content_type in _STRIPPERS:
         # Fail closed: a file whose metadata cannot be removed is not stored
-        strip = _strip_webp_metadata if content_type == "image/webp" else _strip_png_metadata
+        strip = _STRIPPERS[content_type]
         try:
             strip(file_data)
         except ValueError:
             raise ValueError("File is not a valid image")
 
 
-def _strip_private_exif(file_data: bytes) -> bytes:
-    """Remove privacy-sensitive EXIF data from a JPEG."""
-    try:
-        exif_dict = piexif.load(file_data)
-        exif_dict.pop("GPS", None)
-        exif_ifd = exif_dict.get("Exif", {})
-        for tag in _PRIVATE_EXIF_TAGS:
-            exif_ifd.pop(tag, None)
-        clean_exif = piexif.dump(exif_dict)
-        fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
-        try:
-            os.write(fd, file_data)
-            os.close(fd)
-            piexif.insert(clean_exif, tmp_path)
-            with open(tmp_path, "rb") as f:
-                return f.read()
-        finally:
-            os.unlink(tmp_path)
-    except Exception:
-        return file_data
+# JPEG markers kept as they are needed to render the image: SOF0-3/5-7/9-11/13-15,
+# DHT, DAC, DQT, DNL, DRI, EXP, APP0 (JFIF) and APP14 (Adobe colour transform)
+_JPEG_KEEP_MARKERS = frozenset(
+    {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+    | {0xC4, 0xCC, 0xDB, 0xDC, 0xDD, 0xDF, 0xE0, 0xEE}
+)
+_JPEG_APP1 = 0xE1
+_JPEG_APP2 = 0xE2
+_JPEG_SOS = 0xDA
+_JPEG_EOI = 0xD9
+
+
+def _strip_jpeg_metadata(file_data: bytes) -> bytes:
+    """Rewrite a JPEG with an allowlist of segments, keeping only the EXIF Orientation.
+
+    Kept: image structure segments, JFIF (APP0), ICC profile (APP2), Adobe (APP14)
+    and an EXIF APP1 holding only the Orientation tag. Everything else (other EXIF
+    data, thumbnail, XMP, IPTC, comments, other APPn) is dropped.
+
+    Data after the first EOI following the scan is truncated. Raises ValueError
+    when the segment structure cannot be parsed (or there is no EOI), so the
+    caller rejects the upload instead of storing metadata unchanged.
+    """
+    n = len(file_data)
+    if n < 4 or file_data[:2] != b"\xff\xd8":
+        raise ValueError("Not a complete JPEG file")
+
+    out = [b"\xff\xd8"]
+    pos = 2
+    seen_sos = False
+    while True:
+        if pos + 2 > n or file_data[pos] != 0xFF:
+            raise ValueError("Malformed JPEG marker")
+        while pos + 1 < n and file_data[pos + 1] == 0xFF:  # fill bytes
+            pos += 1
+        if pos + 2 > n:
+            raise ValueError("Malformed JPEG marker")
+        marker = file_data[pos + 1]
+        pos += 2
+        if marker == _JPEG_EOI:
+            # Anything after this first EOI (second image of an MPO / gain map,
+            # motion photo trailer, padding) is dropped
+            if not seen_sos:
+                raise ValueError("Unexpected end of JPEG")
+            out.append(b"\xff\xd9")
+            return b"".join(out)
+        if marker in (0x00, 0x01, 0xD8) or 0xD0 <= marker <= 0xD7:
+            raise ValueError("Unexpected JPEG marker")
+        if pos + 2 > n:
+            raise ValueError("Truncated JPEG segment")
+        length = int.from_bytes(file_data[pos:pos + 2], "big")
+        end = pos + length
+        if length < 2 or end > n:
+            raise ValueError("Malformed JPEG segment length")
+        payload = file_data[pos + 2:end]
+
+        if marker == _JPEG_SOS:
+            # Header and entropy-coded data up to the next real marker, verbatim
+            scan_end = end
+            while True:
+                idx = file_data.find(b"\xff", scan_end)
+                if idx == -1 or idx + 1 >= n:
+                    raise ValueError("Truncated JPEG scan")
+                nxt = file_data[idx + 1]
+                if nxt == 0x00 or 0xD0 <= nxt <= 0xD7:
+                    scan_end = idx + 2
+                    continue
+                scan_end = idx
+                break
+            out.append(file_data[pos - 2:scan_end])
+            seen_sos = True
+            pos = scan_end
+            continue
+
+        if marker in _JPEG_KEEP_MARKERS:
+            out.append(file_data[pos - 2:end])
+        elif marker == _JPEG_APP2 and payload.startswith(b"ICC_PROFILE\x00"):
+            out.append(file_data[pos - 2:end])
+        elif marker == _JPEG_APP1 and payload.startswith(b"Exif\x00\x00"):
+            kept = _orientation_only_exif(payload[6:])
+            if kept is not None:
+                body = b"Exif\x00\x00" + kept
+                out.append(b"\xff\xe1" + (len(body) + 2).to_bytes(2, "big") + body)
+        pos = end
 
 
 _WEBP_METADATA_CHUNKS = (b"EXIF", b"XMP ")
@@ -116,7 +170,11 @@ _WEBP_VP8X_XMP_FLAG = 0x04
 
 
 def _orientation_only_exif(exif_data: bytes) -> bytes | None:
-    """Build an EXIF payload holding only the Orientation tag, or None if absent."""
+    """Build an EXIF payload holding only the Orientation tag, or None if absent.
+
+    Raises ValueError when the EXIF data cannot be parsed or rewritten, so the
+    caller rejects the upload instead of storing metadata unchanged.
+    """
     try:
         if exif_data.startswith(b"Exif\x00\x00"):
             exif_data = exif_data[6:]
@@ -128,7 +186,7 @@ def _orientation_only_exif(exif_data: bytes) -> bytes | None:
         clean = piexif.dump({"0th": {piexif.ImageIFD.Orientation: orientation}})
         return clean[6:]
     except Exception:
-        return None
+        raise ValueError("Malformed EXIF data")
 
 
 def _strip_webp_metadata(file_data: bytes) -> bytes:
@@ -440,6 +498,13 @@ def _load_library_logo(library: "Library") -> PilImage.Image | None:
         return None
 
 
+_STRIPPERS = {
+    "image/jpeg": _strip_jpeg_metadata,
+    "image/png": _strip_png_metadata,
+    "image/webp": _strip_webp_metadata,
+}
+
+
 def process_and_store_image(
     library: "Library",
     owner: "User",
@@ -482,12 +547,7 @@ def process_and_store_image(
         logo.close()
     pil_img.close()
 
-    if content_type == "image/jpeg":
-        file_data = _strip_private_exif(file_data)
-    elif content_type == "image/webp":
-        file_data = _strip_webp_metadata(file_data)
-    elif content_type == "image/png":
-        file_data = _strip_png_metadata(file_data)
+    file_data = _STRIPPERS[content_type](file_data)
 
     ext = EXTENSIONS[content_type]
     photo_uuid = str(uuid_module.uuid4())
