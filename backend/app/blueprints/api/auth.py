@@ -89,7 +89,9 @@ def me():
 @require_api_role("photographer")
 def update_me():
     """Update the current user's preferences (currently only the UI language)."""
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Unsupported language"}), 400
     language = data.get("language")
     if language not in SUPPORTED_LANGUAGES:
         return jsonify({"error": "Unsupported language"}), 400

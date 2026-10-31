@@ -4,7 +4,7 @@
 // and shows a success or error message.
 
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
 import { getApiErrorMessage } from "../api/errors";
@@ -26,7 +26,12 @@ function ActivatePage() {
   const [resendError, setResendError] = useState<string | null>(null);
   const [resendEmail, setResendEmail] = useState("");
 
+  // The token is single-use: run the activation once, not on every language change.
+  const started = useRef(false);
+
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token") ?? "";
 
@@ -50,7 +55,7 @@ function ActivatePage() {
           setState("error");
         }
       });
-  }, [t]);
+  }, []);
 
   const handleResend = (e: { preventDefault(): void }) => {
     e.preventDefault();

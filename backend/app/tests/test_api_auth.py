@@ -84,7 +84,7 @@ class TestApiMeLanguage:
         assert photographer_user.language == "en"
         assert client.get(f"{BASE}/me", headers=headers).get_json()["language"] == "en"
 
-    @pytest.mark.parametrize("body", [{"language": "fr"}, {"language": ""}, {}, {"language": 1}])
+    @pytest.mark.parametrize("body", [{"language": "fr"}, {"language": ""}, {}, {"language": 1}, [1], "en", None])
     def test_patch_me_invalid_language(self, client, photographer_user, body):
         headers = auth_header(make_token(photographer_user))
         res = client.patch(f"{BASE}/me", json=body, headers=headers)

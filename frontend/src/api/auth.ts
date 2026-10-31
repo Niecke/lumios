@@ -93,20 +93,37 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+// Language update in flight, and whether the last local choice never reached
+// the account. me() waits for the former and must not override the latter.
+let languageUpdate: Promise<unknown> | null = null;
+let languageUnsaved = false;
+
 export const authApi = {
   // Verify the current JWT and return user info (guards protected routes).
   me: async () => {
+    if (languageUpdate) await languageUpdate.catch(() => {});
     const user = await apiFetch<UserInfo>("/api/v1/auth/me");
-    applyAccountLocale(user.language);
+    // A choice that failed to save stays in effect instead of reverting.
+    if (!languageUnsaved) applyAccountLocale(user.language);
     return user;
   },
 
   // Store the UI language on the account (kept across devices).
-  updateMe: (data: { language: "de" | "en" }) =>
-    apiFetch<UserInfo>("/api/v1/auth/me", {
+  updateMe: (data: { language: "de" | "en" }) => {
+    languageUnsaved = true;
+    const request = apiFetch<UserInfo>("/api/v1/auth/me", {
       method: "PATCH",
       body: JSON.stringify(data),
-    }),
+    });
+    const tracked = request.then(
+      () => {
+        if (languageUpdate === tracked) languageUnsaved = false;
+      },
+      () => {},
+    );
+    languageUpdate = tracked;
+    return request;
+  },
 
   // Register a new local account (agb_accepted must be true).
   register: (email: string, password: string) =>
