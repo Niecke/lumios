@@ -829,23 +829,25 @@ class TestPublicVideoUngatedRoutes:
         assert res.status_code == 200
 
     @pytest.mark.parametrize(
-        "status", [VideoProcessingStatus.uploading, VideoProcessingStatus.failed]
+        "status",
+        [
+            VideoProcessingStatus.uploading,
+            VideoProcessingStatus.processing,
+            VideoProcessingStatus.failed,
+        ],
     )
-    def test_download_of_non_ready_video_is_not_blocked(
+    def test_download_of_non_ready_video_returns_404(
         self, client, public_library, status
     ):
-        # Known gap, tracked as a follow-up: download_video does not check
-        # processing_status, so a presigned URL is issued for a video that is not
-        # ready. Pinned here so a later fix shows up as a deliberate test change.
         public_library.download_enabled = True
         _add_video(public_library, status=status)
         db.session.commit()
         with _patch("blueprints.api.public.storage") as st:
-            st.get_presigned_download_url.return_value = "http://example.com/dl"
             res = client.get(
                 f"{BASE}/libraries/{public_library.uuid}/videos/{PUBLIC_VIDEO_UUID}/download"
             )
-        assert res.status_code == 200
+        assert res.status_code == 404
+        st.get_presigned_download_url.assert_not_called()
 
 
 @pytest.mark.usefixtures("video_enabled")
@@ -1153,6 +1155,23 @@ class TestPublicVideoDownload:
         video.deleted_at = _datetime(2024, 1, 1)
         db.session.commit()
         assert self._get(client, download_library.uuid).status_code == 404
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            VideoProcessingStatus.uploading,
+            VideoProcessingStatus.processing,
+            VideoProcessingStatus.failed,
+        ],
+    )
+    def test_non_ready_video_returns_404(self, client, download_library, status):
+        _add_video(download_library, status=status)
+        with _patch("blueprints.api.public.storage") as st:
+            res = self._get(client, download_library.uuid)
+        assert res.status_code == 404
+        assert res.get_json() == {"error": "Video not found"}
+        st.get_presigned_download_url.assert_not_called()
+        assert _audit_logs(AuditLogType.video_downloaded) == []
 
     def test_success_returns_url_and_logs(self, client, download_library):
         video = _add_video(download_library, status=VideoProcessingStatus.ready)

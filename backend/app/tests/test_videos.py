@@ -5,7 +5,9 @@ round trip of finalize/process is covered end to end in test_worker.py.
 """
 
 import io
+import logging
 import os
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -286,6 +288,24 @@ class TestProcessVideo:
         storage.iter_object_chunks.assert_not_called()
         storage.upload_fileobj.assert_not_called()
         probe.assert_not_called()
+
+    def test_soft_deleted_video_is_skipped(self, library, storage, caplog, monkeypatch):
+        video = _make_video(library, status=VideoProcessingStatus.processing)
+        video.deleted_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        # The Alembic fileConfig run by the schema fixture disables loggers that
+        # existed before it, so re-enable this one for caplog.
+        monkeypatch.setattr(videos_service.logger, "disabled", False)
+        with patch("services.videos._extract_video_info") as probe:
+            with caplog.at_level(logging.INFO, logger="services.videos"):
+                process_video(VIDEO_UUID)
+
+        storage.iter_object_chunks.assert_not_called()
+        storage.upload_fileobj.assert_not_called()
+        probe.assert_not_called()
+        assert _reload().processing_status == VideoProcessingStatus.processing
+        assert "is deleted; skipping processing" in caplog.text
 
     def test_success_marks_ready_and_stores_metadata(self, video, storage):
         info = _frame_info(
