@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0](https://github.com/Niecke/lumios/compare/v0.4.0...v0.5.0) (2026-10-31)
+
+
+### Features
+
+* allow webp format in image uploads ([#538](https://github.com/Niecke/lumios/issues/538)) ([de5e312](https://github.com/Niecke/lumios/commit/de5e3128ab2cf9da4c64da1b2f1c3f926aabc2e6))
+* **backend:** cache watermark previews in Redis with ETag and Cache-Control headers ([#539](https://github.com/Niecke/lumios/issues/539)) ([b533b4b](https://github.com/Niecke/lumios/commit/b533b4b9f3f547dc1b7abdef003e31e8fcbb235e))
+
+
+### Bug Fixes
+
+* **backend:** make JPEG metadata stripping fail closed and allowlist-based ([#548](https://github.com/Niecke/lumios/issues/548)) ([9d9c92f](https://github.com/Niecke/lumios/commit/9d9c92f8357349ddafb14692fdcb45ba805b17b3))
+* **backend:** strip EXIF and other private metadata from PNG uploads ([#544](https://github.com/Niecke/lumios/issues/544)) ([db9b229](https://github.com/Niecke/lumios/commit/db9b229fe858e866e1865af178fbb5ff9dff6990))
+* **deps:** update dependency boto3 to v1.43.120 ([#546](https://github.com/Niecke/lumios/issues/546)) ([a4602b1](https://github.com/Niecke/lumios/commit/a4602b117e5ba680d90eb3f1d1bd09f7151d31cb))
+* **deps:** update dependency imageio-ffmpeg to v0.7.0 ([#547](https://github.com/Niecke/lumios/issues/547)) ([322b900](https://github.com/Niecke/lumios/commit/322b90086197c461acc99617018fe59dc2460b9c))
+
 ## [0.4.0](https://github.com/Niecke/lumios/compare/v0.3.0...v0.4.0) (2026-10-29)
 
 
