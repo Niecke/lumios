@@ -73,6 +73,9 @@ def test_is_database_missing_error():
     )
     assert not conftest._is_database_missing_error(Exception("connection refused"), "x_test")
     assert not conftest._is_database_missing_error(
+        Exception('FATAL:  database "other_test" does not exist'), "x_test"
+    )
+    assert not conftest._is_database_missing_error(
         Exception('role "lumios" does not exist'), "x_test"
     )
 
@@ -168,6 +171,44 @@ def test_cleanup_script_asks_for_confirmation(cleanup_env):
     accepted = _run_cleanup(prefix, stdin="y\n")
     assert accepted.returncode == 0, accepted.stderr
     assert not _database_exists(orphan)
+
+
+@pytest.mark.parametrize("dirname", ["Feature-X.1", "a  b__c", "UPPER", "x" * 80])
+def test_cleanup_keeps_database_of_existing_worktree(cleanup_env, tmp_path, dirname, monkeypatch):
+    """The shell and Python derivations of the database name must agree."""
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+    prefix, create = cleanup_env
+    monkeypatch.delenv("POSTGRES_DB", raising=False)
+    # A real worktree whose directory name carries the unique prefix, so the derived
+    # database name falls under it and the run never touches other databases.
+    tag = prefix[len("lumios_test_"):]
+    wt = tmp_path / "wt" / (tag + dirname)
+    repo = tmp_path / "repo"
+    git = lambda *a, cwd=repo: subprocess.run(
+        ["git", *a], cwd=cwd, check=True, capture_output=True, text=True
+    )
+    repo.mkdir()
+    git("init", "-q")
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "i")
+    git("worktree", "add", "-q", "--detach", str(wt))
+    derived = conftest._default_test_db_name(str(wt))
+    # the unique prefix survives sanitising and truncation of long names
+    assert derived.startswith(prefix.rstrip("_")), derived
+    with psycopg.connect(dbname="postgres", autocommit=True, **_params()) as conn:
+        conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(derived)))
+    try:
+        orphan = create("orphan")
+        env = dict(os.environ, TEST_DB_CLEANUP_PREFIX=prefix.rstrip("_"))
+        result = subprocess.run(
+            [SCRIPT, "cleanup", "-y"], capture_output=True, text=True, env=env, cwd=wt
+        )
+        assert result.returncode == 0, result.stderr
+        assert f"dropped {orphan}" in result.stdout
+        assert derived not in result.stdout
+        assert _database_exists(derived)
+    finally:
+        _drop(derived)
 
 
 def test_cleanup_script_rejects_foreign_prefix():

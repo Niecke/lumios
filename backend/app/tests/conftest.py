@@ -73,7 +73,7 @@ def _is_database_missing_error(exc, dbname):
     if getattr(exc, "sqlstate", None) == "3D000":
         return True
     message = str(exc).lower()
-    return "does not exist" in message and "database" in message
+    return "does not exist" in message and f'database "{dbname.lower()}"' in message
 
 
 def _ensure_test_database_exists():
