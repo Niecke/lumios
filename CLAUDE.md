@@ -578,8 +578,8 @@ test_config = {
     "TESTING": True,
     "WTF_CSRF_ENABLED": False,
     "RATELIMIT_ENABLED": False,
-    "SESSION_TYPE": "filesystem",
-    "SESSION_FILE_DIR": "/tmp/flask_test_sessions",
+    "SESSION_TYPE": "cachelib",
+    "SESSION_CACHELIB": FileSystemCache("/tmp/flask_test_sessions", threshold=500, mode=0o600),
 }
 ```
 

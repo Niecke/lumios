@@ -7,6 +7,7 @@ Coverage targets:
 """
 
 import pytest
+from cachelib.file import FileSystemCache
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone, timedelta
 import jwt as pyjwt
@@ -687,8 +688,10 @@ class TestResendActivationRateLimit:
                 "TESTING": True,
                 "WTF_CSRF_ENABLED": False,
                 "RATELIMIT_ENABLED": True,
-                "SESSION_TYPE": "filesystem",
-                "SESSION_FILE_DIR": "/tmp/flask_test_sessions",
+                "SESSION_TYPE": "cachelib",
+                "SESSION_CACHELIB": FileSystemCache(
+                    "/tmp/flask_test_sessions", threshold=500, mode=0o600
+                ),
             }
         )
         try:

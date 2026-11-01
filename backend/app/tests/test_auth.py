@@ -156,3 +156,43 @@ class TestIndexRoute:
         response = client.get("/", follow_redirects=False)
         assert response.status_code == 302
         assert "/login" in response.location
+
+
+class TestSessionBackend:
+    def test_filesystem_session_configured_with_cachelib(self):
+        from unittest.mock import patch
+
+        from cachelib.file import FileSystemCache
+        from flask_session.cachelib import CacheLibSessionInterface
+
+        import main
+
+        with patch.object(main, "REDIS_URL", None):
+            app = main.create_app(
+                test_config={"TESTING": True, "RATELIMIT_ENABLED": False}
+            )
+
+        assert app.config["SESSION_TYPE"] == "cachelib"
+        assert isinstance(app.config["SESSION_CACHELIB"], FileSystemCache)
+        assert isinstance(app.session_interface, CacheLibSessionInterface)
+
+    def test_redis_session_configured_when_redis_url_set(self):
+        import redis
+        from unittest.mock import patch
+
+        from flask_session.redis import RedisSessionInterface
+
+        import main
+
+        with (
+            patch.object(main, "REDIS_URL", "redis://redis:6379/0"),
+            patch(
+                "services.redis_client.get_redis_session", return_value=redis.Redis()
+            ),
+        ):
+            app = main.create_app(
+                test_config={"TESTING": True, "RATELIMIT_ENABLED": False}
+            )
+
+        assert app.config["SESSION_TYPE"] == "redis"
+        assert isinstance(app.session_interface, RedisSessionInterface)
