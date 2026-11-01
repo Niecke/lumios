@@ -316,6 +316,120 @@ class TestStalledJobs:
         assert _jobs()[0]["status"] == "todo"
 
 
+def _finished_job(status="succeeded", days_ago=40, with_event=True, error=False):
+    """Insert a job in `status`; its terminal event is backdated by `days_ago` days."""
+    job_id = db.session.execute(
+        text(
+            "INSERT INTO procrastinate_jobs (queue_name, task_name, args) "
+            "VALUES ('default', 't', CAST('{}' AS jsonb)) RETURNING id"
+        )
+    ).scalar_one()
+    if status in ("todo", "doing"):
+        if status == "doing":
+            db.session.execute(
+                text("UPDATE procrastinate_jobs SET status = 'doing' WHERE id = :i"), {"i": job_id}
+            )
+    else:
+        if status != "cancelled":  # a job is cancelled straight from todo
+            db.session.execute(
+                text("UPDATE procrastinate_jobs SET status = 'doing' WHERE id = :i"), {"i": job_id}
+            )
+        db.session.execute(
+            text(
+                "UPDATE procrastinate_jobs SET status = CAST(:s AS procrastinate_job_status) "
+                "WHERE id = :i"
+            ),
+            {"s": status, "i": job_id},
+        )
+    if not with_event:
+        db.session.execute(
+            text("DELETE FROM procrastinate_events WHERE job_id = :i AND type::text <> 'deferred'"),
+            {"i": job_id},
+        )
+    db.session.execute(
+        text("UPDATE procrastinate_events SET at = now() - make_interval(days => :d) WHERE job_id = :i"),
+        {"d": days_ago, "i": job_id},
+    )
+    if error:
+        from models import WorkerJobError
+
+        db.session.add(
+            WorkerJobError(job_id=job_id, queue_name="default", task_name="t", error_message="x")
+        )
+    db.session.commit()
+    return job_id
+
+
+def _job_ids():
+    return set(db.session.execute(text("SELECT id FROM procrastinate_jobs")).scalars())
+
+
+def _clean(**kw):
+    return asyncio.run(worker.clean_old_jobs_now(**kw))
+
+
+class TestCleanOldJobs:
+    def test_old_finished_job_is_deleted(self, app):
+        for status in ("succeeded", "failed", "cancelled", "aborted"):
+            _finished_job(status)
+
+        assert _clean() == 4
+        assert _job_ids() == set()
+
+    def test_events_and_errors_are_cleaned_up(self, app):
+        from models import WorkerJobError
+
+        job_id = _finished_job("failed", error=True)
+
+        assert _clean() == 1
+        events = db.session.execute(
+            text("SELECT count(*) FROM procrastinate_events WHERE job_id = :i"), {"i": job_id}
+        ).scalar_one()
+        assert events == 0
+        assert db.session.execute(select(WorkerJobError)).scalars().all() == []
+
+    def test_recent_finished_job_is_kept(self, app):
+        a = _finished_job("succeeded", days_ago=5)
+        b = _finished_job("failed", days_ago=5)
+
+        assert _clean() == 0
+        assert _job_ids() == {a, b}
+
+    def test_unfinished_job_is_kept(self, app):
+        a = _finished_job("todo", days_ago=90)
+        b = _finished_job("doing", days_ago=90)
+
+        assert _clean() == 0
+        assert _job_ids() == {a, b}
+
+    def test_job_without_finish_time_is_kept(self, app):
+        a = _finished_job("succeeded", days_ago=90, with_event=False)
+
+        assert _clean() == 0
+        assert _job_ids() == {a}
+
+    def test_custom_retention_days(self, app):
+        old = _finished_job("succeeded", days_ago=15)
+        recent = _finished_job("succeeded", days_ago=5)
+
+        assert _clean(retention_days=10) == 1
+        assert _job_ids() == {recent}
+        assert old not in _job_ids()
+
+    def test_batching_deletes_across_iterations(self, app):
+        for _ in range(5):
+            _finished_job("succeeded")
+
+        assert _clean(batch_size=2) == 5
+        assert _job_ids() == set()
+
+    def test_clean_is_idempotent(self, app):
+        assert _clean() == 0
+        _finished_job("succeeded")
+        assert _clean() == 1
+        assert _clean() == 0
+
+
 class TestWorkerDashboardSupport:
     def test_summarize_error_is_one_short_line_without_urls_or_paths(self):
         exc = ValueError(
@@ -405,7 +519,7 @@ class TestWorkerDashboardSupport:
 
 
 def _mail_jobs():
-    return [j for j in _jobs() if j["task_name"] != "recover_stalled_jobs"]
+    return [j for j in _jobs() if j["task_name"] not in ("recover_stalled_jobs", "clean_old_jobs")]
 
 
 @pytest.fixture

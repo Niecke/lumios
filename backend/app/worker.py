@@ -27,6 +27,7 @@ from config import (
     POSTGRES_PASSWORD,
     POSTGRES_PORT,
     POSTGRES_USER,
+    WORKER_JOB_RETENTION_DAYS,
 )
 
 logger = logging.getLogger(__name__)
@@ -431,6 +432,71 @@ async def recover_stalled_jobs_now() -> int:
 )
 async def recover_stalled_jobs(timestamp: int) -> None:
     await recover_stalled_jobs_now()
+
+
+_TERMINAL = "('succeeded', 'failed', 'cancelled', 'aborted')"
+_DELETE_OLD_JOBS = f"""
+WITH to_delete AS (
+    SELECT j.id FROM procrastinate_jobs j
+    WHERE j.status::text IN {_TERMINAL}
+      AND (
+          SELECT max(e.at) FROM procrastinate_events e
+          WHERE e.job_id = j.id AND e.type::text IN {_TERMINAL}
+      ) < :cutoff
+    LIMIT :batch_size
+)
+DELETE FROM procrastinate_jobs WHERE id IN (SELECT id FROM to_delete) RETURNING id
+"""
+
+
+def _clean_old_jobs_sync(retention_days: int | None = None, batch_size: int = 1000) -> int:
+    from models import WorkerJobError, db
+    from sqlalchemy import text
+
+    if retention_days is None:
+        retention_days = WORKER_JOB_RETENTION_DAYS
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    total = 0
+    with get_flask_app().app_context():
+        while True:
+            deleted_ids = (
+                db.session.execute(
+                    text(_DELETE_OLD_JOBS), {"cutoff": cutoff, "batch_size": batch_size}
+                )
+                .scalars()
+                .all()
+            )
+            if deleted_ids:
+                db.session.execute(
+                    delete(WorkerJobError).where(WorkerJobError.job_id.in_(deleted_ids))
+                )
+            db.session.commit()
+            total += len(deleted_ids)
+            if len(deleted_ids) < batch_size:
+                break
+        db.session.remove()
+    logger.info(
+        "Cleaned %d finished jobs older than %s (retention: %d days)",
+        total,
+        cutoff.isoformat(),
+        retention_days,
+    )
+    return total
+
+
+async def clean_old_jobs_now(retention_days: int | None = None, batch_size: int = 1000) -> int:
+    """Delete finished jobs (events cascade) older than the retention, in committed batches."""
+    return await asyncio.to_thread(_clean_old_jobs_sync, retention_days, batch_size)
+
+
+@worker_app.periodic(cron="0 0 * * *")
+@worker_app.task(
+    queue=QUEUE_DEFAULT,
+    name="clean_old_jobs",
+    queueing_lock="clean_old_jobs",
+)
+async def clean_old_jobs(timestamp: int) -> None:
+    await clean_old_jobs_now()
 
 
 def check_worker_health() -> int:

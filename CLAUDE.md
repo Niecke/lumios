@@ -218,6 +218,7 @@ Also read in `backend/app/config.py`, `backend/entrypoint.py` or `services/stora
 | `OTEL_SERVICE_NAME` | `lumios-backend` | Service name reported to tracing |
 | `OTEL_SERVICE_VERSION` | `$GIT_HASH` | Service version reported to tracing |
 | `VIDEO_JOB_TIMEOUT_SECONDS` | `600` | Upper bound for one ffmpeg call of a video job; a hung process is killed and the job retried |
+| `WORKER_JOB_RETENTION_DAYS` | `30` | Finished Procrastinate jobs (`succeeded`, `failed`, `cancelled`, `aborted`) and their events are deleted by the daily `clean_old_jobs` task once the job finished this many days ago (Helm: `backend.jobRetentionDays`) |
 | `INIT_ADMIN_PASSWORD` | random | Password of the seeded admin; generated (16 chars, letters, digits and `!@#\$%&*`) if empty |
 | `MIN_PASSWORD_LENGTH` | `8` | Minimum password length |
 | `PASSWORD_HASHER_TIME_COST` | `2` | Argon2id time cost |
@@ -422,7 +423,7 @@ Jobs are enqueued by the backend and run by separate worker pods. Queue and resu
 
 | Queue | Deployment | Concurrency | Used for |
 |---|---|---|---|
-| `default` | `worker-default` | 4 | mail jobs (`send_*_email`, `resend_activation`, `services/mail.py`: `notify_*` enqueues, `send_*` sends; 3 runs, a Brevo 4xx other than 429 is not retried); the periodic `recover_stalled_jobs` task (every 5 min) |
+| `default` | `worker-default` | 4 | mail jobs (`send_*_email`, `resend_activation`, `services/mail.py`: `notify_*` enqueues, `send_*` sends; 3 runs, a Brevo 4xx other than 429 is not retried); the periodic `recover_stalled_jobs` task (every 5 min); the periodic `clean_old_jobs` janitor (daily, 00:00 UTC: deletes finished jobs older than `WORKER_JOB_RETENTION_DAYS` in batches of 1000, with their events and `worker_job_errors` rows; logs the count only) |
 | `video` | `worker-video` | 1 | `process_video`: ffmpeg probe + thumbnail |
 | `photo` | `worker-photo`, **off by default** | 2 | prepared for image thumbnails/previews, nothing is enqueued on it yet |
 

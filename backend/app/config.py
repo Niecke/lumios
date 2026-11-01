@@ -42,6 +42,8 @@ VIDEO_EXTENSIONS = {
 # Background worker (Procrastinate on PostgreSQL), see worker.py
 # Upper bound for one ffmpeg call of a video job; a hung process is killed and the job retried
 VIDEO_JOB_TIMEOUT_SECONDS = int(os.getenv("VIDEO_JOB_TIMEOUT_SECONDS", "600"))
+# Finished jobs (and their events) older than this are deleted by the daily clean_old_jobs task
+WORKER_JOB_RETENTION_DAYS = int(os.getenv("WORKER_JOB_RETENTION_DAYS", "30"))
 
 # Database
 POSTGRES_USER = str(os.getenv("POSTGRES_USER", "lumios"))
