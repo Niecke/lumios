@@ -1020,7 +1020,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
 
   return (
     <>
-      <AppBar name={user.name} picture={user.picture} />
+      <AppBar name={user.name} picture={user.picture} saveLanguage={library !== undefined} />
 
       <main className="page-content">
         <div className="page-header">

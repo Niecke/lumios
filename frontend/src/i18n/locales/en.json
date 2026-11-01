@@ -265,7 +265,7 @@
     "watermarkMustBePng": "Watermark must be a PNG image",
     "watermarkTooLarge": "Watermark file too large (max 5 MB)",
     "storageError": "Storage error. Please try again.",
-    "unsupportedLanguage": "Unsupported language",
+    "invalidLanguage": "Invalid or missing language",
     "imageNotFound": "Image not found",
     "videoNotFound": "Video not found",
     "videoUploadsNotEnabled": "Video uploads are not enabled",

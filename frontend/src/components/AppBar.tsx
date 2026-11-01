@@ -13,6 +13,8 @@ import { notificationsApi, type Notification } from "../api/notifications";
 interface AppBarProps {
   name?: string;
   picture?: string;
+  // Off on pages outside the photographer's own area (someone else's gallery).
+  saveLanguage?: boolean;
 }
 
 function notificationMessage(n: Notification, t: TFunction): string {
@@ -30,7 +32,7 @@ function notificationMessage(n: Notification, t: TFunction): string {
   return t("notifications.generic");
 }
 
-export function AppBar({ name, picture }: AppBarProps) {
+export function AppBar({ name, picture, saveLanguage = true }: AppBarProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -140,7 +142,7 @@ export function AppBar({ name, picture }: AppBarProps) {
         )}
       </div>
 
-      <LanguageSwitcher />
+      <LanguageSwitcher saveToAccount={saveLanguage} />
 
       <Link to="/support" className="btn btn-text">
         <span className="material-icons">help_outline</span>

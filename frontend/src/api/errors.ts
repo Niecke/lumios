@@ -21,7 +21,7 @@ const EXACT: Record<string, string> = {
   "Watermark must be a PNG image": "errors.watermarkMustBePng",
   "Watermark file too large (max 5 MB)": "errors.watermarkTooLarge",
   "Storage error. Please try again.": "errors.storageError",
-  "Unsupported language": "errors.unsupportedLanguage",
+  "Invalid or missing language": "errors.invalidLanguage",
   "Video processing timed out": "errors.videoTimeout",
   "Upload network error": "errors.uploadNetwork",
   "Network error": "errors.uploadNetwork",

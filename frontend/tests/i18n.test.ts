@@ -172,3 +172,30 @@ test("no hard-coded user-facing strings are left in the components", () => {
   }
   assert.deepEqual(found, []);
 });
+
+test("the supported languages match between backend and frontend", () => {
+  const source = readFileSync("../backend/app/blueprints/api/auth.py", "utf8");
+  const match = source.match(/^SUPPORTED_LANGUAGES = \(([^)]*)\)/m);
+  assert.ok(match, "SUPPORTED_LANGUAGES not found in blueprints/api/auth.py");
+  const backend = [...match[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(backend, [...mod.SUPPORTED_LOCALES]);
+  // The API client takes its language type from SUPPORTED_LOCALES.
+  const client = readFileSync("src/api/auth.ts", "utf8");
+  assert.doesNotMatch(client, /"de" \| "en"/);
+});
+
+test("only the photographer's own area saves the language to the account", () => {
+  const sources = ["src/routes", "src/components"].flatMap((dir) =>
+    readdirSync(dir).map((name) => join(dir, name)),
+  );
+  const saving = sources.filter((path) =>
+    /<LanguageSwitcher[^>]*saveToAccount/.test(readFileSync(path, "utf8")),
+  );
+  assert.deepEqual(saving.sort(), ["src/components/AppBar.tsx", "src/routes/account.tsx"]);
+
+  // The customer gallery has its own header, the AppBar's switcher must not appear there.
+  const library = readFileSync("src/routes/library.$libraryUuid.tsx", "utf8");
+  const publicView = library.slice(library.indexOf("function PublicLibraryView"));
+  assert.ok(publicView.includes("<LanguageSwitcher />"));
+  assert.ok(!publicView.includes("<AppBar"));
+});

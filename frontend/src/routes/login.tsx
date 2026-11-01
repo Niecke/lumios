@@ -68,7 +68,7 @@ function LoginPage() {
       window.history.replaceState(null, "", "/login");
       setPending(true);
       authApi.exchangeCode(code).then(
-        () => authApi.me().then(
+        () => authApi.meAfterLogin().then(
           () => router.navigate({ to: "/", replace: true }),
           () => {
             tokenStore.clear();
@@ -137,7 +137,6 @@ function LoginPage() {
     setLocalPending(true);
     try {
       await authApi.loginPassword(email, password);
-      await authApi.me();
       router.navigate({ to: "/", replace: true });
     } catch (err) {
       const message = (err as Error).message;

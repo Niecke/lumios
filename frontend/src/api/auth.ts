@@ -16,7 +16,7 @@ export interface UserInfo {
   created_at: string | null;
   account_type: string | null;
   subscription: string | null;
-  language: "de" | "en";
+  language: Locale | null; // null: the account has no preference yet
   storage_used_bytes: number;
   storage_limit_bytes: number | null;
   max_libraries: number | null;
@@ -25,9 +25,20 @@ export interface UserInfo {
   picture?: string;
 }
 
-import { applyAccountLocale } from "../i18n/index.ts";
+import {
+  applyAccountLocale,
+  currentLocale,
+  setLocale,
+  storedLocale,
+  type Locale,
+} from "../i18n/index.ts";
 
 const TOKEN_KEY = "lumios_token";
+
+// Language update in flight, and whether the last local choice never reached
+// the account. me() waits for the former and must not override the latter.
+let languageUpdate: Promise<unknown> | null = null;
+let languageUnsaved = false;
 
 // GIS must only be initialized once per session. This flag is reset on logout
 // so that a fresh initialize() call happens on the next login page visit.
@@ -53,6 +64,8 @@ export const tokenStore = {
 function clearAuthSession() {
   tokenStore.clear();
   resetGsiInitialized();
+  languageUpdate = null;
+  languageUnsaved = false;
 }
 
 // Internal helper: fetch JSON from the API, attaching the Bearer token.
@@ -93,11 +106,6 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-// Language update in flight, and whether the last local choice never reached
-// the account. me() waits for the former and must not override the latter.
-let languageUpdate: Promise<unknown> | null = null;
-let languageUnsaved = false;
-
 export const authApi = {
   // Verify the current JWT and return user info (guards protected routes).
   me: async () => {
@@ -108,8 +116,18 @@ export const authApi = {
     return user;
   },
 
+  // me() right after a login: an account without a language takes the choice made
+  // in this browser. No choice means no save: the account stays "no preference".
+  meAfterLogin: async () => {
+    const user = await authApi.me();
+    const language = storedLocale();
+    if (user.language !== null || language === null) return user;
+    authApi.updateMe({ language }).catch(() => {}); // best effort, the UI keeps it anyway
+    return { ...user, language };
+  },
+
   // Store the UI language on the account (kept across devices).
-  updateMe: (data: { language: "de" | "en" }) => {
+  updateMe: (data: { language: Locale }) => {
     languageUnsaved = true;
     const request = apiFetch<UserInfo>("/api/v1/auth/me", {
       method: "PATCH",
@@ -129,14 +147,14 @@ export const authApi = {
   register: (email: string, password: string) =>
     apiFetch<{ ok: boolean }>("/api/v1/auth/register", {
       method: "POST",
-      body: JSON.stringify({ email, password, agb_accepted: true }),
+      body: JSON.stringify({ email, password, agb_accepted: true, language: currentLocale() }),
     }),
 
   // Register a new Google account (agb_accepted must be true).
   registerGoogle: (credential: string) =>
     apiFetch<{ ok: boolean }>("/api/v1/auth/google/register", {
       method: "POST",
-      body: JSON.stringify({ credential, agb_accepted: true }),
+      body: JSON.stringify({ credential, agb_accepted: true, language: currentLocale() }),
     }),
 
   // Activate an account using the token from the activation email.
@@ -161,7 +179,7 @@ export const authApi = {
     );
 
     tokenStore.set(data.token);
-    return authApi.me();
+    return authApi.meAfterLogin();
   },
 
   // Exchange a one-time login code (from the OAuth redirect) for a JWT.
@@ -180,7 +198,7 @@ export const authApi = {
       body: JSON.stringify({ email, password }),
     });
     tokenStore.set(data.token);
-    return authApi.me();
+    return authApi.meAfterLogin();
   },
 
   // Change password for the authenticated local account.
@@ -199,3 +217,14 @@ export const authApi = {
     return Promise.resolve({ ok: true });
   },
 };
+
+// Switch the UI language. Only the photographer's own area (AppBar, account page)
+// passes saveToAccount: public galleries and the auth pages stay local to the
+// browser, they have no influence on a registered user.
+export function chooseLanguage(lang: Locale, saveToAccount: boolean) {
+  setLocale(lang);
+  if (saveToAccount && tokenStore.get()) {
+    // Best effort: the local choice already applies even if saving fails.
+    authApi.updateMe({ language: lang }).catch(() => {});
+  }
+}

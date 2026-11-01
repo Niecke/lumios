@@ -1,8 +1,8 @@
 // i18n/index.ts — i18next setup: German is the default, English is available.
 //
 // The language is never taken from navigator.language: a first visit is always
-// German. A choice made with setLocale() is kept in localStorage (visitors) and
-// by LanguageSwitcher also on the user account (logged-in photographers).
+// German. A choice made with setLocale() is kept in localStorage; the photographer's
+// own area also stores it on the account (chooseLanguage in api/auth.ts).
 // Relative imports carry a .ts extension so node --test can load this module.
 
 import i18n from "i18next";
@@ -19,15 +19,21 @@ function isLocale(value: unknown): value is Locale {
   return SUPPORTED_LOCALES.includes(value as Locale);
 }
 
-// Stored choice, or German. localStorage may be missing (node tests, blocked storage).
-export function detectLocale(): Locale {
+// The language chosen in this browser, if any. localStorage may be missing
+// (node tests, blocked storage).
+export function storedLocale(): Locale | null {
   try {
     const stored = globalThis.localStorage?.getItem(LOCALE_STORAGE_KEY);
     if (isLocale(stored)) return stored;
   } catch {
-    // storage blocked: fall through to the default
+    // storage blocked: same as no choice
   }
-  return DEFAULT_LOCALE;
+  return null;
+}
+
+// Stored choice, or German.
+export function detectLocale(): Locale {
+  return storedLocale() ?? DEFAULT_LOCALE;
 }
 
 const isDev = Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV);
@@ -78,7 +84,8 @@ export function setLocale(lang: Locale) {
   applyDocumentLang(lang);
 }
 
-// The account's language wins over the browser's: called with the value from /auth/me.
+// A language set on the account wins over the browser's: called with the value from
+// /auth/me. Without one (null) the local choice stays.
 export function applyAccountLocale(lang: unknown) {
   if (isLocale(lang) && lang !== i18n.language) setLocale(lang);
 }

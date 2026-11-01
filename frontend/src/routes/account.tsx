@@ -296,7 +296,7 @@ function AccountPage() {
               </div>
               <div className="info-row">
                 <span className="info-row__label">{t("account.language")}</span>
-                <LanguageSwitcher />
+                <LanguageSwitcher saveToAccount />
               </div>
             </div>
 

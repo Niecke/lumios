@@ -1,23 +1,25 @@
 // LanguageSwitcher.tsx — DE | EN toggle.
 //
-// Stores the choice in localStorage (setLocale) and, when a photographer is
-// logged in, on the account so it follows them to other devices.
+// Stores the choice in localStorage. With saveToAccount (only the photographer's
+// own area) a logged-in photographer also gets it on the account, so it follows
+// them to other devices.
 
 import { useTranslation } from "react-i18next";
-import { authApi, tokenStore } from "../api/auth";
-import { SUPPORTED_LOCALES, setLocale, currentLocale, type Locale } from "../i18n";
+import { chooseLanguage } from "../api/auth";
+import { SUPPORTED_LOCALES, currentLocale, type Locale } from "../i18n";
 
-export function LanguageSwitcher({ className = "" }: { className?: string }) {
+export function LanguageSwitcher({
+  className = "",
+  saveToAccount = false,
+}: {
+  className?: string;
+  saveToAccount?: boolean;
+}) {
   const { t, i18n } = useTranslation();
   const active = i18n.language === "en" ? "en" : currentLocale();
 
   function choose(lang: Locale) {
-    if (lang === active) return;
-    setLocale(lang);
-    if (tokenStore.get()) {
-      // Best effort: the local choice already applies even if saving fails.
-      authApi.updateMe({ language: lang }).catch(() => {});
-    }
+    if (lang !== active) chooseLanguage(lang, saveToAccount);
   }
 
   return (

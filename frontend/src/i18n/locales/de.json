@@ -265,7 +265,7 @@
     "watermarkMustBePng": "Das Wasserzeichen muss ein PNG-Bild sein",
     "watermarkTooLarge": "Die Wasserzeichen-Datei ist zu groß (max. 5 MB)",
     "storageError": "Speicherfehler. Bitte versuchen Sie es erneut.",
-    "unsupportedLanguage": "Sprache wird nicht unterstützt",
+    "invalidLanguage": "Sprache fehlt oder ist ungültig",
     "imageNotFound": "Bild nicht gefunden",
     "videoNotFound": "Video nicht gefunden",
     "videoUploadsNotEnabled": "Video-Uploads sind nicht aktiviert",
