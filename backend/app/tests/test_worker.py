@@ -555,3 +555,41 @@ class TestMailExecution:
         assert _target({"ticket_id": 9, "subject": "x"}) == "9"
         assert _target({"email": "a@test.com", "ip": "1.2.3.4"}) == "a@test.com"
         assert _target({"summary": "x"}) is None
+
+
+class TestCloseWorkerApp:
+    @pytest.fixture(autouse=True)
+    def _clean(self):
+        worker.close_worker_app()
+        yield
+        worker.close_worker_app()
+
+    def test_close_worker_app_closes_sync_pool(self):
+        worker.open_for_defer()
+        sync_connector = worker.worker_app.connector._sync_connector
+        pool = sync_connector._pool
+        assert pool is not None and not pool.closed
+
+        worker.close_worker_app()
+
+        assert pool.closed
+        assert worker.worker_app.connector._sync_connector is None
+
+    def test_close_worker_app_idempotent_when_not_opened(self):
+        assert worker.worker_app.connector._sync_connector is None
+
+        worker.close_worker_app()
+        worker.close_worker_app()
+
+        assert worker.worker_app.connector._sync_connector is None
+
+    def test_close_worker_app_allows_reopen(self):
+        worker.open_for_defer()
+        first = worker.worker_app.connector._sync_connector._pool
+        worker.close_worker_app()
+
+        worker.open_for_defer()
+        second = worker.worker_app.connector._sync_connector._pool
+
+        assert second is not first
+        assert not second.closed

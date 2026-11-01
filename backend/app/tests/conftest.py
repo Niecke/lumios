@@ -79,6 +79,20 @@ def _reset_schema():
         conn.exec_driver_sql("CREATE SCHEMA public")
 
 
+def _close_worker_pool():
+    """Close Procrastinate's sync pool, or it fails at interpreter shutdown."""
+    try:
+        import worker
+
+        worker.close_worker_app()
+    except Exception:
+        pass
+
+
+def pytest_sessionfinish(session, exitstatus):
+    _close_worker_pool()
+
+
 @pytest.fixture(scope="session")
 def app():
     """Create and configure the Flask application once for the entire test session.
@@ -109,6 +123,7 @@ def app():
 
     yield test_app
 
+    _close_worker_pool()
     _reset_schema()
     ctx.pop()
 
