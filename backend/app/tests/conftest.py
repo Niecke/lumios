@@ -31,6 +31,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "migrations"))
 # --- Now it is safe to import from the app ---
 import psycopg
 import pytest
+from cachelib.file import FileSystemCache
 from flask_migrate import upgrade
 from psycopg import sql
 from sqlalchemy import text
@@ -96,8 +97,10 @@ def app():
             "WTF_CSRF_ENABLED": False,
             "RATELIMIT_ENABLED": False,
             # Use filesystem sessions in /tmp – no Redis needed
-            "SESSION_TYPE": "filesystem",
-            "SESSION_FILE_DIR": "/tmp/flask_test_sessions",
+            "SESSION_TYPE": "cachelib",
+            "SESSION_CACHELIB": FileSystemCache(
+                "/tmp/flask_test_sessions", threshold=500, mode=0o600
+            ),
         }
     )
 

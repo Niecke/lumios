@@ -130,21 +130,29 @@ def create_app(test_config=None):
 
     init_sentry(app)
 
-    # Server-side sessions (Redis if available, filesystem fallback)
-    if REDIS_URL:
-        from services.redis_client import get_redis_session
+    # Server-side sessions (Redis if available, filesystem fallback via cachelib).
+    # A test_config that already names a SESSION_TYPE wins.
+    if "SESSION_TYPE" not in app.config:
+        if REDIS_URL:
+            from services.redis_client import get_redis_session
 
-        app.config["SESSION_TYPE"] = "redis"
-        app.config["SESSION_REDIS"] = get_redis_session()
-        # REDIS_URL may carry the password, so log the host only.
-        redis_host = REDIS_URL.rsplit("@", 1)[-1]
-        app.logger.info(f"Sessions: Redis ({redis_host})", extra={"log_type": "startup"})
-    else:
-        app.config["SESSION_TYPE"] = "filesystem"
-        app.config["SESSION_FILE_DIR"] = "/tmp/flask_sessions"
-        app.logger.info(
-            "Sessions: filesystem (no REDIS_URL set)", extra={"log_type": "startup"}
-        )
+            app.config["SESSION_TYPE"] = "redis"
+            app.config["SESSION_REDIS"] = get_redis_session()
+            # REDIS_URL may carry the password, so log the host only.
+            redis_host = REDIS_URL.rsplit("@", 1)[-1]
+            app.logger.info(
+                f"Sessions: Redis ({redis_host})", extra={"log_type": "startup"}
+            )
+        else:
+            from cachelib.file import FileSystemCache
+
+            app.config["SESSION_TYPE"] = "cachelib"
+            app.config["SESSION_CACHELIB"] = FileSystemCache(
+                "/tmp/flask_sessions", threshold=500, mode=0o600
+            )
+            app.logger.info(
+                "Sessions: filesystem (no REDIS_URL set)", extra={"log_type": "startup"}
+            )
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = not DEBUG
