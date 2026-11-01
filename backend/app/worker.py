@@ -474,6 +474,14 @@ def _clean_old_jobs_sync(retention_days: int | None = None, batch_size: int = 10
             total += len(deleted_ids)
             if len(deleted_ids) < batch_size:
                 break
+        # error rows whose job vanished some other way (e.g. a manual shell delete)
+        db.session.execute(
+            text(
+                "DELETE FROM worker_job_errors e "
+                "WHERE NOT EXISTS (SELECT 1 FROM procrastinate_jobs j WHERE j.id = e.job_id)"
+            )
+        )
+        db.session.commit()
         db.session.remove()
     logger.info(
         "Cleaned %d finished jobs older than %s (retention: %d days)",

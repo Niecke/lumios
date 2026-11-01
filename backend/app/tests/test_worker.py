@@ -423,6 +423,29 @@ class TestCleanOldJobs:
         assert _clean(batch_size=2) == 5
         assert _job_ids() == set()
 
+    def test_orphaned_error_rows_are_removed_and_live_ones_kept(self, app):
+        from models import WorkerJobError
+
+        live = _finished_job("failed", days_ago=5, error=True)
+        db.session.add(
+            WorkerJobError(job_id=999999, queue_name="default", task_name="t", error_message="x")
+        )
+        db.session.commit()
+
+        assert _clean() == 0
+        db.session.expire_all()
+        assert [e.job_id for e in db.session.execute(select(WorkerJobError)).scalars()] == [live]
+
+    def test_task_is_registered_on_default_queue_with_queueing_lock(self):
+        task = worker.worker_app.tasks["clean_old_jobs"]
+        assert task.queue == worker.QUEUE_DEFAULT
+        assert task.queueing_lock == "clean_old_jobs"
+
+    def test_retention_defaults_to_30_days(self):
+        import config
+
+        assert config.WORKER_JOB_RETENTION_DAYS == 30
+
     def test_clean_is_idempotent(self, app):
         assert _clean() == 0
         _finished_job("succeeded")
