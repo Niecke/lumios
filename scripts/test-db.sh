@@ -67,6 +67,14 @@ case "${1:-}" in
     fi
     ;;
   cleanup)
+    prefix="${TEST_DB_CLEANUP_PREFIX:-lumios_test_}"
+    case "$prefix" in
+      lumios_test_*) ;;
+      *) echo "error: TEST_DB_CLEANUP_PREFIX must start with lumios_test_" >&2; exit 1 ;;
+    esac
+    case "$prefix" in
+      *[!a-z0-9_]*) echo "error: TEST_DB_CLEANUP_PREFIX may contain only a-z, 0-9 and _" >&2; exit 1 ;;
+    esac
     psql_admin() { "$RUNTIME" exec "$NAME" psql -U lumios -d postgres -X -A -t -q "$@"; }
     if ! psql_admin -c 'SELECT 1' >/dev/null 2>&1; then
       echo "error: $NAME is not running, start it with: $0 start" >&2
@@ -88,14 +96,6 @@ case "${1:-}" in
           ;;
       esac
     done < <(git worktree list --porcelain)
-    prefix="${TEST_DB_CLEANUP_PREFIX:-lumios_test_}"
-    case "$prefix" in
-      lumios_test_*) ;;
-      *) echo "error: TEST_DB_CLEANUP_PREFIX must start with lumios_test_" >&2; exit 1 ;;
-    esac
-    case "$prefix" in
-      *[!a-z0-9_]*) echo "error: TEST_DB_CLEANUP_PREFIX may contain only a-z, 0-9 and _" >&2; exit 1 ;;
-    esac
     like_prefix="$(printf '%s' "$prefix" | sed 's/_/\\_/g')"
     orphans=()
     while IFS= read -r db; do
