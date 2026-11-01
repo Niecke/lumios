@@ -85,7 +85,7 @@ export function setLocale(lang: Locale) {
 }
 
 // A language set on the account wins over the browser's: called with the value from
-// /auth/me. Without one (null) the local choice stays.
+// /auth/me at login and on page load. Without one (null) the local choice stays.
 export function applyAccountLocale(lang: unknown) {
   if (isLocale(lang) && lang !== i18n.language) setLocale(lang);
 }

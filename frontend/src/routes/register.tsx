@@ -11,7 +11,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { config } from "../config";
-import { getApiErrorMessage } from "../api/errors";
+import { displayErrorMessage, type DisplayError } from "../api/errors";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { authApi, isGsiInitialized, markGsiInitialized, resetGsiInitialized } from "../api/auth";
 
@@ -23,8 +23,9 @@ export const Route = createFileRoute("/register")({
 
 function RegisterPage() {
   const { t } = useTranslation();
-  const [error, setError] = useState<string | null>(null);
-  const [successEmail, setSuccessEmail] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayError | null>(null);
+  // Set once registered. A Google sign-up has no address to show.
+  const [registered, setRegistered] = useState<{ email: string | null } | null>(null);
   const [localPending, setLocalPending] = useState(false);
   const [googlePending, setGooglePending] = useState(false);
   const [email, setEmail] = useState("");
@@ -38,16 +39,16 @@ function RegisterPage() {
 
     function handleGoogleCredential(response: { credential: string }) {
       if (!agbAccepted) {
-        setError(t("register.acceptFirst"));
+        setError({ key: "register.acceptFirst" });
         return;
       }
       setError(null);
       setGooglePending(true);
       authApi
         .registerGoogle(response.credential)
-        .then(() => setSuccessEmail(t("register.yourGoogleAccount")))
+        .then(() => setRegistered({ email: null }))
         .catch((err) => {
-          setError(getApiErrorMessage(err, t));
+          setError({ error: err });
           setGooglePending(false);
         });
     }
@@ -78,32 +79,32 @@ function RegisterPage() {
       return () => script?.removeEventListener("load", initGsi);
     }
   // Re-initialise GIS when agbAccepted changes so the callback closure is fresh.
-  }, [agbAccepted, t]);
+  }, [agbAccepted]);
 
   async function handleLocalRegister(e: { preventDefault(): void }) {
     e.preventDefault();
     setError(null);
 
     if (!agbAccepted) {
-      setError(t("register.acceptRequired"));
+      setError({ key: "register.acceptRequired" });
       return;
     }
     if (password !== confirmPassword) {
-      setError(t("register.passwordMismatch"));
+      setError({ key: "register.passwordMismatch" });
       return;
     }
 
     setLocalPending(true);
     try {
       await authApi.register(email, password);
-      setSuccessEmail(email);
+      setRegistered({ email });
     } catch (err) {
-      setError(getApiErrorMessage(err, t));
+      setError({ error: err });
       setLocalPending(false);
     }
   }
 
-  if (successEmail) {
+  if (registered) {
     return (
       <main className="login-page">
         <LanguageSwitcher className="lang-switch--corner" />
@@ -112,7 +113,7 @@ function RegisterPage() {
           <p style={{ textAlign: "center", lineHeight: 1.6 }}>
             <Trans
               i18nKey="register.activationSent"
-              values={{ email: successEmail }}
+              values={{ email: registered.email ?? t("register.yourGoogleAccount") }}
               components={{ strong: <strong /> }}
             />
           </p>
@@ -150,7 +151,7 @@ function RegisterPage() {
       <LanguageSwitcher className="lang-switch--corner" />
       <div className="login-box">
         <h2>{t("register.title")}</h2>
-        {error && <div className="flash">{error}</div>}
+        {error && <div className="flash">{displayErrorMessage(error, t)}</div>}
 
         {/* AGB checkbox — shared gate for both paths */}
         <label style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", marginBottom: "1rem", cursor: "pointer" }}>

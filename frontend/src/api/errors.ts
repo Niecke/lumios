@@ -44,6 +44,14 @@ const CODES: Record<string, string> = {
   token_expired: "errors.tokenExpired",
 };
 
+// An error kept in component state: a translation key or an error from the API.
+// Translated at render time, so a language switch on the page updates the text.
+export type DisplayError = { key: string } | { error: unknown };
+
+export function displayErrorMessage(display: DisplayError, t: TFunction): string {
+  return "key" in display ? t(display.key) : getApiErrorMessage(display.error, t);
+}
+
 export function getApiErrorMessage(error: unknown, t: TFunction): string {
   const err = error as { message?: string; code?: string } | null | undefined;
   if (err?.code && CODES[err.code]) return t(CODES[err.code]);

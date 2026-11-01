@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { authApi, tokenStore, isGsiInitialized, markGsiInitialized, resetGsiInitialized } from "../api/auth";
 import { useTranslation } from "react-i18next";
 import { config } from "../config";
-import { getApiErrorMessage } from "../api/errors";
+import { displayErrorMessage, type DisplayError } from "../api/errors";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 
 // Minimal type declaration for the GIS library loaded via index.html
@@ -48,7 +48,7 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const { t } = useTranslation();
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayError | null>(null);
   const [pending, setPending] = useState(false);
   const [notActivated, setNotActivated] = useState(false);
   const [resending, setResending] = useState(false);
@@ -72,12 +72,12 @@ function LoginPage() {
           () => router.navigate({ to: "/", replace: true }),
           () => {
             tokenStore.clear();
-            setError(t("login.sessionInvalid"));
+            setError({ key: "login.sessionInvalid" });
             setPending(false);
           }
         ),
         () => {
-          setError(t("login.failed"));
+          setError({ key: "login.failed" });
           setPending(false);
         }
       );
@@ -86,7 +86,7 @@ function LoginPage() {
 
     if (err) {
       window.history.replaceState(null, "", "/login");
-      setError(err.replace(/_/g, " "));
+      setError({ error: new Error(err.replace(/_/g, " ")) });
     }
 
     if (tokenStore.get()) {
@@ -127,7 +127,7 @@ function LoginPage() {
       script?.addEventListener("load", initGsi);
       return () => script?.removeEventListener("load", initGsi);
     }
-  }, [router, t]);
+  }, [router]);
 
   async function handlePasswordLogin(e: { preventDefault(): void }) {
     e.preventDefault();
@@ -140,7 +140,7 @@ function LoginPage() {
       router.navigate({ to: "/", replace: true });
     } catch (err) {
       const message = (err as Error).message;
-      setError(getApiErrorMessage(err, t));
+      setError({ error: err });
       setNotActivated(/not yet activated/i.test(message));
       setLocalPending(false);
     }
@@ -152,7 +152,7 @@ function LoginPage() {
       await authApi.resendActivation({ email });
       setResendDone(true);
     } catch (err) {
-      setError(getApiErrorMessage(err, t));
+      setError({ error: err });
     } finally {
       setResending(false);
     }
@@ -163,7 +163,7 @@ function LoginPage() {
       <LanguageSwitcher className="lang-switch--corner" />
       <div className="login-box">
         <h2>Lumios</h2>
-        {error && <div className="flash">{error}</div>}
+        {error && <div className="flash">{displayErrorMessage(error, t)}</div>}
         {notActivated &&
           (resendDone ? (
             <p style={{ textAlign: "center", fontSize: "0.875rem" }}>

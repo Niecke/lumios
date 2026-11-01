@@ -7,7 +7,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
-import { getApiErrorMessage } from "../api/errors";
+import { displayErrorMessage, type DisplayError } from "../api/errors";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 
 export const Route = createFileRoute("/activate")({
@@ -20,13 +20,13 @@ function ActivatePage() {
   const { t } = useTranslation();
   const [state, setState] = useState<State>("pending");
   const [email, setEmail] = useState<string | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayError | null>(null);
   const [resending, setResending] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
-  const [resendError, setResendError] = useState<string | null>(null);
+  const [resendError, setResendError] = useState<DisplayError | null>(null);
   const [resendEmail, setResendEmail] = useState("");
 
-  // The token is single-use: run the activation once, not on every language change.
+  // The token is single-use: run the activation once, also under StrictMode.
   const started = useRef(false);
 
   useEffect(() => {
@@ -36,7 +36,7 @@ function ActivatePage() {
     const token = params.get("token") ?? "";
 
     if (!token) {
-      setErrorMsg(t("activate.noToken"));
+      setError({ key: "activate.noToken" });
       setState("error");
       return;
     }
@@ -51,7 +51,7 @@ function ActivatePage() {
         if ((err as any).code === "token_expired") {
           setState("expired");
         } else {
-          setErrorMsg(getApiErrorMessage(err, t));
+          setError({ error: err });
           setState("error");
         }
       });
@@ -64,7 +64,7 @@ function ActivatePage() {
     authApi
       .resendActivation({ email: resendEmail })
       .then(() => setResendSuccess(true))
-      .catch((err) => setResendError(getApiErrorMessage(err, t)))
+      .catch((err) => setResendError({ error: err }))
       .finally(() => setResending(false));
   };
 
@@ -96,7 +96,7 @@ function ActivatePage() {
         {(state === "expired" || state === "error") && (
           <>
             <h2>{state === "expired" ? t("activate.expiredTitle") : t("activate.failedTitle")}</h2>
-            {state === "error" && <div className="flash">{errorMsg ?? t("errors.unknown")}</div>}
+            {state === "error" && <div className="flash">{error ? displayErrorMessage(error, t) : t("errors.unknown")}</div>}
             <p style={{ textAlign: "center", lineHeight: 1.6, marginTop: "1rem" }}>
               {state === "expired" ? t("activate.expiredText") : t("activate.invalidText")}{" "}
               {t("activate.enterEmail")}
@@ -128,7 +128,7 @@ function ActivatePage() {
               </form>
             )}
             {resendError && (
-              <div className="flash" style={{ marginTop: "0.75rem" }}>{resendError}</div>
+              <div className="flash" style={{ marginTop: "0.75rem" }}>{displayErrorMessage(resendError, t)}</div>
             )}
             <Link
               to="/login"

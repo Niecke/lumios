@@ -182,7 +182,8 @@ test("me() outside a login never saves the local language to the account", async
   assert.equal(patches(calls).length, 0);
 });
 
-test("register and registerGoogle send the current language", async () => {
+test("register and registerGoogle send a language chosen in this browser", async () => {
+  local.set("lumios_locale", "en");
   await i18n.changeLanguage("en");
   const calls = mockAccount(null);
   await authApi.register("a@example.com", "pw");
@@ -190,17 +191,38 @@ test("register and registerGoogle send the current language", async () => {
   assert.deepEqual(calls.map((c) => c.body.language), ["en", "en"]);
 });
 
+test("register and registerGoogle send no language without a choice", async () => {
+  const calls = mockAccount(null);
+  await authApi.register("a@example.com", "pw");
+  await authApi.registerGoogle("credential");
+  assert.deepEqual(calls.map((c) => "language" in c.body), [false, false]);
+});
+
+test("the account language applies at login and page load, not on every me()", async () => {
+  mockAccount("de");
+  await authApi.me(); // page load
+  await i18n.changeLanguage("en");
+  await authApi.me(); // next route guard
+  assert.equal(i18n.language, "en");
+
+  await authApi.loginPassword("a@example.com", "pw");
+  assert.equal(i18n.language, "de");
+});
+
 test("a switcher outside the photographer's area only changes the local language", async () => {
   const calls = mockAccount("de");
+  await authApi.me(); // page load
+  calls.length = 0;
 
   chooseLanguage("en", false); // logged in, on a public gallery
 
   assert.equal(calls.length, 0);
   assert.equal(local.get("lumios_locale"), "en");
   assert.equal(i18n.language, "en");
-  // languageUnsaved stays untouched: the account language still applies on the next me().
+  // Navigating to the photographer's area keeps it, and the account stays unchanged.
   await authApi.me();
-  assert.equal(i18n.language, "de");
+  assert.equal(i18n.language, "en");
+  assert.equal(patches(calls).length, 0);
 });
 
 test("a switcher in the photographer's area saves to the account when logged in", async () => {

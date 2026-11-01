@@ -27,7 +27,6 @@ export interface UserInfo {
 
 import {
   applyAccountLocale,
-  currentLocale,
   setLocale,
   storedLocale,
   type Locale,
@@ -35,10 +34,11 @@ import {
 
 const TOKEN_KEY = "lumios_token";
 
-// Language update in flight, and whether the last local choice never reached
-// the account. me() waits for the former and must not override the latter.
+// Language update in flight: me() waits for it.
 let languageUpdate: Promise<unknown> | null = null;
-let languageUnsaved = false;
+// The account language applies once per page load and at login. After that a
+// language chosen in this browser stays, whichever switcher it came from.
+let accountLanguageApplied = false;
 
 // GIS must only be initialized once per session. This flag is reset on logout
 // so that a fresh initialize() call happens on the next login page visit.
@@ -65,7 +65,7 @@ function clearAuthSession() {
   tokenStore.clear();
   resetGsiInitialized();
   languageUpdate = null;
-  languageUnsaved = false;
+  accountLanguageApplied = false;
 }
 
 // Internal helper: fetch JSON from the API, attaching the Bearer token.
@@ -111,14 +111,17 @@ export const authApi = {
   me: async () => {
     if (languageUpdate) await languageUpdate.catch(() => {});
     const user = await apiFetch<UserInfo>("/api/v1/auth/me");
-    // A choice that failed to save stays in effect instead of reverting.
-    if (!languageUnsaved) applyAccountLocale(user.language);
+    if (!accountLanguageApplied) {
+      accountLanguageApplied = true;
+      applyAccountLocale(user.language);
+    }
     return user;
   },
 
   // me() right after a login: an account without a language takes the choice made
   // in this browser. No choice means no save: the account stays "no preference".
   meAfterLogin: async () => {
+    accountLanguageApplied = false;
     const user = await authApi.me();
     const language = storedLocale();
     if (user.language !== null || language === null) return user;
@@ -128,33 +131,28 @@ export const authApi = {
 
   // Store the UI language on the account (kept across devices).
   updateMe: (data: { language: Locale }) => {
-    languageUnsaved = true;
+    accountLanguageApplied = true; // this choice is newer than the account's value
     const request = apiFetch<UserInfo>("/api/v1/auth/me", {
       method: "PATCH",
       body: JSON.stringify(data),
     });
-    const tracked = request.then(
-      () => {
-        if (languageUpdate === tracked) languageUnsaved = false;
-      },
-      () => {},
-    );
-    languageUpdate = tracked;
+    languageUpdate = request;
     return request;
   },
 
-  // Register a new local account (agb_accepted must be true).
+  // Register a new local account (agb_accepted must be true). The language goes
+  // along only if one was chosen in this browser: no choice, no account preference.
   register: (email: string, password: string) =>
     apiFetch<{ ok: boolean }>("/api/v1/auth/register", {
       method: "POST",
-      body: JSON.stringify({ email, password, agb_accepted: true, language: currentLocale() }),
+      body: JSON.stringify({ email, password, agb_accepted: true, language: storedLocale() ?? undefined }),
     }),
 
   // Register a new Google account (agb_accepted must be true).
   registerGoogle: (credential: string) =>
     apiFetch<{ ok: boolean }>("/api/v1/auth/google/register", {
       method: "POST",
-      body: JSON.stringify({ credential, agb_accepted: true, language: currentLocale() }),
+      body: JSON.stringify({ credential, agb_accepted: true, language: storedLocale() ?? undefined }),
     }),
 
   // Activate an account using the token from the activation email.

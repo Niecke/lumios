@@ -15,7 +15,7 @@ Object.defineProperty(globalThis, "navigator", { value: { language: "en-US" }, c
 
 const mod = await import("../src/i18n/index.ts");
 const { default: i18n, detectLocale, setLocale, formatBytes, formatDate, formatTimeAgo } = mod;
-const { getApiErrorMessage } = await import("../src/api/errors.ts");
+const { displayErrorMessage, getApiErrorMessage } = await import("../src/api/errors.ts");
 const { authApi, tokenStore } = await import("../src/api/auth.ts");
 
 const de = JSON.parse(readFileSync("src/i18n/locales/de.json", "utf8"));
@@ -81,8 +81,8 @@ test("every key used in the source exists in the message files", () => {
   const missing: string[] = [];
   for (const file of files) {
     const src = readFileSync(file, "utf8");
-    for (const m of src.matchAll(/\bt\(\s*"([A-Za-z0-9_.]+)"|i18nKey="([^"]+)"|"(errors\.[A-Za-z]+)"/g)) {
-      const key = m[1] ?? m[2] ?? m[3];
+    for (const m of src.matchAll(/\bt\(\s*"([A-Za-z0-9_.]+)"|i18nKey="([^"]+)"|"(errors\.[A-Za-z]+)"|\bkey: "([A-Za-z0-9_.]+)"/g)) {
+      const key = m[1] ?? m[2] ?? m[3] ?? m[4];
       if (!has(key)) missing.push(`${file}: ${key}`);
     }
     // keys built from a template literal: check the prefix has entries
@@ -120,6 +120,25 @@ test("API error messages are translated, unknown ones pass through", async () =>
   await i18n.changeLanguage("en");
   assert.equal(getApiErrorMessage(err("Library not found"), t), "Library not found");
   assert.equal(getApiErrorMessage(err("name must be 255 characters or fewer"), t), "Must be 255 characters or fewer");
+});
+
+test("an error kept in state follows a language switch", async () => {
+  const t = i18n.t.bind(i18n);
+  const fromKey = { key: "register.passwordMismatch" };
+  const fromApi = { error: new Error("Library not found") };
+  const german = displayErrorMessage(fromKey, t);
+  assert.equal(displayErrorMessage(fromApi, t), "Galerie nicht gefunden");
+  await i18n.changeLanguage("en");
+  assert.notEqual(displayErrorMessage(fromKey, t), german);
+  assert.equal(displayErrorMessage(fromApi, t), "Library not found");
+});
+
+test("the auth pages keep no translated text in state, and t never re-runs their effects", () => {
+  for (const page of ["login", "register", "activate"]) {
+    const src = readFileSync(`src/routes/${page}.tsx`, "utf8");
+    assert.doesNotMatch(src, /\bset[A-Z]\w*\(\s*(t\(|getApiErrorMessage\()/, page);
+    assert.doesNotMatch(src, /\}, \[[^\]]*\bt\b[^\]]*\]\);/, page);
+  }
 });
 
 test("relative times and notification texts are localized", async () => {
