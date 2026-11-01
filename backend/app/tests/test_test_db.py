@@ -104,27 +104,73 @@ def test_ensure_test_database_exists_unreachable_server(monkeypatch):
         conftest._ensure_test_database_exists()
 
 
-def test_cleanup_script_removes_orphan_test_databases():
+def _run_cleanup(prefix, *args, stdin=""):
+    env = dict(os.environ, TEST_DB_CLEANUP_PREFIX=prefix)
+    return subprocess.run(
+        [SCRIPT, "cleanup", *args],
+        capture_output=True,
+        text=True,
+        input=stdin,
+        env=env,
+        cwd=os.path.dirname(SCRIPT),
+    )
+
+
+@pytest.fixture
+def cleanup_env():
+    """Throwaway databases under a unique prefix; the script is limited to that prefix.
+
+    No real worktree can have this prefix, and cleanup never looks at other databases,
+    so a normal test run only ever drops databases it created itself.
+    """
     if shutil.which("podman") is None and shutil.which("docker") is None:
         pytest.skip("no container runtime")
     if subprocess.run([SCRIPT, "status"], capture_output=True).returncode != 0:
         pytest.skip("test database container is not running")
+    prefix = f"lumios_test_zz{uuid.uuid4().hex[:8]}_"
+    names = []
 
-    orphan = f"lumios_test_orphan_{uuid.uuid4().hex[:8]}"
-    keep = conftest._default_test_db_name()
-    with psycopg.connect(dbname="postgres", autocommit=True, **_params()) as conn:
-        conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(orphan)))
-    try:
-        # the current worktree's database must exist so we can check it survives
-        os.environ.setdefault("POSTGRES_DB", keep)
-        conftest._ensure_test_database_exists()
-        result = subprocess.run(
-            [SCRIPT, "cleanup"], capture_output=True, text=True, cwd=os.path.dirname(SCRIPT)
-        )
-        assert result.returncode == 0, result.stderr
-        assert f"dropped {orphan}" in result.stdout
-        assert not _database_exists(orphan)
-        assert _database_exists(keep)
-        assert _database_exists("lumios_test")
-    finally:
-        _drop(orphan)
+    def create(suffix):
+        name = prefix + suffix
+        with psycopg.connect(dbname="postgres", autocommit=True, **_params()) as conn:
+            conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+        names.append(name)
+        return name
+
+    yield prefix, create
+    for name in names:
+        _drop(name)
+
+
+def test_cleanup_script_drops_only_prefixed_orphans_with_yes(cleanup_env):
+    prefix, create = cleanup_env
+    orphan = create("orphan")
+    other = conftest._default_test_db_name()
+    conftest._ensure_test_database_exists()
+    result = _run_cleanup(prefix, "-y")
+    assert result.returncode == 0, result.stderr
+    assert f"dropped {orphan}" in result.stdout
+    assert not _database_exists(orphan)
+    assert _database_exists(other)
+    assert _database_exists("lumios_test")
+
+
+def test_cleanup_script_asks_for_confirmation(cleanup_env):
+    prefix, create = cleanup_env
+    orphan = create("orphan")
+    declined = _run_cleanup(prefix, stdin="n\n")
+    assert declined.returncode != 0
+    assert orphan in declined.stdout
+    assert _database_exists(orphan)
+    no_input = _run_cleanup(prefix)
+    assert no_input.returncode != 0
+    assert _database_exists(orphan)
+    accepted = _run_cleanup(prefix, stdin="y\n")
+    assert accepted.returncode == 0, accepted.stderr
+    assert not _database_exists(orphan)
+
+
+def test_cleanup_script_rejects_foreign_prefix():
+    result = _run_cleanup("production_", "-y")
+    assert result.returncode != 0
+    assert "lumios_test_" in result.stderr

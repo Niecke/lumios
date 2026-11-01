@@ -6,9 +6,12 @@
 # `lumios_test` for a checkout directory called `lumios`, else `lumios_test_<dir name>`
 # (lowercased, other characters become `_`), created on the first run. An explicit
 # POSTGRES_DB wins; it must end in `_test` or start with `lumios_test_`.
-# `cleanup` drops the `lumios_test_*` databases whose worktree no longer exists
-# (run it from inside any worktree of the repository); `lumios_test` is kept.
-# Env:   POSTGRES_TEST_PORT (default 5432), POSTGRES_PASSWORD (default test_password)
+# `cleanup [-y]` lists the `lumios_test_*` databases that belong to no existing worktree
+# of THIS repository (run it from inside any worktree) and asks before dropping them,
+# unless -y is given. `lumios_test` is kept. Databases of other clones and explicit
+# `lumios_test_<x>` POSTGRES_DB overrides look orphaned and are listed too.
+# Env:   POSTGRES_TEST_PORT (default 5432), POSTGRES_PASSWORD (default test_password),
+#        TEST_DB_CLEANUP_PREFIX (cleanup only; default `lumios_test_`, must start with it)
 set -euo pipefail
 
 NAME="lumios-postgres-test"
@@ -85,7 +88,16 @@ case "${1:-}" in
           ;;
       esac
     done < <(git worktree list --porcelain)
-    dropped=0
+    prefix="${TEST_DB_CLEANUP_PREFIX:-lumios_test_}"
+    case "$prefix" in
+      lumios_test_*) ;;
+      *) echo "error: TEST_DB_CLEANUP_PREFIX must start with lumios_test_" >&2; exit 1 ;;
+    esac
+    case "$prefix" in
+      *[!a-z0-9_]*) echo "error: TEST_DB_CLEANUP_PREFIX may contain only a-z, 0-9 and _" >&2; exit 1 ;;
+    esac
+    like_prefix="$(printf '%s' "$prefix" | sed 's/_/\\_/g')"
+    orphans=()
     while IFS= read -r db; do
       [ -n "$db" ] || continue
       [ "$db" = "lumios_test" ] && continue
@@ -93,16 +105,29 @@ case "${1:-}" in
       for a in $active; do
         [ "$(printf '%s' "$a" | cut -c1-63)" = "$db" ] && keep=1
       done
-      if [ "$keep" = 0 ]; then
-        psql_admin -c "DROP DATABASE \"$db\" WITH (FORCE)" >/dev/null
-        echo "dropped $db"
-        dropped=$((dropped + 1))
-      fi
-    done < <(psql_admin -c "SELECT datname FROM pg_database WHERE datname LIKE 'lumios\\_test\\_%' ORDER BY datname")
-    echo "$dropped test database(s) dropped"
+      [ "$keep" = 1 ] || orphans+=("$db")
+    done < <(psql_admin -c "SELECT datname FROM pg_database WHERE datname LIKE '${like_prefix}%' ORDER BY datname")
+    if [ "${#orphans[@]}" = 0 ]; then
+      echo "0 test database(s) dropped"
+      exit 0
+    fi
+    echo "These databases belong to no worktree of this repository and would be dropped:"
+    printf '  %s\n' "${orphans[@]}"
+    if [ "${2:-}" != "-y" ]; then
+      read -r -p "Drop them? [y/N] " answer || answer=""
+      case "$answer" in
+        y|Y|yes) ;;
+        *) echo "aborted, nothing dropped"; exit 1 ;;
+      esac
+    fi
+    for db in "${orphans[@]}"; do
+      psql_admin -c "DROP DATABASE \"$db\" WITH (FORCE)" >/dev/null
+      echo "dropped $db"
+    done
+    echo "${#orphans[@]} test database(s) dropped"
     ;;
   *)
-    echo "usage: $0 start|stop|status|cleanup" >&2
+    echo "usage: $0 start|stop|status|cleanup [-y]" >&2
     exit 2
     ;;
 esac
