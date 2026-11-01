@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import os
 import re
 import subprocess
@@ -25,6 +26,8 @@ from services.redis_client import cache_delete, cache_delete_pattern, cache_get,
 
 if TYPE_CHECKING:
     from models import Library, User
+
+logger = logging.getLogger(__name__)
 
 THUMB_SIZE = 600
 
@@ -157,6 +160,10 @@ def process_video(video_uuid: str) -> None:
     ).scalar_one_or_none()
     if video is None:
         raise ValueError(f"Video {video_uuid} not found")
+
+    if video.deleted_at is not None:
+        logger.info("Video %s is deleted; skipping processing", video_uuid)
+        return
 
     if video.processing_status == VideoProcessingStatus.ready:
         return

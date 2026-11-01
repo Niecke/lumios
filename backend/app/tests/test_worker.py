@@ -174,6 +174,21 @@ class TestExecution:
         probe.assert_not_called()
         assert _status(video) == VideoProcessingStatus.ready
 
+    def test_deleted_video_is_skipped(self, video, storage, probe):
+        finalize_video_upload(video)
+        reloaded = _reload(video)
+        reloaded.deleted_at = datetime.now(timezone.utc)
+        db.session.commit()
+        storage.reset_mock()
+
+        _run_worker("video")
+
+        assert _jobs()[0]["status"] == "succeeded"
+        assert _status(video) == VideoProcessingStatus.processing
+        storage.iter_object_chunks.assert_not_called()
+        storage.upload_fileobj.assert_not_called()
+        probe.assert_not_called()
+
     def test_job_survives_without_worker(self, video, storage, probe):
         """Nothing runs the job until a worker starts; it stays in the database."""
         finalize_video_upload(video)
