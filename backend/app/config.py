@@ -110,6 +110,18 @@ S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY", "").strip()
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY", "").strip()
 S3_BUCKET = os.getenv("S3_BUCKET", "lumios")
 
+# Off-site backups (GCS over its S3-compatible XML API), listed read-only for the
+# admin System page. Use read-only HMAC keys; empty bucket or keys = not configured.
+BACKUP_GCS_ENDPOINT = os.getenv("BACKUP_GCS_ENDPOINT", "https://storage.googleapis.com")
+BACKUP_DATABASE_BUCKET = os.getenv("BACKUP_DATABASE_BUCKET", "").strip()
+BACKUP_DATABASE_ACCESS_KEY = os.getenv("BACKUP_DATABASE_ACCESS_KEY", "").strip()
+BACKUP_DATABASE_SECRET_KEY = os.getenv("BACKUP_DATABASE_SECRET_KEY", "").strip()
+BACKUP_PHOTOS_BUCKET = os.getenv("BACKUP_PHOTOS_BUCKET", "").strip()
+BACKUP_PHOTOS_ACCESS_KEY = os.getenv("BACKUP_PHOTOS_ACCESS_KEY", "").strip()
+BACKUP_PHOTOS_SECRET_KEY = os.getenv("BACKUP_PHOTOS_SECRET_KEY", "").strip()
+BACKUP_OVERDUE_SECONDS = int(os.getenv("BACKUP_OVERDUE_SECONDS", str(36 * 3600)))
+BACKUP_CACHE_TTL = int(os.getenv("BACKUP_CACHE_TTL", "300"))
+
 # OpenTelemetry tracing: on when an OTLP endpoint is set (e.g. Jaeger), off otherwise
 OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "lumios-backend")
 OTEL_SERVICE_VERSION = os.getenv("OTEL_SERVICE_VERSION", GIT_HASH)
