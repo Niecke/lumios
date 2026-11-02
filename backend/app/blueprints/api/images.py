@@ -114,16 +114,16 @@ def list_images(library_id: int):
         if media_type == "photo":
             media_dicts.append(
                 obj.to_dict(
-                    original_url=storage.get_presigned_url(obj.storage_path("originals")),
-                    preview_url=storage.get_presigned_url(obj.storage_path("previews")),
-                    thumb_url=storage.get_presigned_url(obj.storage_path("thumbs")),
+                    original_url=storage.get_presigned_url(obj.storage_path("originals", user_id=user_id)),
+                    preview_url=storage.get_presigned_url(obj.storage_path("previews", user_id=user_id)),
+                    thumb_url=storage.get_presigned_url(obj.storage_path("thumbs", user_id=user_id)),
                 )
             )
         else:
             orig_url = thumb_url = None
             if obj.processing_status == VideoProcessingStatus.ready:
-                orig_url = storage.get_presigned_url(obj.storage_path("originals"))
-                thumb_url = storage.get_presigned_url(obj.storage_path("thumbs"))
+                orig_url = storage.get_presigned_url(obj.storage_path("originals", user_id=user_id))
+                thumb_url = storage.get_presigned_url(obj.storage_path("thumbs", user_id=user_id))
             media_dicts.append(obj.to_dict(original_url=orig_url, thumb_url=thumb_url))
 
     return jsonify(
@@ -185,9 +185,9 @@ def upload_image(library_id: int):
         current_app.logger.exception("Object storage upload failed for library=%s", library_id)
         return jsonify({"error": "Storage error. Please try again."}), 502
 
-    original_url = storage.get_presigned_url(image.storage_path("originals"))
-    preview_url = storage.get_presigned_url(image.storage_path("previews"))
-    thumb_url = storage.get_presigned_url(image.storage_path("thumbs"))
+    original_url = storage.get_presigned_url(image.storage_path("originals", user_id=user_id))
+    preview_url = storage.get_presigned_url(image.storage_path("previews", user_id=user_id))
+    thumb_url = storage.get_presigned_url(image.storage_path("thumbs", user_id=user_id))
     return (
         jsonify(
             image.to_dict(

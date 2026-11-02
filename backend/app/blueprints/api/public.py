@@ -160,12 +160,12 @@ def _public_media_page(library: Library, page: int, page_size: int) -> tuple[lis
                     "media_type": "photo",
                     "customer_state": img.customer_state.value,
                     "preview_url": storage.get_presigned_url(
-                        img.storage_path(preview_variant)
+                        img.storage_path(preview_variant, user_id=library.user_id)
                     ),
-                    "thumb_url": storage.get_presigned_url(img.storage_path("thumbs")),
+                    "thumb_url": storage.get_presigned_url(img.storage_path("thumbs", user_id=library.user_id)),
                     "download_url": (
                         storage.get_presigned_download_url(
-                            img.storage_path(preview_variant), img.original_filename
+                            img.storage_path(preview_variant, user_id=library.user_id), img.original_filename
                         )
                         if library.download_enabled
                         else None
@@ -178,8 +178,8 @@ def _public_media_page(library: Library, page: int, page_size: int) -> tuple[lis
                 continue
             orig_url = thumb_url = None
             if vid.processing_status == VideoProcessingStatus.ready:
-                orig_url = storage.get_presigned_url(vid.storage_path("originals"))
-                thumb_url = storage.get_presigned_url(vid.storage_path("thumbs"))
+                orig_url = storage.get_presigned_url(vid.storage_path("originals", user_id=library.user_id))
+                thumb_url = storage.get_presigned_url(vid.storage_path("thumbs", user_id=library.user_id))
             media_dicts.append(
                 {
                     "uuid": vid.uuid,
@@ -195,7 +195,7 @@ def _public_media_page(library: Library, page: int, page_size: int) -> tuple[lis
                     "thumb_url": thumb_url,
                     "download_url": (
                         storage.get_presigned_download_url(
-                            vid.storage_path("originals"), vid.original_filename
+                            vid.storage_path("originals", user_id=library.user_id), vid.original_filename
                         )
                         if library.download_enabled and orig_url
                         else None
@@ -452,7 +452,7 @@ def download_image(library_uuid: str, image_uuid: str):
 
     variant = "originals" if library.use_original_as_preview else "previews"
     download_url = storage.get_presigned_download_url(
-        image.storage_path(variant), image.original_filename
+        image.storage_path(variant, user_id=library.user_id), image.original_filename
     )
 
     write_audit_log(
@@ -495,7 +495,7 @@ def download_video(library_uuid: str, video_uuid: str):
         return jsonify({"error": "Video not found"}), 404
 
     download_url = storage.get_presigned_download_url(
-        video.storage_path("originals"), video.original_filename
+        video.storage_path("originals", user_id=library.user_id), video.original_filename
     )
 
     write_audit_log(
@@ -555,7 +555,7 @@ def download_library_zip(library_uuid: str):
     snapshots = []
     for img in images:
         snapshots.append(
-            (img.original_filename, img.storage_path(variant), img.created_at)
+            (img.original_filename, img.storage_path(variant, user_id=library.user_id), img.created_at)
         )
         write_audit_log(
             AuditLogType.picture_downloaded,
@@ -564,7 +564,7 @@ def download_library_zip(library_uuid: str):
         )
     for vid in videos:
         snapshots.append(
-            (vid.original_filename, vid.storage_path("originals"), vid.created_at)
+            (vid.original_filename, vid.storage_path("originals", user_id=library.user_id), vid.created_at)
         )
         write_audit_log(
             AuditLogType.video_downloaded,

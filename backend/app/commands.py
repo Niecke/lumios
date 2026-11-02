@@ -351,7 +351,7 @@ def _purge_library(library: Library) -> None:
 
     for image in images:
         for variant in ("originals", "previews", "thumbs"):
-            key = image.storage_path(variant)
+            key = image.storage_path(variant, user_id=library.user_id)
             try:
                 storage.delete_object(key)
             except Exception as exc:
