@@ -1504,6 +1504,20 @@ class TestAdminWorkers:
         assert f"<td>{recent}</td>" in html
         assert f"<td>{old}</td>" not in html
 
+    def test_workers_finished_excludes_job_without_succeeded_event(self, client, admin_user):
+        from sqlalchemy import text
+
+        orphan = _add_job(status="succeeded", video_uuid="orphan")
+        db.session.execute(
+            text("DELETE FROM procrastinate_events WHERE job_id = :id"), {"id": orphan}
+        )
+        db.session.commit()
+        login_admin(client, admin_user)
+
+        html = html_text(client.get("/admin/workers")).split('id="finished-jobs-table"')[1]
+
+        assert f"<td>{orphan}</td>" not in html
+
     def test_workers_finished_capped_at_limit(self, client, admin_user):
         from services.workers import FINISHED_JOBS_LIMIT, _finished_jobs
 

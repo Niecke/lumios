@@ -1,7 +1,7 @@
 """add procrastinate jobs succeeded index
 
 Revision ID: f8a8ddabb7bd
-Revises: 45dc41b397a3
+Revises: e13eba907ad1
 Create Date: 2026-11-02 15:35:52.263088
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'f8a8ddabb7bd'
-down_revision = '45dc41b397a3'
+down_revision = 'e13eba907ad1'
 branch_labels = None
 depends_on = None
 

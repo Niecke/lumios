@@ -198,7 +198,7 @@ def _finished_jobs(
             "(SELECT max(e.at) FROM procrastinate_events e "
             " WHERE e.job_id = j.id AND e.type = 'succeeded') AS finished_at "
             f"FROM procrastinate_jobs j WHERE {' AND '.join(where)}"
-            ") f WHERE f.finished_at IS NULL OR f.finished_at >= :cutoff "
+            ") f WHERE f.finished_at >= :cutoff "
             "ORDER BY f.id DESC LIMIT :limit"
         ),
         params,
