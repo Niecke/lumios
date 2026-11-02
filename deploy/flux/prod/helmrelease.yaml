@@ -43,9 +43,9 @@ spec:
       # Two pods so a rolling update never takes the API down. Migrations run
       # once per release in the migrate hook Job, so they cannot race.
       replicas: 2
-      # Stays off until staging has taken a real video to "ready"; the steps
-      # are under "Video uploads" in deploy/README.md.
-      videoUploadsEnabled: false
+      # On from chart 0.5.0, after staging took a real video to "ready". Needs
+      # the CORS rule on the lumios bucket, see "Video uploads" in deploy/README.md.
+      videoUploadsEnabled: true
       image:
         # Written by release.yml from a vX.Y.Z tag — a merge to main never
         # moves production. Rolling back is reverting that Deploy commit.
