@@ -40,34 +40,33 @@ _GOOGLE_JWKS_URI = "https://www.googleapis.com/oauth2/v3/certs"
 _google_jwks = PyJWKClient(_GOOGLE_JWKS_URI, cache_keys=True, timeout=5)
 
 
-@auth_api.route("/me")
-@require_api_auth
-@require_api_role("photographer")
-def me():
-    payload = g.token_payload
-    user_id = int(payload["sub"])
-    user = db.session.execute(select(User).filter_by(id=user_id)).scalar_one_or_none()
+SUPPORTED_LANGUAGES = ("de", "en")
 
-    cache_key = f"user:storage:{user_id}"
+
+def _user_payload(user: User) -> dict:
+    """The /auth/me response for the authenticated user."""
+    payload = g.token_payload
+    cache_key = f"user:storage:{user.id}"
     storage_used = cache_get(cache_key)
     if storage_used is None:
         storage_used = db.session.execute(
             select(db.func.coalesce(db.func.sum(Image.size), 0))
             .join(Image.library)
             .where(
-                Library.user_id == user_id,
+                Library.user_id == user.id,
                 Image.deleted_at.is_(None),
                 Library.deleted_at.is_(None),
             )
         ).scalar()
         cache_set(cache_key, storage_used, ttl=300)
 
-    limits = user.effective_limits if user else {}
+    limits = user.effective_limits
     result = {
         "email": payload["email"],
-        "created_at": user.created_at.isoformat() if user else None,
-        "account_type": user.account_type if user else None,
-        "subscription": user.subscription.value if user else None,
+        "created_at": user.created_at.isoformat(),
+        "account_type": user.account_type,
+        "subscription": user.subscription.value,
+        "language": user.language,
         "storage_used_bytes": storage_used,
         "storage_limit_bytes": limits.get("max_storage_bytes"),
         "max_libraries": limits.get("max_libraries"),
@@ -77,7 +76,31 @@ def me():
         result["name"] = payload["name"]
     if payload.get("picture"):
         result["picture"] = payload["picture"]
-    return jsonify(result)
+    return result
+
+
+@auth_api.route("/me")
+@require_api_auth
+@require_api_role("photographer")
+def me():
+    user = db.session.get(User, int(g.token_payload["sub"]))
+    return jsonify(_user_payload(user))
+
+
+@auth_api.route("/me", methods=["PATCH"])
+@require_api_auth
+@require_api_role("photographer")
+def update_me():
+    """Update the current user's preferences (currently only the UI language)."""
+    data = request.get_json(silent=True)
+    language = data.get("language") if isinstance(data, dict) else None
+    if language not in SUPPORTED_LANGUAGES:
+        return jsonify({"error": "Invalid or missing language"}), 400
+
+    user = db.session.get(User, int(g.token_payload["sub"]))
+    user.language = language
+    db.session.commit()
+    return jsonify(_user_payload(user))
 
 
 @auth_api.route("/google/verify", methods=["POST"])
@@ -338,9 +361,13 @@ def _check_registration_open() -> tuple[bool, str]:
 
 
 def _create_pending_user(
-    email: str, account_type: str, auth_string: str | None
+    email: str, account_type: str, auth_string: str | None, language: object = None
 ) -> User:
-    """Create an inactive, activation-pending user and return it (not yet committed)."""
+    """Create an inactive, activation-pending user and return it (not yet committed).
+
+    language is the client's current UI language; anything unsupported counts as
+    no preference, a bad value must not stop a registration.
+    """
     activation_token = secrets.token_urlsafe(32)
     photographer_role = db.session.execute(
         select(Role).where(Role.name == "photographer")
@@ -355,6 +382,7 @@ def _create_pending_user(
         auth_string=auth_string,
         agb_accepted_at=datetime.now(timezone.utc),
         agb_version=CURRENT_AGB_VERSION,
+        language=language if language in SUPPORTED_LANGUAGES else None,
     )
     if photographer_role:
         user.roles = [photographer_role]
@@ -400,7 +428,7 @@ def register():
     ).scalar_one_or_none():
         return jsonify({"error": "An account with this email already exists"}), 409
 
-    user = _create_pending_user(email, "local", None)
+    user = _create_pending_user(email, "local", None, data.get("language"))
     try:
         user.set_password(password)
     except ValueError as ex:
@@ -481,7 +509,7 @@ def google_register():
             409,
         )
 
-    user = _create_pending_user(email, "google", google_sub)
+    user = _create_pending_user(email, "google", google_sub, data.get("language"))
     db.session.commit()
     cache_delete("registration:status")
     notify_activation_email(user.id)

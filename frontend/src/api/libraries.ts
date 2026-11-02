@@ -41,9 +41,11 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const data = contentType.includes("application/json") ? await res.json() : null;
 
   if (!res.ok) {
-    throw new Error(
+    const err = new Error(
       (data as { error?: string } | null)?.error ?? `Request failed (${res.status})`
     );
+    (err as any).status = res.status;
+    throw err;
   }
   return data as T;
 }

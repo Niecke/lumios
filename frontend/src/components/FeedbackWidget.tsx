@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { getApiErrorMessage } from "../api/errors";
 import { tokenStore } from "../api/auth";
 import { feedbackApi } from "../api/feedback";
 
@@ -12,6 +14,7 @@ const EMOJI_MAP: Record<number, string> = {
 };
 
 export function FeedbackWidget() {
+  const { t } = useTranslation();
   const isAuthenticated = tokenStore.get() !== null;
 
   const [open, setOpen] = useState(false);
@@ -46,22 +49,22 @@ export function FeedbackWidget() {
       <button
         className="feedback-fab"
         onClick={() => setOpen(true)}
-        title="Give feedback"
-        aria-label="Give feedback"
+        title={t("feedback.open")}
+        aria-label={t("feedback.open")}
       >
         <span className="material-icons">feedback</span>
       </button>
 
       {open && (
         <div className="feedback-overlay" onClick={handleBackdropClick}>
-          <div className="feedback-card" role="dialog" aria-modal="true" aria-label="Feedback form">
+          <div className="feedback-card" role="dialog" aria-modal="true" aria-label={t("feedback.formLabel")}>
             <h2 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 500 }}>
-              Share Feedback
+              {t("feedback.title")}
             </h2>
 
             <div>
               <p style={{ margin: "0 0 0.5rem", fontSize: "0.85rem", color: "var(--clr-on-surface-var)" }}>
-                How are you finding Lumios?
+                {t("feedback.question")}
               </p>
               <div className="feedback-rating">
                 {([1, 2, 3, 4, 5] as const).map((n) => (
@@ -69,7 +72,7 @@ export function FeedbackWidget() {
                     key={n}
                     className={`feedback-emoji${rating === n ? " feedback-emoji--selected" : ""}`}
                     onClick={() => setRating(n)}
-                    aria-label={`Rating ${n}`}
+                    aria-label={t("feedback.rating", { n })}
                     aria-pressed={rating === n}
                   >
                     {EMOJI_MAP[n]}
@@ -80,9 +83,9 @@ export function FeedbackWidget() {
 
             <div className="text-field">
               <label htmlFor="feedback-body">
-                Tell us more{" "}
+                {t("feedback.more")}{" "}
                 <span style={{ color: "var(--clr-on-surface-var)", fontWeight: 400 }}>
-                  (optional)
+                  {t("common.optional")}
                 </span>
               </label>
               <textarea
@@ -91,7 +94,7 @@ export function FeedbackWidget() {
                 maxLength={2000}
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                placeholder="What could be better? What do you love?"
+                placeholder={t("feedback.placeholder")}
               />
               <div style={{ fontSize: "0.75rem", color: "var(--clr-on-surface-var)", textAlign: "right", marginTop: "0.25rem" }}>
                 {body.length}/2000
@@ -100,7 +103,7 @@ export function FeedbackWidget() {
 
             {submit.isError && (
               <div className="alert alert--error">
-                {(submit.error as Error).message}
+                {getApiErrorMessage(submit.error, t)}
               </div>
             )}
 
@@ -110,14 +113,14 @@ export function FeedbackWidget() {
                 onClick={() => setOpen(false)}
                 disabled={submit.isPending}
               >
-                Cancel
+                {t("common.cancel")}
               </button>
               <button
                 className="btn btn-contained"
                 disabled={!rating || submit.isPending}
                 onClick={() => submit.mutate()}
               >
-                {submit.isPending ? "Sending…" : "Submit"}
+                {submit.isPending ? t("common.sending") : t("common.submit")}
               </button>
             </div>
           </div>
@@ -126,7 +129,7 @@ export function FeedbackWidget() {
 
       {submitted && (
         <div className="feedback-toast" role="status">
-          Thanks for your feedback!
+          {t("feedback.thanks")}
         </div>
       )}
     </>

@@ -12,7 +12,7 @@ from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone, timedelta
 import jwt as pyjwt
 
-from models import db, User, Role
+from models import db, User, Role, SubscriptionType
 from sqlalchemy import select
 from services.token import create_token, decode_token
 
@@ -69,6 +69,72 @@ def google_user(photographer_role):
     db.session.add(user)
     db.session.commit()
     return user
+
+
+class TestApiMeLanguage:
+    def test_me_language_is_null_without_preference(self, client, photographer_user):
+        res = client.get(f"{BASE}/me", headers=auth_header(make_token(photographer_user)))
+        assert res.status_code == 200
+        assert res.get_json()["language"] is None
+
+    def test_patch_me_updates_language(self, client, photographer_user):
+        headers = auth_header(make_token(photographer_user))
+        res = client.patch(f"{BASE}/me", json={"language": "en"}, headers=headers)
+        assert res.status_code == 200
+        assert res.get_json()["language"] == "en"
+        db.session.refresh(photographer_user)
+        assert photographer_user.language == "en"
+        assert client.get(f"{BASE}/me", headers=headers).get_json()["language"] == "en"
+
+    def test_patch_me_returns_the_me_resource(self, client, photographer_user):
+        headers = auth_header(make_token(photographer_user))
+        res = client.patch(f"{BASE}/me", json={"language": "en"}, headers=headers)
+        assert res.get_json() == client.get(f"{BASE}/me", headers=headers).get_json()
+
+    def test_patch_me_ignores_extra_keys(self, client, photographer_user):
+        headers = auth_header(make_token(photographer_user))
+        res = client.patch(
+            f"{BASE}/me",
+            json={"language": "en", "email": "evil@test.com", "subscription": "premium"},
+            headers=headers,
+        )
+        assert res.status_code == 200
+        db.session.refresh(photographer_user)
+        assert photographer_user.language == "en"
+        assert photographer_user.email == "photo@test.com"
+        assert photographer_user.subscription == SubscriptionType.free
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"language": "fr"},
+            {"language": ""},
+            {},
+            {"language": 1},
+            {"language": []},
+            {"language": None},
+            [1],
+            "en",
+            None,
+        ],
+    )
+    def test_patch_me_invalid_language(self, client, photographer_user, body):
+        headers = auth_header(make_token(photographer_user))
+        res = client.patch(f"{BASE}/me", json=body, headers=headers)
+        assert res.status_code == 400
+        db.session.refresh(photographer_user)
+        assert photographer_user.language is None
+
+    def test_patch_me_unauthorized(self, client):
+        res = client.patch(f"{BASE}/me", json={"language": "en"})
+        assert res.status_code == 401
+
+    def test_patch_me_requires_photographer_role(self, client, admin_user):
+        headers = auth_header(make_token(admin_user))
+        res = client.patch(f"{BASE}/me", json={"language": "en"}, headers=headers)
+        assert res.status_code == 403
+        db.session.refresh(admin_user)
+        assert admin_user.language is None
 
 
 # ---------------------------------------------------------------------------
@@ -831,6 +897,30 @@ class TestRegisterAdminNotification:
             select(User).where(User.email == "newuser@test.com")
         ).scalar_one()
         mock_activation.assert_called_once_with(user.id)
+        assert user.language is None
+
+    @pytest.mark.parametrize(
+        "sent, stored", [("en", "en"), ("de", "de"), ("fr", None), ([], None)]
+    )
+    @patch("blueprints.api.auth.notify_admin_new_account")
+    @patch("blueprints.api.auth.notify_activation_email")
+    def test_register_stores_supported_language(
+        self, _activation, _admin, client, photographer_role, sent, stored
+    ):
+        res = client.post(
+            self.ENDPOINT,
+            json={
+                "email": "lang@test.com",
+                "password": "SecurePass123!",
+                "agb_accepted": True,
+                "language": sent,
+            },
+        )
+        assert res.status_code == 201
+        user = db.session.execute(
+            select(User).where(User.email == "lang@test.com")
+        ).scalar_one()
+        assert user.language == stored
 
     def test_register_succeeds_when_queue_is_down(self, client, photographer_role):
         import worker
@@ -894,11 +984,19 @@ class TestGoogleRegisterAdminNotification:
             ):
                 res = client.post(
                     self.ENDPOINT,
-                    json={"credential": "fake-credential", "agb_accepted": True},
+                    json={
+                        "credential": "fake-credential",
+                        "agb_accepted": True,
+                        "language": "en",
+                    },
                 )
 
         assert res.status_code == 201
         mock_admin.assert_called_once_with(google_email, "Google")
+        user = db.session.execute(
+            select(User).where(User.email == google_email)
+        ).scalar_one()
+        assert user.language == "en"
 
 
 class TestConsumeLoginCodeRedis:

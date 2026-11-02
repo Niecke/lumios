@@ -8,7 +8,10 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { authApi, tokenStore, isGsiInitialized, markGsiInitialized, resetGsiInitialized } from "../api/auth";
+import { useTranslation } from "react-i18next";
 import { config } from "../config";
+import { displayErrorMessage, type DisplayError } from "../api/errors";
+import { LanguageSwitcher } from "../components/LanguageSwitcher";
 
 // Minimal type declaration for the GIS library loaded via index.html
 declare global {
@@ -43,8 +46,9 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
+  const { t } = useTranslation();
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayError | null>(null);
   const [pending, setPending] = useState(false);
   const [notActivated, setNotActivated] = useState(false);
   const [resending, setResending] = useState(false);
@@ -64,16 +68,16 @@ function LoginPage() {
       window.history.replaceState(null, "", "/login");
       setPending(true);
       authApi.exchangeCode(code).then(
-        () => authApi.me().then(
+        () => authApi.meAfterLogin().then(
           () => router.navigate({ to: "/", replace: true }),
           () => {
             tokenStore.clear();
-            setError("Session invalid. Please sign in again.");
+            setError({ key: "login.sessionInvalid" });
             setPending(false);
           }
         ),
         () => {
-          setError("Login failed. Please try again.");
+          setError({ key: "login.failed" });
           setPending(false);
         }
       );
@@ -82,7 +86,7 @@ function LoginPage() {
 
     if (err) {
       window.history.replaceState(null, "", "/login");
-      setError(err.replace(/_/g, " "));
+      setError({ error: new Error(err) });
     }
 
     if (tokenStore.get()) {
@@ -133,11 +137,10 @@ function LoginPage() {
     setLocalPending(true);
     try {
       await authApi.loginPassword(email, password);
-      await authApi.me();
       router.navigate({ to: "/", replace: true });
     } catch (err) {
       const message = (err as Error).message;
-      setError(message);
+      setError({ error: err });
       setNotActivated(/not yet activated/i.test(message));
       setLocalPending(false);
     }
@@ -149,7 +152,7 @@ function LoginPage() {
       await authApi.resendActivation({ email });
       setResendDone(true);
     } catch (err) {
-      setError((err as Error).message);
+      setError({ error: err });
     } finally {
       setResending(false);
     }
@@ -157,13 +160,14 @@ function LoginPage() {
 
   return (
     <main className="login-page">
+      <LanguageSwitcher className="lang-switch--corner" />
       <div className="login-box">
         <h2>Lumios</h2>
-        {error && <div className="flash">{error}</div>}
+        {error && <div className="flash">{displayErrorMessage(error, t)}</div>}
         {notActivated &&
           (resendDone ? (
             <p style={{ textAlign: "center", fontSize: "0.875rem" }}>
-              If an account exists and is pending activation, a new activation link has been sent.
+              {t("login.resendDone")}
             </p>
           ) : (
             <button
@@ -173,18 +177,18 @@ function LoginPage() {
               onClick={handleResendActivation}
               disabled={resending}
             >
-              {resending ? "Sending…" : "Resend activation email"}
+              {resending ? t("common.sending") : t("login.resend")}
             </button>
           ))}
         {pending ? (
-          <p className="login-pending">Signing in…</p>
+          <p className="login-pending">{t("login.signingIn")}</p>
         ) : (
           <>
             <div className="google-btn-wrapper" ref={googleBtnRef} />
-            <div className="divider">or</div>
+            <div className="divider">{t("login.or")}</div>
             <form className="login-form" onSubmit={handlePasswordLogin}>
               <div className="text-field">
-                <label htmlFor="login-email">Email</label>
+                <label htmlFor="login-email">{t("common.email")}</label>
                 <input
                   id="login-email"
                   //type="email"
@@ -195,7 +199,7 @@ function LoginPage() {
                 />
               </div>
               <div className="text-field">
-                <label htmlFor="login-password">Password</label>
+                <label htmlFor="login-password">{t("common.password")}</label>
                 <input
                   id="login-password"
                   type="password"
@@ -211,13 +215,13 @@ function LoginPage() {
                 disabled={localPending}
                 style={{ width: "100%", justifyContent: "center", fontSize: "1rem", fontWeight: 600 }}
               >
-                {localPending ? "Signing in…" : "Sign in"}
+                {localPending ? t("login.signingIn") : t("login.signIn")}
               </button>
             </form>
             <p style={{ textAlign: "center", marginTop: "1rem", fontSize: "0.875rem" }}>
-              Don't have an account?{" "}
+              {t("login.noAccount")}{" "}
               <Link to="/register" style={{ color: "var(--clr-primary)" }}>
-                Create one
+                {t("login.createOne")}
               </Link>
             </p>
           </>
