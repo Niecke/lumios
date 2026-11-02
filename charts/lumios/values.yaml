@@ -78,6 +78,8 @@ backend:
   # Required. `openssl rand -hex 32` (min. 32 chars).
   jwtSecret: ""
   jwtExpirySeconds: 3600
+  # Days a finished queue job (and its events) is kept before the daily janitor deletes it.
+  jobRetentionDays: 30
   # entrypoint.py defaults to 2 * cpus + 1, which is far more than a shared
   # 2-vCPU node has memory for.
   gunicornWorkers: 2
