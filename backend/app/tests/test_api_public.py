@@ -1240,3 +1240,28 @@ class TestDownloadLibraryZipWithVideos:
 
         (log,) = _audit_logs(AuditLogType.video_downloaded)
         assert log.related_object_id == video.uuid
+
+
+class TestPublicLibraryLazyLoading:
+    def test_public_library_does_not_lazy_load_library_per_media_item(
+        self, client, public_library, monkeypatch
+    ):
+        make_images_in_library(public_library, 3)
+        for i in range(2):
+            _add_video(
+                public_library,
+                status=VideoProcessingStatus.ready,
+                uuid=f"00000000-0000-0000-0000-00000000010{i}",
+            )
+
+        def boom(self):
+            raise AssertionError("library relationship was lazy-loaded")
+
+        monkeypatch.setattr(Image, "library", property(boom))
+        monkeypatch.setattr(Video, "library", property(boom))
+
+        with patch("services.storage.get_presigned_url", return_value="http://x/y"):
+            res = client.get(f"{BASE}/libraries/{public_library.uuid}")
+
+        assert res.status_code == 200
+        assert len(res.get_json()["images"]) == 5

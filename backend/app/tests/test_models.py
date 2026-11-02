@@ -163,3 +163,71 @@ class TestUserEffectiveLimits:
     def test_user_has_no_legacy_quota_columns(self):
         assert not hasattr(User, "max_libraries")
         assert not hasattr(User, "max_images_per_library")
+
+
+class _LibraryAccessError(AssertionError):
+    pass
+
+
+def _no_library_access(monkeypatch, model):
+    """Make any access to ``model.library`` blow up."""
+
+    def boom(self):
+        raise _LibraryAccessError("library relationship was accessed")
+
+    monkeypatch.setattr(model, "library", property(boom))
+
+
+class TestImageStoragePath:
+    def test_storage_path_with_explicit_user_id(self, monkeypatch):
+        from models import Image
+
+        _no_library_access(monkeypatch, Image)
+        image = Image(library_id=7, s3_key="abc.jpg")
+        assert image.storage_path("thumbs", user_id=3) == "photos/3/7/thumbs/abc.jpg"
+
+    def test_storage_path_fallback_to_library(self, app):
+        from models import Image, Library
+
+        with app.app_context():
+            user = User(email="path@test.com", active=True)
+            db.session.add(user)
+            db.session.flush()
+            lib = Library(user_id=user.id, name="L")
+            db.session.add(lib)
+            db.session.flush()
+            image = Image(library_id=lib.id, s3_key="abc.jpg")
+            image.library = lib
+            assert (
+                image.storage_path("originals")
+                == f"photos/{user.id}/{lib.id}/originals/abc.jpg"
+            )
+            db.session.rollback()
+
+
+class TestVideoStoragePath:
+    def test_video_storage_path_with_explicit_user_id(self, monkeypatch):
+        from models import Video
+
+        _no_library_access(monkeypatch, Video)
+        video = Video(library_id=7, s3_key="abc.mp4")
+        assert video.storage_path("originals", user_id=3) == "photos/3/7/originals/abc.mp4"
+        assert video.storage_path("thumbs", user_id=3) == "photos/3/7/thumbs/abc.jpg"
+
+    def test_video_storage_path_fallback_to_library(self, app):
+        from models import Video, Library
+
+        with app.app_context():
+            user = User(email="vpath@test.com", active=True)
+            db.session.add(user)
+            db.session.flush()
+            lib = Library(user_id=user.id, name="L")
+            db.session.add(lib)
+            db.session.flush()
+            video = Video(library_id=lib.id, s3_key="abc.mp4")
+            video.library = lib
+            assert (
+                video.storage_path("thumbs")
+                == f"photos/{user.id}/{lib.id}/thumbs/abc.jpg"
+            )
+            db.session.rollback()
