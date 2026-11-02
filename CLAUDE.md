@@ -117,6 +117,7 @@ podman exec -e FLASK_APP="main:create_app()" lumios-backend /usr/bin/python3 -m 
 # Start the throwaway test database first (set POSTGRES_TEST_PORT / POSTGRES_PORT if 5432 is taken):
 ./scripts/test-db.sh start               # or: podman compose --profile test up -d postgres-test
 ./scripts/test-db.sh stop                # remove it again
+./scripts/test-db.sh cleanup [-y]         # list, confirm and drop the lumios_test_* databases that belong to no worktree of this repository
 
 # Backend tests (run from backend/)
 # only for test setup (uv manages the virtualenv itself, no manual activation needed)
@@ -555,7 +556,7 @@ GET  /admin/auditlogs
 
 ## Testing Conventions
 
-Tests run against a real PostgreSQL (same major version as production) whose data directory is on tmpfs with `fsync`, `synchronous_commit` and `full_page_writes` off. Start it with `./scripts/test-db.sh start` (CI uses a `postgres` service container). The `app` fixture creates the `lumios_test` database if missing, rebuilds the schema by running the Alembic migrations once per session, and fails with startup instructions if PostgreSQL is unreachable. `clean_db` deletes all rows after each test. `tests/test_migrations.py` fails when the migrations and the models disagree (including enum values). Follow `tests/conftest.py` exactly:
+Tests run against a real PostgreSQL (same major version as production), never SQLite, whose data directory is on tmpfs with `fsync`, `synchronous_commit` and `full_page_writes` off. Start it with `./scripts/test-db.sh start` (CI uses a `postgres` service container). Each checkout gets its own database so parallel runs in different worktrees never collide: `POSTGRES_DB` defaults to `lumios_test` for a checkout directory called `lumios`, else `lumios_test_<worktree dir name>` (lowercased, other characters become `_`, e.g. `lumios_test_561`). An explicit `POSTGRES_DB` wins; it must end in `_test` or start with `lumios_test_`, because the suite drops the whole public schema. The `app` fixture creates that database if missing (it tries `127.0.0.1` before `localhost`, since `localhost` may resolve to `::1`), rebuilds the schema by running the Alembic migrations once per session, and fails with startup instructions if PostgreSQL is unreachable. `./scripts/test-db.sh cleanup [-y]` (run it inside any worktree) lists every `lumios_test_*` database that does not match a worktree of this repository, asks for confirmation (skipped with `-y`) and drops them; `lumios_test` is kept. Databases of other clones of the repository and explicit `POSTGRES_DB=lumios_test_<x>` overrides look orphaned too, so check the list. `TEST_DB_CLEANUP_PREFIX` narrows the script to a longer `lumios_test_…` prefix (the tests use a unique one, so a test run never drops a database it did not create). `clean_db` deletes all rows after each test. `tests/test_migrations.py` fails when the migrations and the models disagree (including enum values). Follow `tests/conftest.py` exactly:
 
 ```python
 # Always set env vars before any app import
@@ -610,6 +611,7 @@ tests/
 ├── test_security.py
 ├── test_sentry.py
 ├── test_storage.py
+├── test_test_db.py           # test database helpers in conftest.py and scripts/test-db.sh cleanup
 ├── test_support.py
 ├── test_tracing.py
 ├── test_videos.py            # services/videos.py: validation, init, finalize, process_video, ffmpeg parsing, steps
