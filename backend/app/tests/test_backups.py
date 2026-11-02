@@ -89,9 +89,10 @@ def test_photo_backup_with_last_sync():
     objs = [
         {"Key": "current/a.jpg", "LastModified": NOW - timedelta(days=9), "Size": 10},
         {"Key": "deleted/2026-10-01/b.jpg", "LastModified": NOW - timedelta(days=9), "Size": 5},
-        {"Key": ".last_sync", "LastModified": NOW - timedelta(hours=2), "Size": 20},
+        {"Key": ".last_sync/2026-11-01T09:00:00Z", "LastModified": NOW - timedelta(hours=27), "Size": 21},
+        {"Key": ".last_sync/2026-11-02T09:00:00Z", "LastModified": NOW - timedelta(hours=2), "Size": 21},
     ]
-    r = backups._check_photo_backups(_client(objs, "2026-11-02T09:00:00Z"), "b", NOW)
+    r = backups._check_photo_backups(_client(objs), "b", NOW)
     assert r["total_size"] == 15
     assert r["file_count"] == 2
     assert r["age_hours"] == 3.0
@@ -136,3 +137,21 @@ def test_redis_caching_stores_complete_result(monkeypatch):
     with patch.object(backups, "_get_gcs_client", return_value=_client([])):
         backups.get_backup_status()
     assert backups.CACHE_KEY in stored
+
+
+def test_failure_cached_briefly(monkeypatch):
+    stored = {}
+    monkeypatch.setattr(backups, "cache_set", lambda k, v, ttl: stored.update({k: ttl}))
+    with patch.object(backups, "_get_gcs_client", side_effect=RuntimeError("down")):
+        backups.get_backup_status()
+    assert stored[backups.CACHE_KEY] == backups.FAILURE_CACHE_TTL
+
+
+def test_listing_deadline(monkeypatch):
+    monkeypatch.setattr(backups, "LISTING_DEADLINE_SECONDS", -1)
+    with pytest.raises(backups.ListingTooSlow):
+        backups._check_photo_backups(_client([{"Key": "a", "LastModified": NOW, "Size": 1}]), "b", NOW)
+    with patch.object(backups, "_get_gcs_client", return_value=_client([_archive(1)])):
+        status = backups.get_backup_status()
+    assert status["database"]["status"] == "unavailable"
+    assert "too slow" in status["database"]["detail"]

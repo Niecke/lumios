@@ -6,6 +6,8 @@ missing source never raises: it yields ``unavailable`` / ``not_configured``.
 """
 
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import boto3
@@ -27,7 +29,9 @@ from services.redis_client import cache_get, cache_set
 CACHE_KEY = "backups:status"
 MAX_ARCHIVES = 30
 ARCHIVE_PATTERN = re.compile(r"^lumios-postgres-.+\.tar$")
-LAST_SYNC_KEY = ".last_sync"
+LAST_SYNC_PREFIX = ".last_sync/"
+FAILURE_CACHE_TTL = 60
+LISTING_DEADLINE_SECONDS = 20
 ERROR_MAX_LENGTH = 200
 
 
@@ -47,10 +51,17 @@ def _get_gcs_client(endpoint: str, access_key: str, secret_key: str):
     )
 
 
+class ListingTooSlow(Exception):
+    pass
+
+
 def _iter_objects(client, bucket: str):
+    deadline = time.monotonic() + LISTING_DEADLINE_SECONDS
     paginator = client.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=bucket):
         yield from page.get("Contents", [])
+        if time.monotonic() > deadline:
+            raise ListingTooSlow(f"listing too slow (over {LISTING_DEADLINE_SECONDS} s)")
 
 
 def _aware(dt: datetime) -> datetime:
@@ -98,28 +109,28 @@ def _check_database_backups(client, bucket: str, now: datetime) -> dict:
     return result
 
 
-def _parse_marker(body: str) -> datetime | None:
+def _parse_marker(key: str) -> datetime | None:
     try:
-        return _aware(datetime.strptime(body.strip(), "%Y-%m-%dT%H:%M:%SZ"))
+        return _aware(datetime.strptime(key[len(LAST_SYNC_PREFIX):], "%Y-%m-%dT%H:%M:%SZ"))
     except ValueError:
         return None
 
 
 def _check_photo_backups(client, bucket: str, now: datetime) -> dict:
+    """Markers are written as ``.last_sync/<UTC timestamp>``: one new key per run, so
+    the backup key needs no overwrite or delete right."""
     total_size = 0
     file_count = 0
     newest = None
     marker = None
     for obj in _iter_objects(client, bucket):
-        modified = _aware(obj["LastModified"])
-        if obj["Key"] == LAST_SYNC_KEY:
-            marker = modified
-            try:
-                body = client.get_object(Bucket=bucket, Key=LAST_SYNC_KEY)["Body"]
-                marker = _parse_marker(body.read(64).decode("ascii", "ignore")) or modified
-            except Exception:
-                pass
+        key = obj["Key"]
+        if key.startswith(LAST_SYNC_PREFIX):
+            parsed = _parse_marker(key)
+            if parsed and (marker is None or parsed > marker):
+                marker = parsed
             continue
+        modified = _aware(obj["LastModified"])
         total_size += int(obj["Size"])
         file_count += 1
         if newest is None or modified > newest:
@@ -154,19 +165,20 @@ def get_backup_status() -> dict:
     if cached:
         return cached
     now = datetime.now(timezone.utc)
-    status = {
-        "database": _run(
-            "backup-database", BACKUP_DATABASE_BUCKET, BACKUP_DATABASE_ACCESS_KEY,
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        database = pool.submit(
+            _run, "backup-database", BACKUP_DATABASE_BUCKET, BACKUP_DATABASE_ACCESS_KEY,
             BACKUP_DATABASE_SECRET_KEY, _check_database_backups, now,
-        ),
-        "photos": _run(
-            "backup-photos", BACKUP_PHOTOS_BUCKET, BACKUP_PHOTOS_ACCESS_KEY,
+        )
+        photos = pool.submit(
+            _run, "backup-photos", BACKUP_PHOTOS_BUCKET, BACKUP_PHOTOS_ACCESS_KEY,
             BACKUP_PHOTOS_SECRET_KEY, _check_photo_backups, now,
-        ),
-    }
-    # Only cache a complete answer; a transient failure should be retried on reload.
-    if all(s["status"] != "unavailable" for s in status.values()):
-        cache_set(CACHE_KEY, status, BACKUP_CACHE_TTL)
+        )
+        status = {"database": database.result(), "photos": photos.result()}
+    # A failure is cached only briefly, so an unreachable bucket does not make every
+    # page load wait for the timeout, yet recovery shows up quickly.
+    failed = any(s["status"] == "unavailable" for s in status.values())
+    cache_set(CACHE_KEY, status, FAILURE_CACHE_TTL if failed else BACKUP_CACHE_TTL)
     return status
 
 
