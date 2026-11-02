@@ -98,7 +98,7 @@
                 <td class="text-mono">{{ job.queue }}</td>
                 <td class="text-mono">{{ job.task }}</td>
                 <td class="text-mono">{{ job.target or '—' }}</td>
-                <td>{{ job.attempts + 1 }}</td>
+                <td>{{ job.attempts }}</td>
                 <td>{% if job.failed_at %}{{ job.failed_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC{% else %}—{% endif %}</td>
                 <td>{{ job.error or '—' }}</td>
                 <td>

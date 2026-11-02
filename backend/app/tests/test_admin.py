@@ -1206,10 +1206,13 @@ class TestAdminUserResendActivation:
 VIDEO_UUID = "22222222-2222-2222-2222-222222222222"
 
 
-def _add_job(queue="video", task="process_video", status="todo", attempts=0, video_uuid=VIDEO_UUID):
+def _add_job(queue="video", task="process_video", status="todo", attempts=None, video_uuid=VIDEO_UUID):
     """Insert a job; the status goes through UPDATE so the queue's triggers write the events."""
     from sqlalchemy import text
 
+    if attempts is None:
+        # Procrastinate counts a run when the job finishes, so a finished job has attempts >= 1
+        attempts = 1 if status in ("succeeded", "failed") else 0
     job_id = db.session.execute(
         text(
             "INSERT INTO procrastinate_jobs (queue_name, task_name, args, attempts) "
@@ -1352,7 +1355,8 @@ class TestAdminWorkers:
     def test_workers_renders_failed_jobs(self, client, admin_user):
         from models import WorkerJobError
 
-        job_id = _add_job(status="failed", attempts=2)
+        single = _add_job(status="failed", attempts=1, video_uuid="single")
+        job_id = _add_job(status="failed", attempts=3)
         db.session.add(
             WorkerJobError(
                 job_id=job_id,
@@ -1373,6 +1377,9 @@ class TestAdminWorkers:
         assert "ValueError: Could not extract video frame" in row
         assert f"/admin/workers/jobs/{job_id}/retry" in row
         assert f"/admin/workers/jobs/{job_id}/discard" in row
+        single_row = html.split('id="failed-jobs-table"')[1].split("</tr>", 3)[2]
+        assert f"<td>{single}</td>" in single_row
+        assert "<td>1</td>" in single_row
 
     def test_workers_page_has_no_inline_handlers(self, client, admin_user):
         # The CSP has no 'unsafe-inline': inline handlers are blocked, so the
@@ -1406,7 +1413,7 @@ class TestAdminWorkers:
         assert "No finished jobs." in html.split('id="finished-jobs-table"')[1]
 
     def test_workers_finished_renders_job_details(self, client, admin_user):
-        job_id = _add_job(status="succeeded", attempts=0)
+        job_id = _add_job(status="succeeded", attempts=1)
         login_admin(client, admin_user)
 
         html = html_text(client.get("/admin/workers"))
@@ -1463,15 +1470,18 @@ class TestAdminWorkers:
         assert f"<td>{mail}</td>" in both and f"<td>{video}</td>" not in both
 
     def test_workers_finished_retried_marker(self, client, admin_user):
-        plain = _add_job(status="succeeded", attempts=0, video_uuid="plain")
-        retried = _add_job(status="succeeded", attempts=1, video_uuid="again")
+        plain = _add_job(status="succeeded", attempts=1, video_uuid="plain")
+        retried = _add_job(status="succeeded", attempts=2, video_uuid="again")
         login_admin(client, admin_user)
 
         html = html_text(client.get("/admin/workers")).split('id="finished-jobs-table"')[1]
 
         rows = {r.split("</td>")[0]: r for r in html.split("<tr>")[1:]}
-        assert "retried" not in rows[f"\n                <td>{plain}"]
-        assert '<span class="badge badge-warning">retried</span>' in rows[f"\n                <td>{retried}"]
+        plain_row = rows[f"\n                <td>{plain}"]
+        retried_row = rows[f"\n                <td>{retried}"]
+        assert "<td>1</td>" in plain_row and "retried" not in plain_row
+        assert "<td>2 " in retried_row
+        assert '<span class="badge badge-warning">retried</span>' in retried_row
 
     def test_workers_finished_target_does_not_leak_payload(self, client, admin_user):
         from sqlalchemy import text

@@ -215,8 +215,8 @@ def _finished_jobs(
                 "queue": row["queue_name"],
                 "task": row["task_name"],
                 "target": _target(row["args"]),
-                "attempts": max(1, row["attempts"] + 1),
-                "retried": row["attempts"] > 0,
+                "attempts": row["attempts"],
+                "retried": row["attempts"] > 1,
                 "finished_at": finished_at,
                 "duration": duration,
             }
