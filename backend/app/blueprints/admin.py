@@ -691,7 +691,7 @@ def user_gdpr_export(user_id):
         for img in photos_to_export:
             for variant in ("originals", "previews", "thumbs"):
                 try:
-                    data = storage.get_object_bytes(img.storage_path(variant))
+                    data = storage.get_object_bytes(img.storage_path(variant, user_id=user_id))
                     zf.writestr(
                         f"photos/{img.library_id}/{variant}/{img.original_filename}",
                         data,

@@ -223,15 +223,19 @@ class Image(db.Model):
 
     library = db.relationship("Library", backref=db.backref("images", lazy="dynamic"))
 
-    def storage_path(self, variant: str = "originals") -> str:
+    def storage_path(
+        self, variant: str = "originals", user_id: int | None = None
+    ) -> str:
         """Build full object storage key for a variant: originals, previews, or thumbs.
+
+        Pass user_id (the library owner) when it is known to avoid a lazy load
+        of the library relationship.
 
         s3_key stores: {uuid}.{ext}
         Returns:       photos/{photographer_id}/{library_id}/{variant}/{uuid}.{ext}
         """
-        return (
-            f"photos/{self.library.user_id}/{self.library_id}/{variant}/{self.s3_key}"
-        )
+        uid = user_id if user_id is not None else self.library.user_id
+        return f"photos/{uid}/{self.library_id}/{variant}/{self.s3_key}"
 
     def to_dict(
         self,
@@ -411,20 +415,24 @@ class Video(db.Model):
 
     library = db.relationship("Library", backref=db.backref("videos", lazy="dynamic"))
 
-    def storage_path(self, variant: str = "originals") -> str:
+    def storage_path(
+        self, variant: str = "originals", user_id: int | None = None
+    ) -> str:
         """Build full object storage key for a variant: originals or thumbs.
+
+        Pass user_id (the library owner) when it is known to avoid a lazy load
+        of the library relationship.
 
         Videos have no previews/ variant — originals are served for streaming.
         Thumbnails are always JPEG regardless of the video container format.
         s3_key stores: {uuid}.{ext}
         Returns:       photos/{photographer_id}/{library_id}/{variant}/{...}
         """
+        uid = user_id if user_id is not None else self.library.user_id
         if variant == "thumbs":
             base = self.s3_key.rsplit(".", 1)[0]
-            return f"photos/{self.library.user_id}/{self.library_id}/thumbs/{base}.jpg"
-        return (
-            f"photos/{self.library.user_id}/{self.library_id}/{variant}/{self.s3_key}"
-        )
+            return f"photos/{uid}/{self.library_id}/thumbs/{base}.jpg"
+        return f"photos/{uid}/{self.library_id}/{variant}/{self.s3_key}"
 
     def to_dict(
         self,

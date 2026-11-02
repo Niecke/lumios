@@ -138,8 +138,8 @@ def get_video(library_id: int, video_uuid: str):
 
     orig_url = thumb_url = None
     if video.processing_status == VideoProcessingStatus.ready:
-        orig_url = storage.get_presigned_url(video.storage_path("originals"))
-        thumb_url = storage.get_presigned_url(video.storage_path("thumbs"))
+        orig_url = storage.get_presigned_url(video.storage_path("originals", user_id=user_id))
+        thumb_url = storage.get_presigned_url(video.storage_path("thumbs", user_id=user_id))
 
     return jsonify(video.to_dict(original_url=orig_url, thumb_url=thumb_url))
 

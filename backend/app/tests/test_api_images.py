@@ -1214,3 +1214,31 @@ class TestUploadImageQuotas:
             res = self._upload(client, photographer, library)
         assert res.status_code == 422
         assert res.get_json()["error"].endswith("for your subscription.")
+
+
+def _forbid_library_access(monkeypatch):
+    """Fail if a request lazy-loads Image.library / Video.library."""
+
+    def boom(self):
+        raise AssertionError("library relationship was lazy-loaded")
+
+    monkeypatch.setattr(Image, "library", property(boom))
+    monkeypatch.setattr(Video, "library", property(boom))
+
+
+class TestListImagesLazyLoading:
+    def test_list_images_does_not_lazy_load_library_per_image(
+        self, client, photographer, library, monkeypatch
+    ):
+        make_images(library, 5)
+        token = make_token(photographer)
+        _forbid_library_access(monkeypatch)
+
+        with patch("services.storage.get_presigned_url", return_value="http://x/y"):
+            res = client.get(
+                f"/api/v1/libraries/{library.id}/images",
+                headers=auth_header(token),
+            )
+
+        assert res.status_code == 200
+        assert len(res.get_json()["images"]) == 5

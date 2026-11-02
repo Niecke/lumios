@@ -384,7 +384,7 @@ def watermark_preview(library_id: int):
 
     if sample_image is not None:
         try:
-            original_data = storage.get_object_bytes(sample_image.storage_path("originals"))
+            original_data = storage.get_object_bytes(sample_image.storage_path("originals", user_id=user_id))
         except Exception:
             current_app.logger.exception(
                 "Failed to fetch sample image for watermark preview, library=%s", library_id
@@ -462,7 +462,7 @@ def apply_watermark(library_id: int):
     for image in images:
         try:
             original_data = storage.get_object_bytes(
-                image.storage_path("originals")
+                image.storage_path("originals", user_id=user_id)
             )
             pil_img = PilImage.open(io.BytesIO(original_data))
             pil_img = ImageOps.exif_transpose(pil_img)
@@ -475,7 +475,7 @@ def apply_watermark(library_id: int):
             )
             pil_img.close()
             storage.upload_fileobj(
-                preview_buf, image.storage_path("previews"), "image/jpeg"
+                preview_buf, image.storage_path("previews", user_id=user_id), "image/jpeg"
             )
             updated += 1
         except Exception:
