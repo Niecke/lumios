@@ -108,4 +108,8 @@ they are not repeated here.
   value: {{ .Values.backend.jwtExpirySeconds | quote }}
 - name: GUNICORN_WORKERS
   value: {{ .Values.backend.gunicornWorkers | quote }}
+- name: VIDEO_UPLOADS_ENABLED
+  value: {{ .Values.backend.videoUploadsEnabled | quote }}
+- name: MAX_VIDEO_FILE_SIZE
+  value: {{ .Values.backend.maxVideoFileSize | int64 | quote }}
 {{- end -}}
