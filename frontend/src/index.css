@@ -1702,3 +1702,15 @@ body {
   top: 1rem;
   right: 1rem;
 }
+/* Small or short screens: the switcher sits in the flow above the card, so it
+   cannot overlap it. */
+@media (max-width: 600px), (max-height: 700px) {
+  .login-page {
+    flex-direction: column;
+  }
+  .lang-switch--corner {
+    position: static;
+    align-self: flex-end;
+    margin-bottom: 0.75rem;
+  }
+}

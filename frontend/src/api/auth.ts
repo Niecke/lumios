@@ -34,13 +34,22 @@ export interface UserInfo {
 }
 
 const TOKEN_KEY = "lumios_token";
+// Set when a language was picked with a switcher in this tab (sessionStorage:
+// gone when the tab closes, cleared on logout). Only such a choice is copied to
+// an account without a language at login, never one left in localStorage by an
+// earlier visitor of a shared browser.
+const LOCALE_CHOSEN_KEY = "lumios_locale_chosen";
 
-// Language update in flight: me() waits for it.
+// me() waits this long at most for a language save in flight, so a stalled
+// PATCH never holds up the route guards.
+export const LANGUAGE_SAVE_WAIT_MS = 2000;
+
+// Language update in flight: me() waits for it (bounded). Cleared when it settles.
 let languageUpdate: Promise<unknown> | null = null;
 // The account language applies once per page load and at login. After that a
 // language chosen in this browser stays, whichever switcher it came from.
 let accountLanguageApplied = false;
-// A language whose save to the account failed: the next me() tries again.
+// A language whose save to the account failed: the next me() tries again, once.
 let unsavedLanguage: Locale | null = null;
 
 // GIS must only be initialized once per session. This flag is reset on logout
@@ -70,6 +79,63 @@ function clearAuthSession() {
   languageUpdate = null;
   accountLanguageApplied = false;
   unsavedLanguage = null;
+  try {
+    sessionStorage.removeItem(LOCALE_CHOSEN_KEY);
+  } catch {
+    // storage blocked: nothing stored
+  }
+}
+
+function markLocaleChosen() {
+  try {
+    sessionStorage.setItem(LOCALE_CHOSEN_KEY, "1");
+  } catch {
+    // storage blocked: the choice is not copied to the account at login
+  }
+}
+
+function localeChosenInThisTab(): boolean {
+  try {
+    return sessionStorage.getItem(LOCALE_CHOSEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+// Wait for a pending save, but never longer than LANGUAGE_SAVE_WAIT_MS.
+function waitForLanguageUpdate(update: Promise<unknown>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, LANGUAGE_SAVE_WAIT_MS);
+  });
+  return Promise.race([update.then(() => {}, () => {}), timeout]).finally(() =>
+    clearTimeout(timer)
+  );
+}
+
+// Store the language on the account. A failed save is kept for one retry by the
+// next me(); a failed retry is dropped, so a permanent error costs one extra
+// request, not one per navigation.
+function saveLanguage(language: Locale, isRetry: boolean) {
+  accountLanguageApplied = true; // this choice is newer than the account's value
+  unsavedLanguage = null;
+  const request = apiFetch<UserInfo>("/api/v1/auth/me", {
+    method: "PATCH",
+    body: JSON.stringify({ language }),
+  });
+  languageUpdate = request;
+  request.then(
+    () => {
+      if (languageUpdate === request) languageUpdate = null;
+    },
+    () => {
+      if (languageUpdate !== request) return; // a newer update started
+      languageUpdate = null;
+      // Keep it for a retry, unless this was the retry or the session ended.
+      if (!isRetry && tokenStore.get()) unsavedLanguage = language;
+    }
+  );
+  return request;
 }
 
 // Internal helper: fetch JSON from the API, attaching the Bearer token.
@@ -113,7 +179,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 export const authApi = {
   // Verify the current JWT and return user info (guards protected routes).
   me: async () => {
-    if (languageUpdate) await languageUpdate.catch(() => {});
+    if (languageUpdate) await waitForLanguageUpdate(languageUpdate);
     const user = await apiFetch<UserInfo>("/api/v1/auth/me");
     if (!accountLanguageApplied) {
       accountLanguageApplied = true;
@@ -121,40 +187,28 @@ export const authApi = {
     }
     const language = unsavedLanguage;
     unsavedLanguage = null;
-    // Retry a failed save, unless the language was switched again since.
+    // Retry a failed save once, unless the language was switched again since.
     if (language !== null && language === currentLocale() && user.language !== language) {
-      authApi.updateMe({ language }).catch(() => {});
+      saveLanguage(language, true).catch(() => {});
       return { ...user, language };
     }
     return user;
   },
 
   // me() right after a login: an account without a language takes the choice made
-  // in this browser. No choice means no save: the account stays "no preference".
+  // with a switcher in this tab. No such choice means no save: the account stays
+  // "no preference", even if localStorage holds an earlier visitor's language.
   meAfterLogin: async () => {
     accountLanguageApplied = false;
     const user = await authApi.me();
-    const language = storedLocale();
+    const language = localeChosenInThisTab() ? storedLocale() : null;
     if (user.language !== null || language === null) return user;
     authApi.updateMe({ language }).catch(() => {}); // best effort, the UI keeps it anyway
     return { ...user, language };
   },
 
   // Store the UI language on the account (kept across devices).
-  updateMe: (data: { language: Locale }) => {
-    accountLanguageApplied = true; // this choice is newer than the account's value
-    unsavedLanguage = null;
-    const request = apiFetch<UserInfo>("/api/v1/auth/me", {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    });
-    languageUpdate = request;
-    request.catch(() => {
-      // Keep it for a retry, unless a newer update started or the session ended.
-      if (languageUpdate === request && tokenStore.get()) unsavedLanguage = data.language;
-    });
-    return request;
-  },
+  updateMe: (data: { language: Locale }) => saveLanguage(data.language, false),
 
   // Register a new local account (agb_accepted must be true). The language goes
   // along only if one was chosen in this browser: no choice, no account preference.
@@ -237,6 +291,7 @@ export const authApi = {
 // browser, they have no influence on a registered user.
 export function chooseLanguage(lang: Locale, saveToAccount: boolean) {
   setLocale(lang);
+  markLocaleChosen();
   if (saveToAccount && tokenStore.get()) {
     // Best effort: the local choice already applies even if saving fails.
     authApi.updateMe({ language: lang }).catch(() => {});

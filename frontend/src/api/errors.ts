@@ -38,6 +38,18 @@ const EXACT: Record<string, string> = {
   "File is not a valid PNG image": "errors.watermarkMustBePng",
   "Unable to submit ticket. Please try again later.": "errors.ticketSubmitFailed",
   "Unable to submit feedback. Please try again later.": "errors.feedbackSubmitFailed",
+  "Missing credential": "errors.missingCredential",
+  "Could not verify Google token": "errors.googleVerifyFailed",
+  "Email and password are required": "errors.emailPasswordRequired",
+  "Email is required": "errors.emailRequired",
+  "Invalid email address": "errors.invalidEmail",
+  "Current and new passwords are required": "errors.passwordsRequired",
+  "Password change is only available for local accounts": "errors.passwordChangeLocalOnly",
+  "subject is required": "errors.subjectRequired",
+  "body is required": "errors.bodyRequired",
+  "rating is required": "errors.ratingRequired",
+  "Account deactivated": "errors.accountDeactivated",
+  "Token expired": "errors.sessionExpired",
 };
 
 const CODES: Record<string, string> = {

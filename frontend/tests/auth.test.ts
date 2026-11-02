@@ -17,6 +17,7 @@ const store = new Map<string, string>();
 const {
   authApi,
   chooseLanguage,
+  LANGUAGE_SAVE_WAIT_MS,
   tokenStore,
   isGsiInitialized,
   markGsiInitialized,
@@ -149,6 +150,44 @@ test("a failed language save is retried by the next me()", async () => {
   assert.equal(i18n.language, "en");
 });
 
+test("a failed retry is dropped: no PATCH on every navigation", async () => {
+  const calls = mockAccount("de");
+  await authApi.me(); // page load
+  const accountFetch = globalThis.fetch;
+  globalThis.fetch = (async (path: string, init?: RequestInit) => {
+    if (init?.method === "PATCH") {
+      calls.push({ method: "PATCH", path, body: JSON.parse(init.body as string) });
+      return new Response(null, { status: 503 });
+    }
+    return accountFetch(path, init);
+  }) as typeof fetch;
+
+  chooseLanguage("en", true);
+  await new Promise((r) => setTimeout(r, 0));
+  await authApi.me(); // retries once
+  await new Promise((r) => setTimeout(r, 0));
+  await authApi.me();
+  await authApi.me();
+  assert.equal(patches(calls).length, 2); // the save and one retry
+  assert.equal(i18n.language, "en");
+});
+
+test("me() does not wait for a stalled language save beyond the limit", async () => {
+  mockAccount("de");
+  await authApi.me(); // page load
+  const accountFetch = globalThis.fetch;
+  globalThis.fetch = (async (path: string, init?: RequestInit) =>
+    init?.method === "PATCH" ? new Promise<Response>(() => {}) : accountFetch(path, init)) as typeof fetch;
+
+  chooseLanguage("en", true);
+  const started = Date.now();
+  await authApi.me();
+  const waited = Date.now() - started;
+  assert.ok(waited >= LANGUAGE_SAVE_WAIT_MS - 50, `waited ${waited} ms`);
+  assert.ok(waited < LANGUAGE_SAVE_WAIT_MS + 1000, `waited ${waited} ms`);
+  assert.equal(i18n.language, "en");
+});
+
 test("a failed save is not retried after the language was switched locally", async () => {
   const calls = mockAccount("de");
   await authApi.me();
@@ -178,9 +217,8 @@ test("logout forgets an unsaved language, so me() applies the account language a
   assert.equal(i18n.language, "en");
 });
 
-test("login: an account without a language takes the choice made in this browser", async () => {
-  local.set("lumios_locale", "en");
-  await i18n.changeLanguage("en");
+test("login: an account without a language takes the choice made in this tab", async () => {
+  chooseLanguage("en", false); // on the login page
   const calls = mockAccount(null);
 
   const user = await authApi.loginPassword("a@example.com", "pw");
@@ -188,6 +226,29 @@ test("login: an account without a language takes the choice made in this browser
   assert.equal(user.language, "en");
   assert.equal(i18n.language, "en"); // not reset to German
   assert.deepEqual(patches(calls).map((c: any) => c.body), [{ language: "en" }]);
+});
+
+test("login: a language left in localStorage by an earlier visitor is not saved", async () => {
+  local.set("lumios_locale", "en"); // e.g. another photographer on a shared computer
+  await i18n.changeLanguage("en");
+  const calls = mockAccount(null);
+
+  const user = await authApi.loginPassword("a@example.com", "pw");
+
+  assert.equal(user.language, null);
+  assert.equal(i18n.language, "en"); // the local language still shows
+  assert.equal(patches(calls).length, 0);
+});
+
+test("login: a choice made before the last logout is not saved to the next account", async () => {
+  mockAccount("de");
+  chooseLanguage("en", true); // first photographer, AppBar
+  await authApi.logout();
+  tokenStore.set("stale-token");
+  const calls = mockAccount(null);
+
+  await authApi.loginPassword("b@example.com", "pw"); // second photographer
+  assert.equal(patches(calls).length, 0);
 });
 
 test("login: no choice in this browser leaves the account without a language", async () => {

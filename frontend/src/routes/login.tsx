@@ -86,7 +86,7 @@ function LoginPage() {
 
     if (err) {
       window.history.replaceState(null, "", "/login");
-      setError({ error: new Error(err.replace(/_/g, " ")) });
+      setError({ error: new Error(err) });
     }
 
     if (tokenStore.get()) {

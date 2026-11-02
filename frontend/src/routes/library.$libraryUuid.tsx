@@ -908,10 +908,12 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
     queryKey: ["library", libraryUuid],
     queryFn: () => librariesApi.getByUuid(libraryUuid),
   });
-  // The API answers "Library not found" for a library of another photographer:
-  // a language switched there stays local. While loading, or after any other
-  // error, this is the photographer's own area and the choice is saved.
-  const foreignLibrary = libraryError?.message === "Library not found";
+  // A language switched here is saved to the account only once the library is known
+  // to be the photographer's own. While loading, and on a 404 (another
+  // photographer's library, or a deleted one), it stays local. After any other
+  // error (network, 5xx) the viewer is still in their own area, so it is saved.
+  const libraryStatus = (libraryError as { status?: number } | null)?.status;
+  const saveLanguage = library !== undefined || (libraryError != null && libraryStatus !== 404);
 
   const updateLibrary = useMutation({
     mutationFn: (patch: { name?: string; use_original_as_preview?: boolean; download_enabled?: boolean; is_private?: boolean; watermark_scale?: number; watermark_position?: string }) =>
@@ -1024,7 +1026,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
 
   return (
     <>
-      <AppBar name={user.name} picture={user.picture} saveLanguage={!foreignLibrary} />
+      <AppBar name={user.name} picture={user.picture} saveLanguage={saveLanguage} />
 
       <main className="page-content">
         <div className="page-header">

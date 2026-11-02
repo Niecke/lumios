@@ -175,7 +175,7 @@
     "hevcShort": "HEVC — wird möglicherweise nicht in allen Browsern abgespielt",
     "deleteQuestion": "Löschen?",
     "confirmDelete": "Löschen bestätigen",
-    "deleteMedia": "Bild löschen",
+    "deleteMedia": "Foto löschen",
     "original": "Original",
     "originalAlt": "{{name}} — Original",
     "preview": "Vorschau",
@@ -229,9 +229,9 @@
       "bottom_right": "Unten rechts"
     },
     "save": "Position und Größe speichern",
-    "updateExisting": "Vorhandene Bilder aktualisieren",
+    "updateExisting": "Vorhandene Fotos aktualisieren",
     "updating": "Wasserzeichen werden aktualisiert…",
-    "updated": "{{updated}} von {{total}} Bildern aktualisiert.",
+    "updated": "{{updated}} von {{total}} Fotos aktualisiert.",
     "previewAlt": "Vorschau des Wasserzeichens",
     "previewFailed": "Die Vorschau konnte nicht geladen werden",
     "uploadFailed": "Hochladen fehlgeschlagen"
@@ -266,7 +266,7 @@
     "watermarkTooLarge": "Die Wasserzeichen-Datei ist zu groß (max. 5 MB)",
     "storageError": "Speicherfehler. Bitte versuchen Sie es erneut.",
     "invalidLanguage": "Sprache fehlt oder ist ungültig",
-    "imageNotFound": "Bild nicht gefunden",
+    "imageNotFound": "Foto nicht gefunden",
     "videoNotFound": "Video nicht gefunden",
     "videoUploadsNotEnabled": "Video-Uploads sind nicht aktiviert",
     "invalidGoogleToken": "Ungültiges Google-Token",
@@ -280,6 +280,18 @@
     "uploadNetwork": "Netzwerkfehler beim Hochladen",
     "uploadAborted": "Hochladen abgebrochen",
     "requestFailed": "Anfrage fehlgeschlagen ({{status}})",
-    "maxLength": "Maximal {{max}} Zeichen erlaubt"
+    "maxLength": "Maximal {{max}} Zeichen erlaubt",
+    "missingCredential": "Google-Anmeldung fehlgeschlagen: keine Anmeldedaten erhalten",
+    "googleVerifyFailed": "Das Google-Token konnte nicht geprüft werden. Bitte versuchen Sie es später erneut.",
+    "emailPasswordRequired": "E-Mail und Passwort sind erforderlich",
+    "emailRequired": "E-Mail ist erforderlich",
+    "invalidEmail": "Ungültige E-Mail-Adresse",
+    "passwordsRequired": "Aktuelles und neues Passwort sind erforderlich",
+    "passwordChangeLocalOnly": "Das Passwort kann nur bei lokalen Konten geändert werden",
+    "subjectRequired": "Betreff ist erforderlich",
+    "bodyRequired": "Nachricht ist erforderlich",
+    "ratingRequired": "Bitte wählen Sie eine Bewertung",
+    "accountDeactivated": "Konto deaktiviert",
+    "sessionExpired": "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an."
   }
 }

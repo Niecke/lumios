@@ -280,6 +280,18 @@
     "uploadNetwork": "Network error during upload",
     "uploadAborted": "Upload aborted",
     "requestFailed": "Request failed ({{status}})",
-    "maxLength": "Must be {{max}} characters or fewer"
+    "maxLength": "Must be {{max}} characters or fewer",
+    "missingCredential": "Google sign-in failed: no credential received",
+    "googleVerifyFailed": "Could not verify Google token. Please try again later.",
+    "emailPasswordRequired": "Email and password are required",
+    "emailRequired": "Email is required",
+    "invalidEmail": "Invalid email address",
+    "passwordsRequired": "Current and new passwords are required",
+    "passwordChangeLocalOnly": "Password change is only available for local accounts",
+    "subjectRequired": "Subject is required",
+    "bodyRequired": "Message is required",
+    "ratingRequired": "Please choose a rating",
+    "accountDeactivated": "Account deactivated",
+    "sessionExpired": "Your session has expired. Please sign in again."
   }
 }
