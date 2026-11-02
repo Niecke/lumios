@@ -260,6 +260,16 @@ backup:
   gcs:
     # The S3-compatible (XML API) endpoint of GCS; the keys are HMAC keys.
     endpoint: https://storage.googleapis.com
+  # Read-only HMAC keys the backend uses to list the backup buckets for the admin
+  # System page (never the write keys of the jobs below). Optional: without a key
+  # the page shows "not configured".
+  readOnly:
+    database:
+      accessKey: ""
+      secretKey: ""
+    photos:
+      accessKey: ""
+      secretKey: ""
   database:
     enabled: true
     schedule: "0 3 * * *"

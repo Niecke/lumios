@@ -38,6 +38,7 @@ from models import (
 from config import MAX_USERS, CURRENT_AGB_VERSION
 from security import login_required, require_role
 from services.audit import write_audit_log
+from services.backups import get_backup_summary
 from services.system import get_dashboard_status, get_system_status
 from services.workers import (
     discard_failed_job,
@@ -101,6 +102,7 @@ def index():
         job_runs=job_runs,
         system=get_dashboard_status(),
         worker_summary=get_dashboard_workers_summary(),
+        backup_summary=get_backup_summary(),
     )
 
 

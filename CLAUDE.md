@@ -200,6 +200,9 @@ Defined and validated in `backend/app/config.py`. The app **refuses to start** i
 | `BREVO_API_KEY` | — | Brevo transactional email API key |
 | `MAIL_SENDER_EMAIL` | `lumios@niecke-it.de` | Sender email address |
 | `MAIL_SENDER_NAME` | `Lumios` | Sender display name |
+| `BACKUP_DATABASE_BUCKET` / `BACKUP_PHOTOS_BUCKET` | — | Off-site backup buckets listed by the admin System page; empty = "not configured" |
+| `BACKUP_DATABASE_ACCESS_KEY` / `_SECRET_KEY`, `BACKUP_PHOTOS_ACCESS_KEY` / `_SECRET_KEY` | — | **Read-only** HMAC keys of the two backup buckets (Helm: `backup.readOnly.*`) |
+| `BACKUP_GCS_ENDPOINT` | `https://storage.googleapis.com` | S3-compatible endpoint of the backup buckets |
 | `ADMIN_EMAIL` | — | Admin notification email |
 | `BREVO_WAITLIST_LIST_ID` | `0` | Brevo contact list for waitlist (0 = disabled) |
 | `MAX_USERS` | `100` | Max active users allowed to register |
@@ -217,6 +220,8 @@ Also read in `backend/app/config.py`, `backend/entrypoint.py` or `services/stora
 
 | Variable | Default | Description |
 |---|---|---|
+| `BACKUP_OVERDUE_SECONDS` | `129600` | Age (36 h) after which a backup counts as overdue |
+| `BACKUP_CACHE_TTL` | `300` | Redis TTL (seconds) of the backup bucket listing |
 | `OTEL_SERVICE_NAME` | `lumios-backend` | Service name reported to tracing |
 | `OTEL_SERVICE_VERSION` | `$GIT_HASH` | Service version reported to tracing |
 | `VIDEO_JOB_TIMEOUT_SECONDS` | `600` | Upper bound for one ffmpeg call of a video job; a hung process is killed and the job retried |
@@ -439,6 +444,10 @@ Jobs are enqueued by the backend and run by separate worker pods. Queue and resu
 - **Local dev:** `podman-compose up` starts `worker-default` and `worker-video`; inspect jobs with `podman exec -it lumios-worker-video /usr/bin/python3 -m procrastinate --app=worker.worker_app shell` (`list_jobs`, `retry <id>`).
 - **Schema and upgrades:** the queue tables are created by an Alembic revision that calls `migrations/procrastinate_schema.py::ensure_schema(bind, "<procrastinate migration version>")`. The helper records the applied version in `procrastinate_schema_version` and replays the library's SQL migrations up to that version. `procrastinate[psycopg]` is pinned exactly in `pyproject.toml`; **a bump needs a new Alembic revision** calling `ensure_schema` with the new highest version in `procrastinate/sql/migrations/` (the `pre` and `post` scripts of a version run together in the migrate Job, which is fine while no new pod runs; a later upgrade that ships `pre`/`post` scripts may need the two-step procedure of the Procrastinate docs for rolling workers). `procrastinate_*` tables are excluded from Alembic autogenerate (`include_object`).
 
+### Backups on the admin pages
+
+`services/backups.py` lists the off-site backup buckets (GCS, S3 API, read-only keys, 3 s / 5 s timeouts) and the result is cached in Redis for `BACKUP_CACHE_TTL` (failures only for 60 s; the two listings run concurrently and a listing stops after 20 s as `unavailable`). `/admin/system` has a **Backups** section: per target (database, photos & videos) last backup time, age, status (`on time` / `overdue` after `BACKUP_OVERDUE_SECONDS` or when nothing is found / `unavailable` with the reason / `not configured`) and total size, plus the 30 newest `lumios-postgres-<TS>.tar` archives with size. The photo backup shows total size (current + `deleted/`) and file count; its last-backup time is the newest `.last_sync/<UTC timestamp>` marker key (one new key per run, no overwrite right needed) written by `backup/backup-photos.sh` (fallback: newest object). `/` shows one line per backup under Scheduled Jobs. A backup problem turns the System verdict to `warning`. Never give the backend write keys for these buckets.
+
 ---
 
 ## Frontend Translations (i18n)
@@ -562,7 +571,7 @@ POST /admin/support/<ticket_id>/close
 GET  /admin/feedback
 POST /admin/feedback/<feedback_id>/note
 GET/POST /admin/notify_agb
-GET  /admin/system                                  # Build info, dependency checks, job recency
+GET  /admin/system                                  # Build info, dependency checks, job recency, Backups section
 GET  /admin/workers                                 # Queue counts, worker pods, running + failed jobs
 POST /admin/workers/jobs/<id>/retry                 # Queue a failed job again (audit worker_job_retried)
 POST /admin/workers/jobs/<id>/discard               # Delete a failed job (audit worker_job_discarded)

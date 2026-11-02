@@ -109,4 +109,11 @@ echo "==> verifying"
 elapsed=$(($(date +%s) - started + 60))
 rclone check --size-only --one-way --min-age "${elapsed}s" "$src" "$dest"
 
+# Completion marker for the admin System page: the sync may have copied nothing
+# on a quiet day, so the newest object alone would not show that the job ran.
+# One new key per run (.last_sync/<UTC timestamp>), never an overwrite, so every
+# BACKUP_MODE works, including copy with a key that has no delete right.
+marker="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf '%s\n' "$marker" | rclone rcat "gcs:${BACKUP_BUCKET}/.last_sync/${marker}"
+
 echo "photo backup complete"

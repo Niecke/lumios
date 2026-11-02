@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 {% block title %}System{% endblock %}
+{% macro backup_badge(b) -%}
+{% if b.status == 'ok' -%}
+{% if b.is_overdue %}<span class="badge badge-warning">overdue</span>{% else %}<span class="badge badge-success">on time</span>{% endif %}
+{%- elif b.status == 'unavailable' %}<span class="badge badge-error">unavailable</span>
+{%- else %}<span class="badge badge-warning">not configured</span>{% endif %}
+{%- endmacro %}
 
 {% block content %}
 {% set dot = {'ok': 'ok', 'warning': 'warning', 'degraded': 'error'}[system.verdict] %}
@@ -66,6 +72,57 @@
     <p>Gunicorn: <span class="text-mono">{{ system.runtime.gunicorn }}</span></p>
     <p>Database migration: <span class="text-mono">{{ system.runtime.migration or '—' }}</span></p>
 </div>
+
+<h2>Backups</h2>
+<div class="table-container">
+    <table class="table" id="backups-table">
+        <thead>
+            <tr><th>Target</th><th>Last Backup</th><th>Age</th><th>Status</th><th>Total Size</th><th>Details</th></tr>
+        </thead>
+        <tbody>
+            {% for label, b in [('Database', system.backups.database), ('Photos & Videos', system.backups.photos)] %}
+            <tr>
+                <td>{{ label }}</td>
+                {% if b.status == 'ok' and b.last_backup %}
+                <td>{{ b.last_backup }} UTC</td>
+                <td>{{ b.age_hours }} h</td>
+                {% else %}
+                <td colspan="2"><span class="text-muted">{% if b.status == 'ok' %}No backup found{% else %}—{% endif %}</span></td>
+                {% endif %}
+                <td>{{ backup_badge(b) }}</td>
+                <td>{% if b.status == 'ok' %}{{ b.total_size | filesizeformat }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td>
+                    {% if b.status == 'ok' %}
+                    <span class="text-muted">{% if b.archive_count is defined %}{{ b.archive_count }} archives{% else %}{{ b.file_count }} files{% endif %}</span>
+                    {% else %}<span class="text-muted">{{ b.detail }}</span>{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if system.backups.database.status == 'ok' %}
+<h3>Database Archives</h3>
+<div class="table-container">
+    <table class="table" id="backup-archives">
+        <thead>
+            <tr><th>Archive</th><th>Created</th><th>Size</th></tr>
+        </thead>
+        <tbody>
+            {% for a in system.backups.database.archives %}
+            <tr>
+                <td class="text-mono">{{ a.name }}</td>
+                <td>{{ a.created }} UTC</td>
+                <td>{{ a.size | filesizeformat }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3"><span class="text-muted">No archives</span></td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
 
 <h2>Scheduled Jobs</h2>
 <div class="table-container">

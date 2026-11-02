@@ -21,6 +21,18 @@ stringData:
   {{- with .Values.s3.secretKey }}
   S3_SECRET_KEY: {{ . | quote }}
   {{- end }}
+  {{- with .Values.backup.readOnly.database.accessKey }}
+  BACKUP_DATABASE_ACCESS_KEY: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.backup.readOnly.database.secretKey }}
+  BACKUP_DATABASE_SECRET_KEY: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.backup.readOnly.photos.accessKey }}
+  BACKUP_PHOTOS_ACCESS_KEY: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.backup.readOnly.photos.secretKey }}
+  BACKUP_PHOTOS_SECRET_KEY: {{ . | quote }}
+  {{- end }}
   {{- with .Values.backend.mail.brevoApiKey }}
   BREVO_API_KEY: {{ . | quote }}
   {{- end }}
@@ -69,7 +81,7 @@ spec:
       annotations:
         # Helm does not roll pods when only a referenced Secret changes, so a
         # rotated key would leave the running pods on the old one.
-        checksum/credentials: {{ printf "%s|%s|%s|%s|%s|%s|%s" $pw $secretKey $jwt .Values.s3.accessKey .Values.s3.secretKey .Values.backend.mail.brevoApiKey .Values.backend.google.clientSecret | sha256sum }}
+        checksum/credentials: {{ printf "%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s" $pw $secretKey $jwt .Values.s3.accessKey .Values.s3.secretKey .Values.backend.mail.brevoApiKey .Values.backend.google.clientSecret .Values.backup.readOnly.database.accessKey .Values.backup.readOnly.database.secretKey .Values.backup.readOnly.photos.accessKey .Values.backup.readOnly.photos.secretKey | sha256sum }}
     spec:
       {{- with .Values.priorityClassName }}
       priorityClassName: {{ . | quote }}

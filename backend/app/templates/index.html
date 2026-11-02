@@ -77,6 +77,25 @@
                 {% endif %}
             </tr>
             {% endfor %}
+            {% for b in backup_summary %}
+            <tr id="{{ b.name }}-status">
+                <td class="text-mono">{{ b.name }}</td>
+                {% if b.status == 'ok' and b.last_backup %}
+                <td>{{ b.last_backup }} UTC</td>
+                {% else %}
+                <td><span class="text-muted">{% if b.status == 'ok' %}No backup found{% else %}—{% endif %}</span></td>
+                {% endif %}
+                <td>
+                    {% if b.status == 'ok' %}{% if b.is_overdue %}<span class="badge badge-warning">overdue</span>{% else %}<span class="badge badge-success">on time</span>{% endif %}
+                    {% elif b.status == 'unavailable' %}<span class="badge badge-error">unavailable</span>
+                    {% else %}<span class="badge badge-warning">not configured</span>{% endif %}
+                </td>
+                <td>
+                    {% if b.status == 'ok' %}{{ b.total_size | filesizeformat }} &middot; {% if b.archive_count is defined %}{{ b.archive_count }} archives{% else %}{{ b.file_count }} files{% endif %}
+                    {% else %}<span class="text-muted" title="{{ b.detail }}">—</span>{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
         </tbody>
     </table>
 </div>

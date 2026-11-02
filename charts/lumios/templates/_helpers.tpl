@@ -82,6 +82,18 @@ they are not repeated here.
   value: {{ default .Values.s3.endpointUrl .Values.s3.publicEndpointUrl | quote }}
 - name: S3_BUCKET
   value: {{ .Values.s3.bucket | quote }}
+{{- if .Values.backup.enabled }}
+- name: BACKUP_GCS_ENDPOINT
+  value: {{ .Values.backup.gcs.endpoint | quote }}
+{{- if .Values.backup.database.enabled }}
+- name: BACKUP_DATABASE_BUCKET
+  value: {{ .Values.backup.database.gcs.bucket | quote }}
+{{- end }}
+{{- if .Values.backup.photos.enabled }}
+- name: BACKUP_PHOTOS_BUCKET
+  value: {{ .Values.backup.photos.gcs.bucket | quote }}
+{{- end }}
+{{- end }}
 - name: MAIL_SENDER_EMAIL
   value: {{ .Values.backend.mail.senderEmail | quote }}
 - name: MAIL_SENDER_NAME
