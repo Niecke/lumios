@@ -85,6 +85,12 @@ backend:
   gunicornWorkers: 2
   maxUsers: 100
   agbVersion: "1.0"
+  # Feature gate for the video upload routes (VIDEO_UPLOADS_ENABLED). While
+  # false every video route answers 501 and the frontend hides the video UI.
+  # Needs a CORS rule on the bucket first, see deploy/README.md.
+  videoUploadsEnabled: false
+  # Largest accepted video in bytes (MAX_VIDEO_FILE_SIZE), 200 MB by default.
+  maxVideoFileSize: 209715200
   google:
     clientId: ""
     # Not a secret: the frontend container serves it in /config.js. Used for
