@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.5.0](https://github.com/Niecke/lumios/compare/v0.4.0...v0.5.0) (2026-11-02)
+
+
+### Features
+
+* **admin:** list of successful worker jobs on the worker dashboard ([#571](https://github.com/Niecke/lumios/issues/571)) ([8c37559](https://github.com/Niecke/lumios/commit/8c375596d8dfd343c0b2c96c0ce3a4aee19a8dc6))
+* **admin:** show backup status, list and sizes on the admin system dashboard ([#570](https://github.com/Niecke/lumios/issues/570)) ([40a8620](https://github.com/Niecke/lumios/commit/40a862094c242c1d9ecfea3251e694dcd34f4ddd))
+* allow webp format in image uploads ([#538](https://github.com/Niecke/lumios/issues/538)) ([de5e312](https://github.com/Niecke/lumios/commit/de5e3128ab2cf9da4c64da1b2f1c3f926aabc2e6))
+* **backend:** cache watermark previews in Redis with ETag and Cache-Control headers ([#539](https://github.com/Niecke/lumios/issues/539)) ([b533b4b](https://github.com/Niecke/lumios/commit/b533b4b9f3f547dc1b7abdef003e31e8fcbb235e))
+* **deploy:** chart values for VIDEO_UPLOADS_ENABLED and MAX_VIDEO_FILE_SIZE ([#569](https://github.com/Niecke/lumios/issues/569)) ([512760b](https://github.com/Niecke/lumios/commit/512760beea4b195bf54b7259f9b180a5bf0cf281))
+* **deploy:** enable video uploads in production ([#576](https://github.com/Niecke/lumios/issues/576)) ([22aaa47](https://github.com/Niecke/lumios/commit/22aaa47ae37bbb6b997fa0ce48ad142430a67826))
+* **frontend:** German translation, German as the default language ([#552](https://github.com/Niecke/lumios/issues/552)) ([93da039](https://github.com/Niecke/lumios/commit/93da0396c139ae322c3246884c65bd7ff4d1430f))
+* pass user_id to storage_path to avoid lazy relationship loading ([#572](https://github.com/Niecke/lumios/issues/572)) ([c143348](https://github.com/Niecke/lumios/commit/c143348e1c5ce5994c53a20c0d55a42bc5d1698f))
+* **worker:** janitor job deletes finished Procrastinate jobs after 30 days ([#567](https://github.com/Niecke/lumios/issues/567)) ([8394f6c](https://github.com/Niecke/lumios/commit/8394f6c3e0351a40c25aa3cb01f66bb2b3b97590))
+
+
+### Bug Fixes
+
+* **admin:** worker dashboard shows 1 extra attempt and a retried badge on every first-run job ([#574](https://github.com/Niecke/lumios/issues/574)) ([5934e2a](https://github.com/Niecke/lumios/commit/5934e2a2a88976e1239d26c02404bc5f9b89f617))
+* **backend:** make JPEG metadata stripping fail closed and allowlist-based ([#548](https://github.com/Niecke/lumios/issues/548)) ([9d9c92f](https://github.com/Niecke/lumios/commit/9d9c92f8357349ddafb14692fdcb45ba805b17b3))
+* **backend:** require ready status for public video download and skip deleted videos in processing ([#554](https://github.com/Niecke/lumios/issues/554)) ([9e72f56](https://github.com/Niecke/lumios/commit/9e72f56e3f4c0b0ad856c942e50683799de990a9))
+* **backend:** strip EXIF and other private metadata from PNG uploads ([#544](https://github.com/Niecke/lumios/issues/544)) ([db9b229](https://github.com/Niecke/lumios/commit/db9b229fe858e866e1865af178fbb5ff9dff6990))
+* **deps:** update dependency boto3 to v1.43.120 ([#546](https://github.com/Niecke/lumios/issues/546)) ([a4602b1](https://github.com/Niecke/lumios/commit/a4602b117e5ba680d90eb3f1d1bd09f7151d31cb))
+* **deps:** update dependency boto3 to v1.43.122 ([#555](https://github.com/Niecke/lumios/issues/555)) ([680c396](https://github.com/Niecke/lumios/commit/680c396c554efaca90b53ab3bb5dca59e2cfdbdd))
+* **deps:** update dependency imageio-ffmpeg to v0.7.0 ([#547](https://github.com/Niecke/lumios/issues/547)) ([322b900](https://github.com/Niecke/lumios/commit/322b90086197c461acc99617018fe59dc2460b9c))
+* **deps:** update opentelemetry ([#564](https://github.com/Niecke/lumios/issues/564)) ([e60e7bb](https://github.com/Niecke/lumios/commit/e60e7bb3c0d04ddcbd49ceb92dc7ff63805d82f6))
+* **tests:** close the psycopg connection pool that is left open at interpreter shutdown ([#551](https://github.com/Niecke/lumios/issues/551)) ([942e486](https://github.com/Niecke/lumios/commit/942e4865394d088f988458f67dcd07bbccc1854a))
+* **tests:** create the test database when missing and isolate it per worktree ([#566](https://github.com/Niecke/lumios/issues/566)) ([c458f94](https://github.com/Niecke/lumios/commit/c458f946cd2b22c926e18db06c257fc2f222d38a))
+
 ## [0.4.0](https://github.com/Niecke/lumios/compare/v0.3.0...v0.4.0) (2026-10-29)
 
 
