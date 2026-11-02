@@ -15,8 +15,8 @@ export function LanguageSwitcher({
   className?: string;
   saveToAccount?: boolean;
 }) {
-  const { t, i18n } = useTranslation();
-  const active = i18n.language === "en" ? "en" : currentLocale();
+  const { t } = useTranslation(); // re-renders on a language change
+  const active = currentLocale();
 
   function choose(lang: Locale) {
     if (lang !== active) chooseLanguage(lang, saveToAccount);

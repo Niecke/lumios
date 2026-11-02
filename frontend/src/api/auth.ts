@@ -10,6 +10,14 @@
 //   4. Both the JWT and the Google profile are stored in sessionStorage so
 //      they are cleared automatically when the tab closes.
 
+import {
+  applyAccountLocale,
+  currentLocale,
+  setLocale,
+  storedLocale,
+  type Locale,
+} from "../i18n/index.ts";
+
 // Shape returned by /api/v1/auth/me
 export interface UserInfo {
   email: string;
@@ -25,13 +33,6 @@ export interface UserInfo {
   picture?: string;
 }
 
-import {
-  applyAccountLocale,
-  setLocale,
-  storedLocale,
-  type Locale,
-} from "../i18n/index.ts";
-
 const TOKEN_KEY = "lumios_token";
 
 // Language update in flight: me() waits for it.
@@ -39,6 +40,8 @@ let languageUpdate: Promise<unknown> | null = null;
 // The account language applies once per page load and at login. After that a
 // language chosen in this browser stays, whichever switcher it came from.
 let accountLanguageApplied = false;
+// A language whose save to the account failed: the next me() tries again.
+let unsavedLanguage: Locale | null = null;
 
 // GIS must only be initialized once per session. This flag is reset on logout
 // so that a fresh initialize() call happens on the next login page visit.
@@ -66,6 +69,7 @@ function clearAuthSession() {
   resetGsiInitialized();
   languageUpdate = null;
   accountLanguageApplied = false;
+  unsavedLanguage = null;
 }
 
 // Internal helper: fetch JSON from the API, attaching the Bearer token.
@@ -115,6 +119,13 @@ export const authApi = {
       accountLanguageApplied = true;
       applyAccountLocale(user.language);
     }
+    const language = unsavedLanguage;
+    unsavedLanguage = null;
+    // Retry a failed save, unless the language was switched again since.
+    if (language !== null && language === currentLocale() && user.language !== language) {
+      authApi.updateMe({ language }).catch(() => {});
+      return { ...user, language };
+    }
     return user;
   },
 
@@ -132,11 +143,16 @@ export const authApi = {
   // Store the UI language on the account (kept across devices).
   updateMe: (data: { language: Locale }) => {
     accountLanguageApplied = true; // this choice is newer than the account's value
+    unsavedLanguage = null;
     const request = apiFetch<UserInfo>("/api/v1/auth/me", {
       method: "PATCH",
       body: JSON.stringify(data),
     });
     languageUpdate = request;
+    request.catch(() => {
+      // Keep it for a retry, unless a newer update started or the session ended.
+      if (languageUpdate === request && tokenStore.get()) unsavedLanguage = data.language;
+    });
     return request;
   },
 

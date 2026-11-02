@@ -8,7 +8,7 @@ import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from "@tansta
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
-import { getApiErrorMessage } from "../api/errors";
+import { displayErrorMessage, type DisplayError } from "../api/errors";
 import { formatBytes } from "../i18n";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { librariesApi } from "../api/libraries";
@@ -55,7 +55,7 @@ interface UploadItem {
   file: File;
   status: "pending" | "uploading" | "processing" | "done" | "error";
   progress?: number;
-  error?: string;
+  error?: DisplayError;
 }
 
 // ── Image tile (authenticated) ────────────────────────────────────────────────
@@ -435,8 +435,8 @@ function UploadQueue({ items }: { items: UploadItem[] }) {
           {item.status === "processing" && (
             <span className="upload-item__progress">{t("library.processing")}</span>
           )}
-          {item.status === "error" && (
-            <span className="upload-item__error">{item.error}</span>
+          {item.status === "error" && item.error && (
+            <span className="upload-item__error">{displayErrorMessage(item.error, t)}</span>
           )}
         </div>
       ))}
@@ -511,7 +511,7 @@ function WatermarkSettings({
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<DisplayError | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [watermarkChanged, setWatermarkChanged] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -525,7 +525,7 @@ function WatermarkSettings({
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<DisplayError | null>(null);
   const prevObjectUrl = useRef<string | null>(null);
 
   // Sync local state when library prop changes (e.g. after upload/save)
@@ -561,12 +561,12 @@ function WatermarkSettings({
           setPreviewLoading(false);
         })
         .catch((err) => {
-          setPreviewError(err instanceof Error ? getApiErrorMessage(err, t) : t("watermark.previewFailed"));
+          setPreviewError(err instanceof Error ? { error: err } : { key: "watermark.previewFailed" });
           setPreviewLoading(false);
         });
     }, 600);
     return () => clearTimeout(timer);
-  }, [library.id, library.watermark_gcs_key, pendingScale, pendingPosition, t]);
+  }, [library.id, library.watermark_gcs_key, pendingScale, pendingPosition]);
 
   // Revoke object URL on unmount
   useEffect(() => {
@@ -583,7 +583,7 @@ function WatermarkSettings({
       onUpdate();
       setWatermarkChanged(true);
     } catch (err) {
-      setUploadError(err instanceof Error ? getApiErrorMessage(err, t) : t("watermark.uploadFailed"));
+      setUploadError(err instanceof Error ? { error: err } : { key: "watermark.uploadFailed" });
     } finally {
       setUploading(false);
     }
@@ -678,7 +678,7 @@ function WatermarkSettings({
         />
       </div>
       {uploadError && (
-        <div className="alert alert--error" style={{ marginBottom: "0.5rem", fontSize: "0.8rem" }}>{uploadError}</div>
+        <div className="alert alert--error" style={{ marginBottom: "0.5rem", fontSize: "0.8rem" }}>{displayErrorMessage(uploadError, t)}</div>
       )}
 
       {/* Scale slider */}
@@ -761,7 +761,7 @@ function WatermarkSettings({
               <span className="material-icons" style={{ fontSize: 24, color: "var(--clr-on-surface-var)", animation: "spin 1s linear infinite" }}>hourglass_top</span>
             )}
             {!previewLoading && previewError && (
-              <span style={{ fontSize: "0.8rem", color: "var(--clr-error)" }}>{previewError}</span>
+              <span style={{ fontSize: "0.8rem", color: "var(--clr-error)" }}>{displayErrorMessage(previewError, t)}</span>
             )}
             {!previewLoading && !previewError && previewUrl && (
               <img
@@ -904,10 +904,14 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
   const [renamingLib, setRenamingLib] = useState(false);
   const [editLibName, setEditLibName] = useState("");
 
-  const { data: library, refetch: refetchLibrary } = useQuery({
+  const { data: library, error: libraryError, refetch: refetchLibrary } = useQuery({
     queryKey: ["library", libraryUuid],
     queryFn: () => librariesApi.getByUuid(libraryUuid),
   });
+  // The API answers "Library not found" for a library of another photographer:
+  // a language switched there stays local. While loading, or after any other
+  // error, this is the photographer's own area and the choice is saved.
+  const foreignLibrary = libraryError?.message === "Library not found";
 
   const updateLibrary = useMutation({
     mutationFn: (patch: { name?: string; use_original_as_preview?: boolean; download_enabled?: boolean; is_private?: boolean; watermark_scale?: number; watermark_position?: string }) =>
@@ -996,7 +1000,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
         }
         invalidate();
       } catch (err) {
-        const message = err instanceof Error ? getApiErrorMessage(err, t) : t("watermark.uploadFailed");
+        const message: DisplayError = err instanceof Error ? { error: err } : { key: "watermark.uploadFailed" };
         setQueue((q) =>
           q.map((i) =>
             i.id === item.id ? { ...i, status: "error", error: message } : i
@@ -1020,7 +1024,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
 
   return (
     <>
-      <AppBar name={user.name} picture={user.picture} saveLanguage={library !== undefined} />
+      <AppBar name={user.name} picture={user.picture} saveLanguage={!foreignLibrary} />
 
       <main className="page-content">
         <div className="page-header">
@@ -1189,7 +1193,7 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
   const queryClient = useQueryClient();
   const [viewImageIndex, setViewImageIndex] = useState<number | null>(null);
   const [showLikedOnly, setShowLikedOnly] = useState(false);
-  const [finishError, setFinishError] = useState<string | null>(null);
+  const [finishError, setFinishError] = useState<DisplayError | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [publicQueue, setPublicQueue] = useState<UploadItem[]>([]);
 
@@ -1248,7 +1252,7 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
       await publicApi.finishLibrary(libraryUuid);
       queryClient.invalidateQueries({ queryKey: ["public-library", libraryUuid] });
     } catch (err) {
-      setFinishError(err instanceof Error ? getApiErrorMessage(err, t) : t("public.finishFailed"));
+      setFinishError(err instanceof Error ? { error: err } : { key: "public.finishFailed" });
     } finally {
       setFinishing(false);
     }
@@ -1300,7 +1304,7 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
         );
         queryClient.invalidateQueries({ queryKey: ["public-library", libraryUuid] });
       } catch (err) {
-        const message = err instanceof Error ? getApiErrorMessage(err, t) : t("watermark.uploadFailed");
+        const message: DisplayError = err instanceof Error ? { error: err } : { key: "watermark.uploadFailed" };
         setPublicQueue((q) =>
           q.map((i) =>
             i.id === item.id ? { ...i, status: "error", error: message } : i
@@ -1383,7 +1387,7 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
       </header>
       {finishError && (
         <div className="alert alert--error" style={{ margin: "0.5rem 1.5rem" }}>
-          {finishError}
+          {displayErrorMessage(finishError, t)}
         </div>
       )}
 

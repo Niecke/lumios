@@ -8,7 +8,7 @@ import { createFileRoute, redirect, Link } from "@tanstack/react-router";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { getApiErrorMessage } from "../api/errors";
+import { displayErrorMessage, type DisplayError } from "../api/errors";
 import { formatDate } from "../i18n";
 import { authApi, type UserInfo } from "../api/auth";
 import { librariesApi, type Library } from "../api/libraries";
@@ -37,7 +37,7 @@ interface CreateDialogProps {
 function CreateDialog({ onClose, onCreated }: CreateDialogProps) {
   const { t } = useTranslation();
   const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayError | null>(null);
 
   const create = useMutation({
     mutationFn: (n: string) => librariesApi.create(n),
@@ -45,7 +45,7 @@ function CreateDialog({ onClose, onCreated }: CreateDialogProps) {
       onCreated();
       onClose();
     },
-    onError: (err: Error) => setError(getApiErrorMessage(err, t)),
+    onError: (err: Error) => setError({ error: err }),
   });
 
   function handleSubmit(e: { preventDefault(): void }) {
@@ -74,7 +74,7 @@ function CreateDialog({ onClose, onCreated }: CreateDialogProps) {
               autoFocus
               disabled={create.isPending}
             />
-            {error && <span className="field-error">{error}</span>}
+            {error && <span className="field-error">{displayErrorMessage(error, t)}</span>}
           </div>
 
           <div className="dialog__actions" style={{ marginTop: "0.5rem" }}>

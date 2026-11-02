@@ -44,6 +44,11 @@ const CODES: Record<string, string> = {
   token_expired: "errors.tokenExpired",
 };
 
+// Own keys only: a message like "constructor" must not hit Object.prototype.
+function hasKey(table: Record<string, string>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(table, key);
+}
+
 // An error kept in component state: a translation key or an error from the API.
 // Translated at render time, so a language switch on the page updates the text.
 export type DisplayError = { key: string } | { error: unknown };
@@ -54,11 +59,11 @@ export function displayErrorMessage(display: DisplayError, t: TFunction): string
 
 export function getApiErrorMessage(error: unknown, t: TFunction): string {
   const err = error as { message?: string; code?: string } | null | undefined;
-  if (err?.code && CODES[err.code]) return t(CODES[err.code]);
+  if (err?.code && hasKey(CODES, err.code)) return t(CODES[err.code]);
 
   const message = err?.message;
   if (!message) return t("errors.unknown");
-  if (EXACT[message]) return t(EXACT[message]);
+  if (hasKey(EXACT, message)) return t(EXACT[message]);
   if (/not yet activated/i.test(message)) return t("errors.userNotYetActivated");
 
   const failed = message.match(/^(Request|Upload) failed \((\d+)\)$/);

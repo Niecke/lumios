@@ -115,6 +115,10 @@ function RegisterPage() {
               i18nKey="register.activationSent"
               values={{ email: registered.email ?? t("register.yourGoogleAccount") }}
               components={{ strong: <strong /> }}
+              // Escape the address before Trans parses the markup, then unescape the
+              // text: characters like "<" in it are shown, never read as tags.
+              tOptions={{ interpolation: { escapeValue: true } }}
+              shouldUnescape
             />
           </p>
           <Link

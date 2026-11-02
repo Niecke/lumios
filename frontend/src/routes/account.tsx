@@ -7,7 +7,7 @@ import { createFileRoute, redirect, Link, useNavigate } from "@tanstack/react-ro
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { getApiErrorMessage } from "../api/errors";
+import { displayErrorMessage, type DisplayError } from "../api/errors";
 import { formatBytes, formatDate } from "../i18n";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { authApi, type UserInfo } from "../api/auth";
@@ -70,14 +70,14 @@ function ChangePasswordCard() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayError | null>(null);
   const [success, setSuccess] = useState(false);
   const [pending, setPending] = useState(false);
 
   async function handleSubmit(e: { preventDefault(): void }) {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
-      setError(t("account.passwordMismatch"));
+      setError({ key: "account.passwordMismatch" });
       return;
     }
     setError(null);
@@ -90,7 +90,7 @@ function ChangePasswordCard() {
       setNewPassword("");
       setConfirmPassword("");
     } catch (err) {
-      setError(getApiErrorMessage(err, t));
+      setError({ error: err });
     } finally {
       setPending(false);
     }
@@ -104,7 +104,7 @@ function ChangePasswordCard() {
         </h2>
         {error && (
           <div className="alert alert--error" style={{ marginBottom: "1rem" }}>
-            {error}
+            {displayErrorMessage(error, t)}
           </div>
         )}
         {success && (
@@ -166,7 +166,7 @@ function DeactivateAccountCard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [confirming, setConfirming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<DisplayError | null>(null);
   const [pending, setPending] = useState(false);
 
   async function handleDeactivate() {
@@ -177,7 +177,7 @@ function DeactivateAccountCard() {
       authApi.logout();
       navigate({ to: "/login" });
     } catch (err) {
-      setError(getApiErrorMessage(err, t));
+      setError({ error: err });
       setPending(false);
     }
   }
@@ -194,7 +194,7 @@ function DeactivateAccountCard() {
 
         {error && (
           <div className="alert alert--error" style={{ marginBottom: "1rem" }}>
-            {error}
+            {displayErrorMessage(error, t)}
           </div>
         )}
 

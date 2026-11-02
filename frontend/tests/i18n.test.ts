@@ -117,6 +117,9 @@ test("API error messages are translated, unknown ones pass through", async () =>
   assert.equal(getApiErrorMessage(err("Request failed (500)"), t), "Anfrage fehlgeschlagen (500)");
   assert.equal(getApiErrorMessage(err("Something new"), t), "Something new");
   assert.equal(getApiErrorMessage(undefined, t), "Etwas ist schiefgelaufen");
+  // Names on Object.prototype are not table entries.
+  assert.equal(getApiErrorMessage(err("constructor"), t), "constructor");
+  assert.equal(getApiErrorMessage(err("toString", "hasOwnProperty"), t), "toString");
   await i18n.changeLanguage("en");
   assert.equal(getApiErrorMessage(err("Library not found"), t), "Library not found");
   assert.equal(getApiErrorMessage(err("name must be 255 characters or fewer"), t), "Must be 255 characters or fewer");
@@ -133,12 +136,24 @@ test("an error kept in state follows a language switch", async () => {
   assert.equal(displayErrorMessage(fromApi, t), "Library not found");
 });
 
-test("the auth pages keep no translated text in state, and t never re-runs their effects", () => {
-  for (const page of ["login", "register", "activate"]) {
-    const src = readFileSync(`src/routes/${page}.tsx`, "utf8");
-    assert.doesNotMatch(src, /\bset[A-Z]\w*\(\s*(t\(|getApiErrorMessage\()/, page);
-    assert.doesNotMatch(src, /\}, \[[^\]]*\bt\b[^\]]*\]\);/, page);
+test("no page keeps translated text in state, and t never re-runs an effect", () => {
+  const sources = ["src/routes", "src/components"].flatMap((dir) =>
+    readdirSync(dir).map((name) => join(dir, name)),
+  );
+  for (const path of sources) {
+    const src = readFileSync(path, "utf8");
+    assert.doesNotMatch(src, /\bset[A-Z]\w*\([^;\n)]*\b(t|getApiErrorMessage)\(/, path);
+    assert.doesNotMatch(src, /=\s*[^;]*\?\s*getApiErrorMessage\(/, path);
+    assert.doesNotMatch(src, /\}, \[[^\]]*\bt\b[^\]]*\]\);/, path);
   }
+});
+
+test("an interpolated address is shown as text, not parsed as markup", () => {
+  const src = readFileSync("src/routes/register.tsx", "utf8");
+  const trans = src.slice(src.indexOf('i18nKey="register.activationSent"'));
+  const block = trans.slice(0, trans.indexOf("/>\n"));
+  assert.match(block, /escapeValue: true/);
+  assert.match(block, /shouldUnescape/);
 });
 
 test("relative times and notification texts are localized", async () => {

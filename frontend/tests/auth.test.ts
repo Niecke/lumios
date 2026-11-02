@@ -122,8 +122,45 @@ test("authApi.me() waits for a pending language update and keeps a failed choice
   release();
   await update;
   await me;
-  assert.deepEqual(calls, ["PATCH", "GET"]);
+  assert.deepEqual(calls, ["PATCH", "GET", "PATCH"]); // me() retries the failed save
   assert.equal(currentLocale(), "en"); // failed save does not revert to the stored "de"
+});
+
+test("a failed language save is retried by the next me()", async () => {
+  let failPatch = true;
+  const calls = mockAccount("de");
+  const accountFetch = globalThis.fetch;
+  globalThis.fetch = (async (path: string, init?: RequestInit) => {
+    if (init?.method === "PATCH" && failPatch) {
+      failPatch = false;
+      calls.push({ method: "PATCH", path, body: JSON.parse(init.body as string) });
+      return new Response(null, { status: 503 });
+    }
+    return accountFetch(path, init);
+  }) as typeof fetch;
+
+  await authApi.me(); // page load
+  chooseLanguage("en", true);
+  await new Promise((r) => setTimeout(r, 0));
+  const user = await authApi.me(); // next route guard
+  assert.equal(user.language, "en");
+  await authApi.me(); // saved now: no third PATCH
+  assert.deepEqual(patches(calls).map((c: any) => c.body), [{ language: "en" }, { language: "en" }]);
+  assert.equal(i18n.language, "en");
+});
+
+test("a failed save is not retried after the language was switched locally", async () => {
+  const calls = mockAccount("de");
+  await authApi.me();
+  const accountFetch = globalThis.fetch;
+  globalThis.fetch = (async (path: string, init?: RequestInit) =>
+    init?.method === "PATCH" ? new Response(null, { status: 503 }) : accountFetch(path, init)) as typeof fetch;
+  await authApi.updateMe({ language: "en" }).catch(() => {});
+  globalThis.fetch = accountFetch;
+  chooseLanguage("de", false); // switched back on a public gallery
+  calls.length = 0;
+  await authApi.me();
+  assert.equal(patches(calls).length, 0);
 });
 
 test("logout forgets an unsaved language, so me() applies the account language again", async () => {
