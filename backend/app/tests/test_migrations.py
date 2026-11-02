@@ -1,5 +1,9 @@
+import os
+import warnings
+
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
+from flask_migrate import downgrade, upgrade
 from sqlalchemy import Enum, text
 
 from models import db
@@ -54,3 +58,33 @@ def test_alembic_enum_values_match_models(app):
                         f"extra in db {sorted(in_db - in_model)}"
                     )
     assert mismatches == []
+
+
+MIGRATIONS_DIR = os.path.join(os.path.dirname(__file__), "..", "migrations")
+
+
+def test_migration_downgrade_and_upgrade(app):
+    """env.py runs online migrations without the deprecated get_engine()."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        downgrade(directory=MIGRATIONS_DIR, revision="-1")
+        try:
+            upgrade(directory=MIGRATIONS_DIR, revision="head")
+        finally:
+            # Restore head even if the upgrade failed halfway, so later tests
+            # in the session do not run against a broken schema.
+            upgrade(directory=MIGRATIONS_DIR, revision="head")
+    assert [w for w in caught if "get_engine" in str(w.message)] == []
+
+    with db.engine.connect() as conn:
+        diff = compare_metadata(
+            MigrationContext.configure(conn, opts={"include_object": include_object}),
+            db.metadata,
+        )
+    assert diff == []
+
+
+def test_env_py_does_not_call_deprecated_get_engine():
+    with open(os.path.join(MIGRATIONS_DIR, "env.py")) as f:
+        source = f.read()
+    assert "db.get_engine(" not in source

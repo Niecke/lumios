@@ -83,6 +83,8 @@ class User(db.Model):
     deleted_at = db.Column(db.DateTime, nullable=True)
     agb_accepted_at = db.Column(db.DateTime, nullable=True)
     agb_version = db.Column(db.String(50), nullable=True)
+    # UI language chosen by the user; NULL means no preference yet
+    language = db.Column(db.String(5), nullable=True)
     is_system = db.Column(
         db.Boolean, nullable=False, default=False, server_default=db.false()
     )

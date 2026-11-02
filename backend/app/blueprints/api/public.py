@@ -489,6 +489,7 @@ def download_video(library_uuid: str, video_uuid: str):
             Video.uuid == video_uuid,
             Video.library_id == library.id,
             Video.deleted_at.is_(None),
+            Video.processing_status == VideoProcessingStatus.ready,
         )
     ).scalar_one_or_none()
     if video is None:

@@ -473,6 +473,27 @@ class TestAdminGdprExport:
         assert user_json["id"] == regular_user.id
         assert "auth_string" not in user_json
 
+    def test_gdpr_export_user_json_contains_language(
+        self, client, admin_user, regular_user, monkeypatch
+    ):
+        regular_user.language = "en"
+        db.session.commit()
+        login_admin(client, admin_user)
+        uploaded = {}
+
+        def mock_upload(file_obj, key, content_type):
+            uploaded["data"] = file_obj.read()
+
+        monkeypatch.setattr("blueprints.admin.storage.upload_fileobj", mock_upload)
+
+        client.post(
+            f"/admin/user_gdpr_export/{regular_user.id}",
+            follow_redirects=True,
+        )
+
+        zf = zipfile.ZipFile(io.BytesIO(uploaded["data"]))
+        assert json.loads(zf.read("user.json"))["language"] == "en"
+
     def test_gdpr_export_user_json_omits_legacy_quota_columns(
         self, client, admin_user, regular_user, monkeypatch
     ):
@@ -867,6 +888,82 @@ class TestAdminSystem:
             html = html_text(client.get("/admin/system"))
         assert ">failed<" in html
         assert "boom" in html
+
+    def _backup_status(self, db_status="ok", overdue=False, detail=""):
+        archives = [
+            {"name": "lumios-postgres-20261102T030000.tar", "created": "2026-11-02 03:00", "size": 2048}
+        ]
+        database = {
+            "name": "backup-database", "status": db_status, "detail": detail,
+            "last_backup": "2026-11-02 03:00", "age_hours": 40.0 if overdue else 2.0,
+            "is_overdue": overdue, "total_size": 4096, "archive_count": 2,
+            "archives": archives,
+        }
+        photos = {
+            "name": "backup-photos", "status": "ok", "detail": "",
+            "last_backup": "2026-11-02 04:00", "age_hours": 1.0, "is_overdue": False,
+            "total_size": 1048576, "file_count": 7,
+        }
+        return {"database": database, "photos": photos}
+
+    def test_system_renders_backups_section(self, client, admin_user):
+        from unittest.mock import patch
+
+        login_admin(client, admin_user)
+        with patch("services.system.get_backup_status", return_value=self._backup_status()):
+            html = html_text(client.get("/admin/system"))
+        assert "Backups" in html
+        assert "Database Archives" in html
+        assert "lumios-postgres-20261102T030000.tar" in html
+        assert "2.0 kB" in html
+        assert "7 files" in html
+        assert "on time" in html
+
+    def test_system_flags_overdue_backup(self, client, admin_user):
+        from unittest.mock import patch
+
+        login_admin(client, admin_user)
+        with patch("services.system.get_backup_status", return_value=self._backup_status(overdue=True)):
+            html = html_text(client.get("/admin/system"))
+        assert "overdue" in html
+
+    def test_verdict_warns_on_backup_problem(self):
+        from services.system import _verdict
+
+        ok = [{"status": "ok"}]
+        assert _verdict(ok, False, [], False, self._backup_status())[0] == "ok"
+        overdue = self._backup_status(overdue=True)
+        assert _verdict(ok, False, [], False, overdue) == (
+            "warning", "A backup is overdue or unavailable")
+        down = self._backup_status(db_status="unavailable")
+        assert _verdict(ok, False, [], False, down)[0] == "warning"
+
+    def test_system_handles_unavailable_backup(self, client, admin_user):
+        from unittest.mock import patch
+
+        login_admin(client, admin_user)
+        status = self._backup_status(db_status="unavailable", detail="ClientError: AccessDenied")
+        with patch("services.system.get_backup_status", return_value=status):
+            response = client.get("/admin/system")
+        assert response.status_code == 200
+        html = html_text(response)
+        assert "unavailable" in html
+        assert "ClientError: AccessDenied" in html
+
+    def test_system_shows_backups_not_configured(self, client, admin_user):
+        login_admin(client, admin_user)
+        html = html_text(client.get("/admin/system"))
+        assert "not configured" in html
+
+    def test_dashboard_shows_backup_status(self, client, admin_user):
+        from unittest.mock import patch
+
+        login_admin(client, admin_user)
+        with patch("blueprints.admin.get_backup_summary", return_value=list(self._backup_status().values())):
+            html = html_text(client.get("/"))
+        assert "backup-database" in html
+        assert "backup-photos" in html
+        assert "7 files" in html
 
     def test_dashboard_status_card(self, client, admin_user):
         from config import GIT_HASH

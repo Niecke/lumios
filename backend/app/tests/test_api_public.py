@@ -341,6 +341,26 @@ class TestPublicUpload:
         assert res.status_code == 201
         assert "uuid" in res.get_json()
 
+    def test_public_upload_strips_jpeg_metadata(self, client, upload_library):
+        from test_api_images import make_jpeg_with_private_metadata, PRIVATE_JPEG_STRINGS
+
+        jpeg = make_jpeg_with_private_metadata(orientation=6)
+        with _patch("services.images.storage") as mock_storage:
+            res = self._post_jpeg(client, upload_library.uuid, jpeg)
+            assert res.status_code == 201
+            stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        for needle in PRIVATE_JPEG_STRINGS:
+            assert needle not in stored
+        import piexif
+        assert piexif.load(stored)["0th"] == {piexif.ImageIFD.Orientation: 6}
+
+    def test_public_upload_corrupt_jpeg_rejected(self, client, upload_library):
+        jpeg = _make_jpeg_bytes()[:-2]  # no EOI
+        with _patch("services.images.storage") as mock_storage:
+            res = self._post_jpeg(client, upload_library.uuid, jpeg)
+        assert res.status_code == 415
+        mock_storage.upload_fileobj.assert_not_called()
+
     def test_upload_invalidates_watermark_previews(self, client, upload_library):
         with _patch("services.images.storage"), _patch(
             "services.images.invalidate_watermark_previews"
@@ -366,6 +386,37 @@ class TestPublicUpload:
         image = _Image.query.filter_by(uuid=res.get_json()["uuid"]).one()
         assert image.content_type == "image/webp"
         assert image.s3_key.endswith(".webp")
+
+    def test_public_upload_strips_png_metadata(self, client, upload_library):
+        from test_api_images import make_png_with_private_metadata, png_chunk_types
+
+        png = make_png_with_private_metadata()
+        with _patch("services.images.storage") as mock_storage:
+            res = client.post(
+                f"{BASE}/libraries/{upload_library.uuid}/images",
+                data={"file": (_io.BytesIO(png), "photo.png", "image/png")},
+                content_type="multipart/form-data",
+            )
+        assert res.status_code == 201
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        assert not {b"tEXt", b"zTXt", b"iTXt", b"eXIf"} & set(png_chunk_types(stored))
+        assert b"SN-12345678" not in stored and b"secret-owner" not in stored
+        with _PilImage.open(_io.BytesIO(stored)) as img:
+            img.load()
+            assert img.size == (2, 2)
+
+    def test_public_upload_corrupt_png_rejected(self, client, upload_library):
+        from test_api_images import make_png_with_private_metadata
+
+        png = make_png_with_private_metadata()[:-6]
+        with _patch("services.images.storage") as mock_storage:
+            res = client.post(
+                f"{BASE}/libraries/{upload_library.uuid}/images",
+                data={"file": (_io.BytesIO(png), "photo.png", "image/png")},
+                content_type="multipart/form-data",
+            )
+        assert res.status_code == 415
+        mock_storage.upload_fileobj.assert_not_called()
 
     def test_upload_marks_image_as_external(self, client, upload_library):
         from models import Image as _Image
@@ -778,23 +829,25 @@ class TestPublicVideoUngatedRoutes:
         assert res.status_code == 200
 
     @pytest.mark.parametrize(
-        "status", [VideoProcessingStatus.uploading, VideoProcessingStatus.failed]
+        "status",
+        [
+            VideoProcessingStatus.uploading,
+            VideoProcessingStatus.processing,
+            VideoProcessingStatus.failed,
+        ],
     )
-    def test_download_of_non_ready_video_is_not_blocked(
+    def test_download_of_non_ready_video_returns_404(
         self, client, public_library, status
     ):
-        # Known gap, tracked as a follow-up: download_video does not check
-        # processing_status, so a presigned URL is issued for a video that is not
-        # ready. Pinned here so a later fix shows up as a deliberate test change.
         public_library.download_enabled = True
         _add_video(public_library, status=status)
         db.session.commit()
         with _patch("blueprints.api.public.storage") as st:
-            st.get_presigned_download_url.return_value = "http://example.com/dl"
             res = client.get(
                 f"{BASE}/libraries/{public_library.uuid}/videos/{PUBLIC_VIDEO_UUID}/download"
             )
-        assert res.status_code == 200
+        assert res.status_code == 404
+        st.get_presigned_download_url.assert_not_called()
 
 
 @pytest.mark.usefixtures("video_enabled")
@@ -1102,6 +1155,23 @@ class TestPublicVideoDownload:
         video.deleted_at = _datetime(2024, 1, 1)
         db.session.commit()
         assert self._get(client, download_library.uuid).status_code == 404
+
+    @pytest.mark.parametrize(
+        "status",
+        [
+            VideoProcessingStatus.uploading,
+            VideoProcessingStatus.processing,
+            VideoProcessingStatus.failed,
+        ],
+    )
+    def test_non_ready_video_returns_404(self, client, download_library, status):
+        _add_video(download_library, status=status)
+        with _patch("blueprints.api.public.storage") as st:
+            res = self._get(client, download_library.uuid)
+        assert res.status_code == 404
+        assert res.get_json() == {"error": "Video not found"}
+        st.get_presigned_download_url.assert_not_called()
+        assert _audit_logs(AuditLogType.video_downloaded) == []
 
     def test_success_returns_url_and_logs(self, client, download_library):
         video = _add_video(download_library, status=VideoProcessingStatus.ready)

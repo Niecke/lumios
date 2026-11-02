@@ -335,6 +335,76 @@ flux -n lumios reconcile helmrelease lumios
 Rotating `backend.jwtSecret` signs every photographer out; `backend.secretKey`
 invalidates sessions and CSRF tokens.
 
+### Video uploads
+
+Two plain chart values control them, set in the HelmRelease `values` of each
+environment (`deploy/flux/<env>/helmrelease.yaml`), not in the `lumios-values`
+Secret, because neither is a secret:
+
+| Value | Default | Becomes |
+|---|---|---|
+| `backend.videoUploadsEnabled` | `false` | `VIDEO_UPLOADS_ENABLED` |
+| `backend.maxVideoFileSize` | `209715200` (200 MB, in bytes) | `MAX_VIDEO_FILE_SIZE` |
+
+The backend and all worker Deployments get both through `lumios.backendEnv`.
+With the flag off every video route answers 501 and the frontend hides the
+video UI. Staging sets it to `true`, production sets it explicitly to `false`.
+
+Unlike the Secret keys, which only roll the pods through the credentials
+checksum, a plain env value sits in the Deployment's pod template: changing it
+rolls the backend and the worker pods on the next reconcile.
+
+#### CORS on the bucket
+
+The browser PUTs the video straight to a presigned URL on
+`S3_PUBLIC_ENDPOINT_URL`, so the bucket needs a CORS rule that allows `PUT` and
+the `Content-Type` header from the frontend origin. Without it the browser's
+preflight fails and no upload starts. It is a bucket setting at the storage
+provider: nothing in the cluster, this repository or Terraform configures it.
+
+Check the current Hetzner Object Storage documentation for CORS support before
+relying on this. The S3 API route works with any S3 tool; the Hetzner Console
+has no CORS settings, so apply it with the bucket's access key:
+
+```bash
+cat > cors.json <<'EOF2'
+{
+  "CORSRules": [{
+    "AllowedOrigins": ["https://lumios-app.niecke-it.de"],
+    "AllowedMethods": ["PUT"],
+    "AllowedHeaders": ["Content-Type"],
+    "MaxAgeSeconds": 3600
+  }]
+}
+EOF2
+# Staging bucket lumios-staging: use https://lumios-app-staging.niecke-it.de
+aws s3api put-bucket-cors --bucket lumios \
+  --endpoint-url https://<region>.your-objectstorage.com \
+  --cors-configuration file://cors.json
+```
+
+A change can take up to 15 minutes to reach the whole storage cluster. Test the
+preflight (expect `200`/`204` with `access-control-allow-origin` in the answer):
+
+```bash
+curl -si -X OPTIONS "https://<region>.your-objectstorage.com/lumios/cors-test" \
+  -H "Origin: https://lumios-app.niecke-it.de" \
+  -H "Access-Control-Request-Method: PUT" \
+  -H "Access-Control-Request-Headers: content-type" | head -20
+```
+
+#### Switching it on in production
+
+1. Merge the video bug fixes of #533.
+2. Release a chart that contains these values (release-please PR); production
+   keeps `videoUploadsEnabled: false`.
+3. Apply the CORS rule to the `lumios` bucket and check it with the preflight.
+4. In staging (CORS on `lumios-staging` first), upload a real video, including a
+   large one, and wait for status `ready`.
+5. Set `backend.videoUploadsEnabled: true` in `deploy/flux/prod/helmrelease.yaml`,
+   merge, and reconcile. The pods roll; confirm `video_uploads_enabled: true` in
+   the public library response.
+
 ### Error tracking with Sentry
 
 Unhandled backend exceptions, failed Brevo calls, failed cleanup CronJobs and

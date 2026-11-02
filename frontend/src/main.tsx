@@ -8,6 +8,7 @@
 // Add new pages by creating files under src/routes/.
 
 import "./index.css";
+import "./i18n";
 import { initErrorReporting } from "./errorReporting";
 initErrorReporting();
 import { initSentry } from "./sentry";

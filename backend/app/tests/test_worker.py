@@ -174,6 +174,21 @@ class TestExecution:
         probe.assert_not_called()
         assert _status(video) == VideoProcessingStatus.ready
 
+    def test_deleted_video_is_skipped(self, video, storage, probe):
+        finalize_video_upload(video)
+        reloaded = _reload(video)
+        reloaded.deleted_at = datetime.now(timezone.utc)
+        db.session.commit()
+        storage.reset_mock()
+
+        _run_worker("video")
+
+        assert _jobs()[0]["status"] == "succeeded"
+        assert _status(video) == VideoProcessingStatus.processing
+        storage.iter_object_chunks.assert_not_called()
+        storage.upload_fileobj.assert_not_called()
+        probe.assert_not_called()
+
     def test_job_survives_without_worker(self, video, storage, probe):
         """Nothing runs the job until a worker starts; it stays in the database."""
         finalize_video_upload(video)
@@ -316,6 +331,143 @@ class TestStalledJobs:
         assert _jobs()[0]["status"] == "todo"
 
 
+def _finished_job(status="succeeded", days_ago=40, with_event=True, error=False):
+    """Insert a job in `status`; its terminal event is backdated by `days_ago` days."""
+    job_id = db.session.execute(
+        text(
+            "INSERT INTO procrastinate_jobs (queue_name, task_name, args) "
+            "VALUES ('default', 't', CAST('{}' AS jsonb)) RETURNING id"
+        )
+    ).scalar_one()
+    if status in ("todo", "doing"):
+        if status == "doing":
+            db.session.execute(
+                text("UPDATE procrastinate_jobs SET status = 'doing' WHERE id = :i"), {"i": job_id}
+            )
+    else:
+        if status != "cancelled":  # a job is cancelled straight from todo
+            db.session.execute(
+                text("UPDATE procrastinate_jobs SET status = 'doing' WHERE id = :i"), {"i": job_id}
+            )
+        db.session.execute(
+            text(
+                "UPDATE procrastinate_jobs SET status = CAST(:s AS procrastinate_job_status) "
+                "WHERE id = :i"
+            ),
+            {"s": status, "i": job_id},
+        )
+    if not with_event:
+        db.session.execute(
+            text("DELETE FROM procrastinate_events WHERE job_id = :i AND type::text <> 'deferred'"),
+            {"i": job_id},
+        )
+    db.session.execute(
+        text("UPDATE procrastinate_events SET at = now() - make_interval(days => :d) WHERE job_id = :i"),
+        {"d": days_ago, "i": job_id},
+    )
+    if error:
+        from models import WorkerJobError
+
+        db.session.add(
+            WorkerJobError(job_id=job_id, queue_name="default", task_name="t", error_message="x")
+        )
+    db.session.commit()
+    return job_id
+
+
+def _job_ids():
+    return set(db.session.execute(text("SELECT id FROM procrastinate_jobs")).scalars())
+
+
+def _clean(**kw):
+    return asyncio.run(worker.clean_old_jobs_now(**kw))
+
+
+class TestCleanOldJobs:
+    def test_old_finished_job_is_deleted(self, app):
+        for status in ("succeeded", "failed", "cancelled", "aborted"):
+            _finished_job(status)
+
+        assert _clean() == 4
+        assert _job_ids() == set()
+
+    def test_events_and_errors_are_cleaned_up(self, app):
+        from models import WorkerJobError
+
+        job_id = _finished_job("failed", error=True)
+
+        assert _clean() == 1
+        events = db.session.execute(
+            text("SELECT count(*) FROM procrastinate_events WHERE job_id = :i"), {"i": job_id}
+        ).scalar_one()
+        assert events == 0
+        assert db.session.execute(select(WorkerJobError)).scalars().all() == []
+
+    def test_recent_finished_job_is_kept(self, app):
+        a = _finished_job("succeeded", days_ago=5)
+        b = _finished_job("failed", days_ago=5)
+
+        assert _clean() == 0
+        assert _job_ids() == {a, b}
+
+    def test_unfinished_job_is_kept(self, app):
+        a = _finished_job("todo", days_ago=90)
+        b = _finished_job("doing", days_ago=90)
+
+        assert _clean() == 0
+        assert _job_ids() == {a, b}
+
+    def test_job_without_finish_time_is_kept(self, app):
+        a = _finished_job("succeeded", days_ago=90, with_event=False)
+
+        assert _clean() == 0
+        assert _job_ids() == {a}
+
+    def test_custom_retention_days(self, app):
+        old = _finished_job("succeeded", days_ago=15)
+        recent = _finished_job("succeeded", days_ago=5)
+
+        assert _clean(retention_days=10) == 1
+        assert _job_ids() == {recent}
+        assert old not in _job_ids()
+
+    def test_batching_deletes_across_iterations(self, app):
+        for _ in range(5):
+            _finished_job("succeeded")
+
+        assert _clean(batch_size=2) == 5
+        assert _job_ids() == set()
+
+    def test_orphaned_error_rows_are_removed_and_live_ones_kept(self, app):
+        from models import WorkerJobError
+
+        live = _finished_job("failed", days_ago=5, error=True)
+        db.session.add(
+            WorkerJobError(job_id=999999, queue_name="default", task_name="t", error_message="x")
+        )
+        db.session.commit()
+
+        assert _clean() == 0
+        db.session.expire_all()
+        assert [e.job_id for e in db.session.execute(select(WorkerJobError)).scalars()] == [live]
+
+    def test_task_is_registered_on_default_queue_with_queueing_lock(self):
+        task = worker.worker_app.tasks["clean_old_jobs"]
+        assert task.queue == worker.QUEUE_DEFAULT
+        assert task.queueing_lock == "clean_old_jobs"
+
+    def test_retention_defaults_to_30_days(self):
+        import config
+
+        assert config.WORKER_JOB_RETENTION_DAYS == 30
+
+    def test_clean_is_idempotent(self, app):
+        assert _clean() == 0
+        _finished_job("succeeded")
+        assert _clean() == 1
+        assert _clean() == 0
+
+
 class TestWorkerDashboardSupport:
     def test_summarize_error_is_one_short_line_without_urls_or_paths(self):
         exc = ValueError(
@@ -405,7 +557,7 @@ class TestWorkerDashboardSupport:
 
 
 def _mail_jobs():
-    return [j for j in _jobs() if j["task_name"] != "recover_stalled_jobs"]
+    return [j for j in _jobs() if j["task_name"] not in ("recover_stalled_jobs", "clean_old_jobs")]
 
 
 @pytest.fixture
@@ -555,3 +707,41 @@ class TestMailExecution:
         assert _target({"ticket_id": 9, "subject": "x"}) == "9"
         assert _target({"email": "a@test.com", "ip": "1.2.3.4"}) == "a@test.com"
         assert _target({"summary": "x"}) is None
+
+
+class TestCloseWorkerApp:
+    @pytest.fixture(autouse=True)
+    def _clean(self):
+        worker.close_worker_app()
+        yield
+        worker.close_worker_app()
+
+    def test_close_worker_app_closes_sync_pool(self):
+        worker.open_for_defer()
+        sync_connector = worker.worker_app.connector._sync_connector
+        pool = sync_connector._pool
+        assert pool is not None and not pool.closed
+
+        worker.close_worker_app()
+
+        assert pool.closed
+        assert worker.worker_app.connector._sync_connector is None
+
+    def test_close_worker_app_idempotent_when_not_opened(self):
+        assert worker.worker_app.connector._sync_connector is None
+
+        worker.close_worker_app()
+        worker.close_worker_app()
+
+        assert worker.worker_app.connector._sync_connector is None
+
+    def test_close_worker_app_allows_reopen(self):
+        worker.open_for_defer()
+        first = worker.worker_app.connector._sync_connector._pool
+        worker.close_worker_app()
+
+        worker.open_for_defer()
+        second = worker.worker_app.connector._sync_connector._pool
+
+        assert second is not first
+        assert not second.closed

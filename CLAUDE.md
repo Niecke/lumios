@@ -81,7 +81,8 @@ lumios/
 ├── frontend/                 # React SPA (TanStack Router file-based routing)
 │   ├── src/
 │   │   ├── api/              # API client modules (auth, images, libraries, etc.)
-│   │   ├── components/       # AppBar, CookieBanner, FeedbackWidget
+│   │   ├── components/       # AppBar, CookieBanner, FeedbackWidget, LanguageSwitcher
+│   │   ├── i18n/             # i18next setup (index.ts) + locales/de.json, locales/en.json
 │   │   ├── routes/           # File-based routes (TanStack Router): __root, index, login, register, activate, account, support, library.$libraryUuid
 │   │   └── main.tsx
 │   ├── Dockerfile
@@ -117,6 +118,7 @@ podman exec -e FLASK_APP="main:create_app()" lumios-backend /usr/bin/python3 -m 
 # Start the throwaway test database first (set POSTGRES_TEST_PORT / POSTGRES_PORT if 5432 is taken):
 ./scripts/test-db.sh start               # or: podman compose --profile test up -d postgres-test
 ./scripts/test-db.sh stop                # remove it again
+./scripts/test-db.sh cleanup [-y]         # list, confirm and drop the lumios_test_* databases that belong to no worktree of this repository
 
 # Backend tests (run from backend/)
 # only for test setup (uv manages the virtualenv itself, no manual activation needed)
@@ -198,6 +200,9 @@ Defined and validated in `backend/app/config.py`. The app **refuses to start** i
 | `BREVO_API_KEY` | — | Brevo transactional email API key |
 | `MAIL_SENDER_EMAIL` | `lumios@niecke-it.de` | Sender email address |
 | `MAIL_SENDER_NAME` | `Lumios` | Sender display name |
+| `BACKUP_DATABASE_BUCKET` / `BACKUP_PHOTOS_BUCKET` | — | Off-site backup buckets listed by the admin System page; empty = "not configured" |
+| `BACKUP_DATABASE_ACCESS_KEY` / `_SECRET_KEY`, `BACKUP_PHOTOS_ACCESS_KEY` / `_SECRET_KEY` | — | **Read-only** HMAC keys of the two backup buckets (Helm: `backup.readOnly.*`) |
+| `BACKUP_GCS_ENDPOINT` | `https://storage.googleapis.com` | S3-compatible endpoint of the backup buckets |
 | `ADMIN_EMAIL` | — | Admin notification email |
 | `BREVO_WAITLIST_LIST_ID` | `0` | Brevo contact list for waitlist (0 = disabled) |
 | `MAX_USERS` | `100` | Max active users allowed to register |
@@ -215,9 +220,12 @@ Also read in `backend/app/config.py`, `backend/entrypoint.py` or `services/stora
 
 | Variable | Default | Description |
 |---|---|---|
+| `BACKUP_OVERDUE_SECONDS` | `129600` | Age (36 h) after which a backup counts as overdue |
+| `BACKUP_CACHE_TTL` | `300` | Redis TTL (seconds) of the backup bucket listing |
 | `OTEL_SERVICE_NAME` | `lumios-backend` | Service name reported to tracing |
 | `OTEL_SERVICE_VERSION` | `$GIT_HASH` | Service version reported to tracing |
 | `VIDEO_JOB_TIMEOUT_SECONDS` | `600` | Upper bound for one ffmpeg call of a video job; a hung process is killed and the job retried |
+| `WORKER_JOB_RETENTION_DAYS` | `30` | Finished Procrastinate jobs (`succeeded`, `failed`, `cancelled`, `aborted`) and their events are deleted by the daily `clean_old_jobs` task once the job finished this many days ago (Helm: `backend.jobRetentionDays`) |
 | `INIT_ADMIN_PASSWORD` | random | Password of the seeded admin; generated (16 chars, letters, digits and `!@#\$%&*`) if empty |
 | `MIN_PASSWORD_LENGTH` | `8` | Minimum password length |
 | `PASSWORD_HASHER_TIME_COST` | `2` | Argon2id time cost |
@@ -265,7 +273,7 @@ User                --> AuditLog                # append-only
 
 ### Tables
 
-**users** — `id, email, active, activation_pending, activation_token, account_type ('local' | 'google'), auth_string, created_at, last_login, deleted_at, agb_accepted_at, agb_version, is_system, subscription (SubscriptionType, default free)`
+**user** — `id, email, active, activation_pending, activation_token, account_type ('local' | 'google'), auth_string, created_at, last_login, deleted_at, agb_accepted_at, agb_version, language ('de' | 'en', NULL = no preference), is_system, subscription (SubscriptionType, default free)`
 
 `account_type` determines how the user authenticates:
 - `'local'` — `auth_string` holds an Argon2id-hashed password. Used only for the seeded admin account.
@@ -394,6 +402,7 @@ f"photos/{photographer_id}/{library_id}/thumbs/{uuid}.{ext}"     # 600px longest
 1. MIME type must be `image/jpeg`, `image/png` or `image/webp` — reject everything else (videos have their own list, see Video Uploads)
 2. Library must have fewer than `max_images_per_library` images (respects subscription tier)
 3. Photographer must own the library
+4. Originals are stored with private metadata stripped, all three formats fail closed. JPEG (`_strip_jpeg_metadata`) is rewritten with an allowlist of segments (structure, JFIF, ICC profile, Adobe APP14); its EXIF block keeps only the Orientation tag, and the embedded thumbnail, XMP, IPTC, comments and other APPn segments are dropped. Data after the first EOI of the final scan (second image of an MPO / gain-map JPEG, motion-photo trailer, padding) is truncated, not rejected; a JPEG without EOI is rejected. PNG (`_strip_png_metadata`) and WebP (`_strip_webp_metadata`) keep only the EXIF Orientation; a PNG or WebP with an unparseable EXIF chunk is rejected with 415 too. PNG keeps an allowlist of rendering chunks and a PNG with a malformed chunk structure (bad length or CRC, data after IEND) is rejected with 415; a JPEG whose segments or EXIF cannot be parsed and a WebP that cannot be parsed are rejected with 415 as well, in `validate_upload`, nothing is stored
 
 ### Thumbnail generation for images (inline, no queue)
 1. Validate MIME type and library capacity
@@ -421,7 +430,7 @@ Jobs are enqueued by the backend and run by separate worker pods. Queue and resu
 
 | Queue | Deployment | Concurrency | Used for |
 |---|---|---|---|
-| `default` | `worker-default` | 4 | mail jobs (`send_*_email`, `resend_activation`, `services/mail.py`: `notify_*` enqueues, `send_*` sends; 3 runs, a Brevo 4xx other than 429 is not retried); the periodic `recover_stalled_jobs` task (every 5 min) |
+| `default` | `worker-default` | 4 | mail jobs (`send_*_email`, `resend_activation`, `services/mail.py`: `notify_*` enqueues, `send_*` sends; 3 runs, a Brevo 4xx other than 429 is not retried); the periodic `recover_stalled_jobs` task (every 5 min); the periodic `clean_old_jobs` janitor (daily, 00:00 UTC: deletes finished jobs older than `WORKER_JOB_RETENTION_DAYS` in batches of 1000, with their events and `worker_job_errors` rows; logs the count only) |
 | `video` | `worker-video` | 1 | `process_video`: ffmpeg probe + thumbnail |
 | `photo` | `worker-photo`, **off by default** | 2 | prepared for image thumbnails/previews, nothing is enqueued on it yet |
 
@@ -434,6 +443,24 @@ Jobs are enqueued by the backend and run by separate worker pods. Queue and resu
 - **Entrypoint:** `python3 /entrypoint.py worker --queue <default|video|photo> [--concurrency N]` waits for the database and runs the worker; `python3 /entrypoint.py worker-health` exits 0 when the database and the queue schema answer (the pods' liveness probe).
 - **Local dev:** `podman-compose up` starts `worker-default` and `worker-video`; inspect jobs with `podman exec -it lumios-worker-video /usr/bin/python3 -m procrastinate --app=worker.worker_app shell` (`list_jobs`, `retry <id>`).
 - **Schema and upgrades:** the queue tables are created by an Alembic revision that calls `migrations/procrastinate_schema.py::ensure_schema(bind, "<procrastinate migration version>")`. The helper records the applied version in `procrastinate_schema_version` and replays the library's SQL migrations up to that version. `procrastinate[psycopg]` is pinned exactly in `pyproject.toml`; **a bump needs a new Alembic revision** calling `ensure_schema` with the new highest version in `procrastinate/sql/migrations/` (the `pre` and `post` scripts of a version run together in the migrate Job, which is fine while no new pod runs; a later upgrade that ships `pre`/`post` scripts may need the two-step procedure of the Procrastinate docs for rolling workers). `procrastinate_*` tables are excluded from Alembic autogenerate (`include_object`).
+
+### Backups on the admin pages
+
+`services/backups.py` lists the off-site backup buckets (GCS, S3 API, read-only keys, 3 s / 5 s timeouts) and the result is cached in Redis for `BACKUP_CACHE_TTL` (failures only for 60 s; the two listings run concurrently and a listing stops after 20 s as `unavailable`). `/admin/system` has a **Backups** section: per target (database, photos & videos) last backup time, age, status (`on time` / `overdue` after `BACKUP_OVERDUE_SECONDS` or when nothing is found / `unavailable` with the reason / `not configured`) and total size, plus the 30 newest `lumios-postgres-<TS>.tar` archives with size. The photo backup shows total size (current + `deleted/`) and file count; its last-backup time is the newest `.last_sync/<UTC timestamp>` marker key (one new key per run, no overwrite right needed) written by `backup/backup-photos.sh` (fallback: newest object). `/` shows one line per backup under Scheduled Jobs. A backup problem turns the System verdict to `warning`. Never give the backend write keys for these buckets.
+
+---
+
+## Frontend Translations (i18n)
+
+The SPA is available in German (default) and English with `i18next` + `react-i18next`; the `/admin` Jinja pages stay English. Messages live in `frontend/src/i18n/locales/{de,en}.json` (nested keys, e.g. `libraries.title`).
+
+- **Default:** first visit is always German, `navigator.language` is ignored. The choice is stored in `localStorage` (`lumios_locale`).
+- **Account language:** `user.language` is NULL until a language is chosen. When set, it wins over the browser, but only at login and on page load (the first `authApi.me()`); a language switched after that stays until the next one. When NULL, the local choice stays and is saved on login (`authApi.meAfterLogin()`) only if it was picked with a switcher in this tab (`lumios_locale_chosen` in sessionStorage, cleared on logout), never a value an earlier visitor left in localStorage; a failed save is retried once by the next `me()`, which waits at most 2 s for a save in flight; registration sends a language only if one was chosen in this browser. `LanguageSwitcher` saves to the account (`PATCH /api/v1/auth/me`) only with `saveToAccount`, which only the photographer's own area sets (AppBar, account page). Public galleries and the auth pages change the local language only: they have no influence on a registered user.
+- **Add a string:** use `const { t } = useTranslation()` and `t("section.key")`, add the key to **both** `en.json` and `de.json` (plural keys as `key_one` / `key_other`, pass `count`; markup via `<Trans i18nKey=… components={{ strong: <strong /> }} />`). Dates and sizes: `formatDate`, `formatDateTime`, `formatBytes`, `formatTimeAgo` from `i18n/index.ts` (never `toLocaleDateString(undefined, …)`).
+- **Backend errors:** the API keeps returning English strings. Map new ones in `frontend/src/api/errors.ts` (`EXACT` table → `errors.*` key) and show them with `getApiErrorMessage(err, t)`; unknown messages are shown as sent. An error kept in component state stays untranslated (`DisplayError`, shown with `displayErrorMessage`), so a language switch on the page updates it.
+- **Checks (`npm test`):** `tests/i18n.test.ts` fails when `de.json` and `en.json` differ in keys, a value is empty, a `t("…")` key used in `src/` is missing, or a component has a hard-coded text / `title` / `placeholder` / `aria-label` / `alt`. In `npm run dev` a key missing in German shows the English text prefixed with `[EN] `.
+- **Add a language (e.g. `fr`):** copy `en.json` to `locales/fr.json` and translate it; register it in `i18n/index.ts` (import, `resources`, `SUPPORTED_LOCALES`); allow it in `SUPPORTED_LANGUAGES` in `blueprints/api/auth.py` (and the `user.language` length if needed; `tests/i18n.test.ts` fails when the two lists differ); add `language.fr` to all locale files.
+- German wording: Library → *Galerie*, photo → *Foto*, watermark → *Wasserzeichen*, selection → *Auswahl*, share link → *Freigabe-Link*, formal address (*Sie*). Transactional mails (`services/mail.py`) are German only.
 
 ---
 
@@ -463,7 +490,8 @@ GET  /auth/callback                                 # OAuth callback, sets sessi
 POST /logout                                        # Clear session
 
 # API Auth (/api/v1/auth, JWT)
-GET  /api/v1/auth/me                                # Current user info
+GET  /api/v1/auth/me                                # Current user info (incl. `language`)
+PATCH /api/v1/auth/me                               # Update own preferences {language: 'de' | 'en'}; returns the same resource as GET
 POST /api/v1/auth/login                             # JWT login (email/password)
 POST /api/v1/auth/google/verify                     # Verify Google ID token
 POST /api/v1/auth/google/callback                   # Google OAuth code exchange
@@ -543,7 +571,7 @@ POST /admin/support/<ticket_id>/close
 GET  /admin/feedback
 POST /admin/feedback/<feedback_id>/note
 GET/POST /admin/notify_agb
-GET  /admin/system                                  # Build info, dependency checks, job recency
+GET  /admin/system                                  # Build info, dependency checks, job recency, Backups section
 GET  /admin/workers                                 # Queue counts, worker pods, running + failed + finished jobs (?pipeline=, ?task= filter the finished list)
 POST /admin/workers/jobs/<id>/retry                 # Queue a failed job again (audit worker_job_retried)
 POST /admin/workers/jobs/<id>/discard               # Delete a failed job (audit worker_job_discarded)
@@ -554,7 +582,7 @@ GET  /admin/auditlogs
 
 ## Testing Conventions
 
-Tests run against a real PostgreSQL (same major version as production) whose data directory is on tmpfs with `fsync`, `synchronous_commit` and `full_page_writes` off. Start it with `./scripts/test-db.sh start` (CI uses a `postgres` service container). The `app` fixture creates the `lumios_test` database if missing, rebuilds the schema by running the Alembic migrations once per session, and fails with startup instructions if PostgreSQL is unreachable. `clean_db` deletes all rows after each test. `tests/test_migrations.py` fails when the migrations and the models disagree (including enum values). Follow `tests/conftest.py` exactly:
+Tests run against a real PostgreSQL (same major version as production), never SQLite, whose data directory is on tmpfs with `fsync`, `synchronous_commit` and `full_page_writes` off. Start it with `./scripts/test-db.sh start` (CI uses a `postgres` service container). Each checkout gets its own database so parallel runs in different worktrees never collide: `POSTGRES_DB` defaults to `lumios_test` for a checkout directory called `lumios`, else `lumios_test_<worktree dir name>` (lowercased, other characters become `_`, e.g. `lumios_test_561`). An explicit `POSTGRES_DB` wins; it must end in `_test` or start with `lumios_test_`, because the suite drops the whole public schema. The `app` fixture creates that database if missing (it tries `127.0.0.1` before `localhost`, since `localhost` may resolve to `::1`), rebuilds the schema by running the Alembic migrations once per session, and fails with startup instructions if PostgreSQL is unreachable. `./scripts/test-db.sh cleanup [-y]` (run it inside any worktree) lists every `lumios_test_*` database that does not match a worktree of this repository, asks for confirmation (skipped with `-y`) and drops them; `lumios_test` is kept. Databases of other clones of the repository and explicit `POSTGRES_DB=lumios_test_<x>` overrides look orphaned too, so check the list. `TEST_DB_CLEANUP_PREFIX` narrows the script to a longer `lumios_test_…` prefix (the tests use a unique one, so a test run never drops a database it did not create). `clean_db` deletes all rows after each test. `tests/test_migrations.py` fails when the migrations and the models disagree (including enum values). Follow `tests/conftest.py` exactly:
 
 ```python
 # Always set env vars before any app import
@@ -577,8 +605,8 @@ test_config = {
     "TESTING": True,
     "WTF_CSRF_ENABLED": False,
     "RATELIMIT_ENABLED": False,
-    "SESSION_TYPE": "filesystem",
-    "SESSION_FILE_DIR": "/tmp/flask_test_sessions",
+    "SESSION_TYPE": "cachelib",
+    "SESSION_CACHELIB": FileSystemCache("/tmp/flask_test_sessions", threshold=500, mode=0o600),
 }
 ```
 
@@ -609,6 +637,7 @@ tests/
 ├── test_security.py
 ├── test_sentry.py
 ├── test_storage.py
+├── test_test_db.py           # test database helpers in conftest.py and scripts/test-db.sh cleanup
 ├── test_support.py
 ├── test_tracing.py
 ├── test_videos.py            # services/videos.py: validation, init, finalize, process_video, ffmpeg parsing, steps

@@ -14,11 +14,12 @@ Coverage targets:
 import io
 import os
 import tempfile
+import zlib
 from unittest.mock import patch
 
 import piexif
 import pytest
-from PIL import Image as PilImage, ImageOps
+from PIL import Image as PilImage, ImageOps, PngImagePlugin
 
 from datetime import datetime, timezone
 
@@ -80,12 +81,123 @@ def make_jpeg_with_private_exif() -> bytes:
         os.unlink(tmp_path)
 
 
+def _jpeg_segment(marker: int, payload: bytes) -> bytes:
+    return bytes([0xFF, marker]) + (len(payload) + 2).to_bytes(2, "big") + payload
+
+
+def _insert_after_soi(jpeg: bytes, *segments: bytes) -> bytes:
+    return jpeg[:2] + b"".join(segments) + jpeg[2:]
+
+
+def make_jpeg_with_private_metadata(orientation: int | None = None, size=(8, 4)) -> bytes:
+    """JPEG with GPS, Make/Model, Artist, serials, owner, MakerNote, EXIF thumbnail,
+    XMP (APP1), IPTC (APP13) and a COM comment."""
+    thumb = io.BytesIO()
+    PilImage.new("RGB", (2, 2), color="white").save(thumb, format="JPEG")
+    zeroth = {
+        piexif.ImageIFD.Make: b"SecretCam",
+        piexif.ImageIFD.Model: b"X-1000",
+        piexif.ImageIFD.Artist: b"Jane Photographer",
+    }
+    if orientation is not None:
+        zeroth[piexif.ImageIFD.Orientation] = orientation
+    exif_bytes = piexif.dump(
+        {
+            "0th": zeroth,
+            "Exif": {
+                piexif.ExifIFD.BodySerialNumber: b"SN-12345678",
+                piexif.ExifIFD.LensSerialNumber: b"LENS-99",
+                piexif.ExifIFD.CameraOwnerName: b"John Doe",
+                piexif.ExifIFD.MakerNote: b"\x00\x01proprietary-maker-note",
+            },
+            "GPS": {
+                piexif.GPSIFD.GPSLatitude: ((48, 1), (12, 1), (0, 1)),
+                piexif.GPSIFD.GPSLatitudeRef: b"N",
+            },
+            "1st": {piexif.ImageIFD.Compression: 6},
+            "thumbnail": thumb.getvalue(),
+        }
+    )
+    buf = io.BytesIO()
+    PilImage.new("RGB", size, color="red").save(buf, format="JPEG", exif=exif_bytes)
+    return _insert_after_soi(
+        buf.getvalue(),
+        _jpeg_segment(0xE1, b"http://ns.adobe.com/xap/1.0/\x00<x:xmpmeta>xmp-secret-owner</x:xmpmeta>"),
+        _jpeg_segment(0xED, b"Photoshop 3.0\x008BIM iptc-secret-keyword"),
+        _jpeg_segment(0xFE, b"comment-secret"),
+    )
+
+
+PRIVATE_JPEG_STRINGS = [
+    b"SecretCam", b"X-1000", b"Jane Photographer", b"SN-12345678", b"LENS-99",
+    b"John Doe", b"proprietary-maker-note", b"xmp-secret-owner",
+    b"iptc-secret-keyword", b"comment-secret", b"ns.adobe.com", b"Photoshop",
+]
+
+
+def jpeg_markers(data: bytes) -> list[int]:
+    """Marker codes of the header segments up to and including the first SOS."""
+    markers, pos = [], 2
+    while pos < len(data):
+        marker = data[pos + 1]
+        markers.append(marker)
+        if marker == 0xDA:
+            break
+        pos += 2 + int.from_bytes(data[pos + 2:pos + 4], "big")
+    return markers
+
+
 def make_png_bytes() -> bytes:
     """Create a minimal valid PNG in memory."""
     buf = io.BytesIO()
     img = PilImage.new("RGB", (2, 2), color="blue")
     img.save(buf, format="PNG")
     return buf.getvalue()
+
+
+def _private_exif_bytes(orientation: int | None = None) -> bytes:
+    zeroth = {piexif.ImageIFD.Orientation: orientation} if orientation else {}
+    return piexif.dump(
+        {
+            "0th": zeroth,
+            "Exif": {piexif.ExifIFD.BodySerialNumber: b"SN-12345678"},
+            "GPS": {
+                piexif.GPSIFD.GPSLatitude: ((48, 1), (12, 1), (0, 1)),
+                piexif.GPSIFD.GPSLatitudeRef: b"N",
+            },
+            "1st": {},
+            "thumbnail": None,
+        }
+    )
+
+
+def make_png_with_private_metadata(
+    size=(2, 2), mode="RGB", orientation: int | None = None
+) -> bytes:
+    """Create a PNG with tEXt, zTXt, iTXt (XMP) and eXIf (GPS + serial) chunks."""
+    info = PngImagePlugin.PngInfo()
+    info.add_text("Author", "secret-author")
+    info.add_text("Comment", "secret-ztxt" * 10, zip=True)
+    info.add_itxt("XML:com.adobe.xmp", "<x:xmpmeta>secret-owner</x:xmpmeta>")
+    buf = io.BytesIO()
+    PilImage.new(mode, size, color="green").save(
+        buf, format="PNG", pnginfo=info, exif=_private_exif_bytes(orientation)
+    )
+    return buf.getvalue()
+
+
+def _raw_png_chunk(chunk_type: bytes, data: bytes) -> bytes:
+    crc = zlib.crc32(chunk_type + data) & 0xFFFFFFFF
+    return len(data).to_bytes(4, "big") + chunk_type + data + crc.to_bytes(4, "big")
+
+
+def png_chunk_types(data: bytes) -> list[bytes]:
+    types, pos = [], 8
+    while pos < len(data):
+        length = int.from_bytes(data[pos:pos + 4], "big")
+        types.append(data[pos + 4:pos + 8])
+        pos += 12 + length
+    return types
 
 
 def make_webp_bytes() -> bytes:
@@ -506,6 +618,311 @@ class TestExifStripping:
         res = upload(client, library.id, token, webp, "cut.webp", "image/webp")
         assert res.status_code == 415
         mock_storage.upload_fileobj.assert_not_called()
+
+    @patch("services.images.storage")
+    def test_text_exif_and_xmp_stripped_from_png_original(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        png = make_png_with_private_metadata()
+        assert {b"tEXt", b"zTXt", b"iTXt", b"eXIf"} <= set(png_chunk_types(png))
+
+        res = upload(client, library.id, make_token(photographer), png, "geo.png", "image/png")
+        assert res.status_code == 201
+
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        assert not {b"tEXt", b"zTXt", b"iTXt", b"eXIf"} & set(png_chunk_types(stored))
+        for secret in (b"SN-12345678", b"secret-author", b"secret-owner", b"xmpmeta"):
+            assert secret not in stored
+        with PilImage.open(io.BytesIO(stored)) as img, PilImage.open(io.BytesIO(png)) as orig:
+            img.load()
+            orig.load()
+            assert img.size == (2, 2)
+            assert img.tobytes() == orig.tobytes()
+            assert img.info.keys().isdisjoint({"exif", "Author", "Comment", "XML:com.adobe.xmp"})
+
+    @patch("services.images.storage")
+    def test_png_keeps_orientation_and_drops_gps(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        png = make_png_with_private_metadata(size=(8, 4), orientation=6)
+
+        res = upload(client, library.id, make_token(photographer), png, "p.png", "image/png")
+        assert res.status_code == 201
+
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        assert b"SN-12345678" not in stored
+        with PilImage.open(io.BytesIO(stored)) as img:
+            exif = piexif.load(img.info["exif"])
+            assert exif["0th"][piexif.ImageIFD.Orientation] == 6
+            assert exif["GPS"] == {}
+            assert piexif.ExifIFD.BodySerialNumber not in exif["Exif"]
+            assert ImageOps.exif_transpose(img).size == (4, 8)
+
+    @patch("services.images.storage")
+    def test_png_alpha_and_palette_survive_stripping(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        token = make_token(photographer)
+
+        rgba = make_png_with_private_metadata(mode="RGBA")
+        assert upload(client, library.id, token, rgba, "a.png", "image/png").status_code == 201
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        with PilImage.open(io.BytesIO(stored)) as img:
+            assert img.mode == "RGBA"
+            assert img.size == (2, 2)
+
+        pal_src = PilImage.new("RGBA", (4, 4), color=(255, 0, 0, 0)).convert("P")
+        pal_src.info["transparency"] = 0
+        info = PngImagePlugin.PngInfo()
+        info.add_text("Author", "secret-author")
+        buf = io.BytesIO()
+        pal_src.save(buf, format="PNG", pnginfo=info, transparency=0)
+        palette_png = buf.getvalue()
+        assert {b"PLTE", b"tRNS", b"tEXt"} <= set(png_chunk_types(palette_png))
+
+        mock_storage.upload_fileobj.reset_mock()
+        assert upload(client, library.id, token, palette_png, "p.png", "image/png").status_code == 201
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        types = png_chunk_types(stored)
+        assert b"PLTE" in types and b"tRNS" in types and b"tEXt" not in types
+        with PilImage.open(io.BytesIO(stored)) as img:
+            assert img.mode == "P"
+            assert img.info["transparency"] == 0
+
+    @patch("services.images.storage")
+    def test_png_drops_unknown_and_time_chunks_keeps_render_chunks(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        png = make_png_bytes()
+        ihdr_end = 8 + 12 + 13
+        extra = (
+            _raw_png_chunk(b"pHYs", (2835).to_bytes(4, "big") * 2 + b"\x01")
+            + _raw_png_chunk(b"tIME", b"\x07\xe8\x01\x01\x00\x00\x00")
+            + _raw_png_chunk(b"prVT", b"vendor-secret")
+        )
+        png = png[:ihdr_end] + extra + png[ihdr_end:]
+
+        res = upload(client, library.id, make_token(photographer), png, "x.png", "image/png")
+        assert res.status_code == 201
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        types = png_chunk_types(stored)
+        assert b"pHYs" in types
+        assert b"tIME" not in types and b"prVT" not in types
+        assert b"vendor-secret" not in stored
+
+    @patch("services.images.storage")
+    def test_animated_png_stored_as_static_default_frame(
+        self, mock_storage, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        frames = [PilImage.new("RGB", (4, 4), c) for c in ("red", "blue")]
+        buf = io.BytesIO()
+        frames[0].save(buf, format="PNG", save_all=True, append_images=frames[1:])
+        png = buf.getvalue()
+        assert {b"acTL", b"fcTL", b"fdAT"} <= set(png_chunk_types(png))
+
+        res = upload(client, library.id, make_token(photographer), png, "a.png", "image/png")
+        assert res.status_code == 201
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        assert not {b"acTL", b"fcTL", b"fdAT"} & set(png_chunk_types(stored))
+
+    @pytest.mark.parametrize("keyword", ["comment", "Comment"])
+    @patch("services.images.storage")
+    def test_png_text_comment_not_copied_to_derivatives(
+        self, mock_storage, keyword, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        info = PngImagePlugin.PngInfo()
+        info.add_text(keyword, "secret-comment-text")
+        buf = io.BytesIO()
+        PilImage.new("RGB", (8, 8), "red").save(buf, format="PNG", pnginfo=info)
+
+        res = upload(client, library.id, make_token(photographer), buf.getvalue(), "c.png", "image/png")
+        assert res.status_code == 201
+        uploads = [c[0][0].read() for c in mock_storage.upload_fileobj.call_args_list]
+        assert len(uploads) == 3
+        for data in uploads:
+            assert b"secret-comment-text" not in data
+
+    @pytest.mark.parametrize(
+        "corrupt",
+        [
+            lambda d: d[:-6],  # truncated body
+            lambda d: d[:8] + (0x7FFFFFFF).to_bytes(4, "big") + d[12:],  # length past EOF
+            lambda d: d[:29] + bytes([d[29] ^ 0xFF]) + d[30:],  # bad IHDR CRC
+            lambda d: d + b"trailing",  # data after IEND
+            lambda d: d[:8] + _raw_png_chunk(b"tEXt", b"a\x00b") + d[8:],  # IHDR not first
+        ],
+        ids=["truncated", "length", "crc", "trailing", "no-ihdr-first"],
+    )
+    @patch("services.images.storage")
+    def test_corrupt_png_rejected_fail_closed(
+        self, mock_storage, corrupt, client, photographer, library
+    ):
+        png = corrupt(make_png_with_private_metadata())
+
+        res = upload(client, library.id, make_token(photographer), png, "bad.png", "image/png")
+        assert res.status_code == 415
+        mock_storage.upload_fileobj.assert_not_called()
+        assert db.session.scalar(select(Image).where(Image.library_id == library.id)) is None
+
+    @patch("services.images.storage")
+    def test_png_with_unparseable_exif_rejected(
+        self, mock_storage, client, photographer, library
+    ):
+        png = make_png_with_private_metadata()
+        iend = png.rindex(b"\x00\x00\x00\x00IEND")
+        bad = png[:8 + 25] + _raw_png_chunk(b"eXIf", b"not-a-tiff-header") + png[8 + 25:]
+        assert b"eXIf" in bad and iend > 0
+
+        res = upload(client, library.id, make_token(photographer), bad, "bad.png", "image/png")
+        assert res.status_code == 415
+        mock_storage.upload_fileobj.assert_not_called()
+        assert db.session.scalar(select(Image).where(Image.library_id == library.id)) is None
+
+
+class TestJpegMetadataStripping:
+    @staticmethod
+    def _stored(mock_storage, index=0) -> bytes:
+        return mock_storage.upload_fileobj.call_args_list[index][0][0].read()
+
+    @patch("services.images.storage")
+    def test_all_private_metadata_stripped_from_jpeg_original(
+        self, mock_storage, client, photographer, library
+    ):
+        jpeg = make_jpeg_with_private_metadata()
+        for needle in PRIVATE_JPEG_STRINGS[:10]:
+            assert needle in jpeg
+
+        res = upload(client, library.id, make_token(photographer), jpeg, "p.jpg", "image/jpeg")
+        assert res.status_code == 201
+
+        stored = self._stored(mock_storage)
+        for needle in PRIVATE_JPEG_STRINGS:
+            assert needle not in stored
+        assert 0xE1 not in jpeg_markers(stored)
+        assert 0xED not in jpeg_markers(stored)
+        assert 0xFE not in jpeg_markers(stored)
+        exif = piexif.load(stored)
+        assert exif["0th"] == {}
+        assert exif["Exif"] == {}
+        assert exif["GPS"] == {}
+        assert exif["1st"] == {}
+        assert exif["thumbnail"] is None
+        with PilImage.open(io.BytesIO(jpeg)) as before, PilImage.open(io.BytesIO(stored)) as after:
+            assert before.tobytes() == after.tobytes()
+
+    @pytest.mark.parametrize("orientation,expected_size", [(6, (4, 8)), (8, (4, 8))])
+    @patch("services.images.storage")
+    def test_jpeg_keeps_orientation_and_drops_gps(
+        self, mock_storage, orientation, expected_size, client, photographer, library
+    ):
+        jpeg = make_jpeg_with_private_metadata(orientation=orientation)
+        res = upload(client, library.id, make_token(photographer), jpeg, "p.jpg", "image/jpeg")
+        assert res.status_code == 201
+
+        stored = self._stored(mock_storage)
+        exif = piexif.load(stored)
+        assert exif["0th"] == {piexif.ImageIFD.Orientation: orientation}
+        assert exif["GPS"] == {}
+        assert exif["Exif"] == {}
+        assert b"SecretCam" not in stored
+        with PilImage.open(io.BytesIO(stored)) as img:
+            assert ImageOps.exif_transpose(img).size == expected_size
+
+    @patch("services.images.storage")
+    def test_jpeg_without_exif_keeps_icc_and_adobe_without_empty_app1(
+        self, mock_storage, client, photographer, library
+    ):
+        icc = b"ICC_PROFILE\x00\x01\x01" + b"profile-data"
+        adobe = b"Adobe\x00\x64\x00\x00\x00\x00\x00"
+        buf = io.BytesIO()
+        PilImage.new("RGB", (4, 4), color="red").save(buf, format="JPEG")
+        jpeg = _insert_after_soi(buf.getvalue(), _jpeg_segment(0xE2, icc), _jpeg_segment(0xEE, adobe))
+        assert 0xE1 not in jpeg_markers(jpeg)
+
+        res = upload(client, library.id, make_token(photographer), jpeg, "p.jpg", "image/jpeg")
+        assert res.status_code == 201
+
+        stored = self._stored(mock_storage)
+        markers = jpeg_markers(stored)
+        assert 0xE1 not in markers
+        assert 0xE2 in markers and 0xEE in markers
+        assert icc in stored and adobe in stored
+
+    @patch("services.images.storage")
+    def test_non_icc_app2_dropped(self, mock_storage, client, photographer, library):
+        jpeg = _insert_after_soi(make_jpeg_bytes(), _jpeg_segment(0xE2, b"MPF\x00other-secret"))
+        res = upload(client, library.id, make_token(photographer), jpeg, "p.jpg", "image/jpeg")
+        assert res.status_code == 201
+        assert b"other-secret" not in self._stored(mock_storage)
+
+    @patch("services.images.storage")
+    def test_comment_not_copied_to_derivatives(
+        self, mock_storage, client, photographer, library
+    ):
+        jpeg = make_jpeg_with_private_metadata()
+        res = upload(client, library.id, make_token(photographer), jpeg, "p.jpg", "image/jpeg")
+        assert res.status_code == 201
+        for index in (1, 2):
+            derivative = self._stored(mock_storage, index)
+            assert b"comment-secret" not in derivative
+            assert 0xFE not in jpeg_markers(derivative)
+            assert piexif.load(derivative)["0th"] == {}
+
+    @pytest.mark.parametrize("variant", [
+        "corrupt_exif", "truncated_segment_length", "corrupt_marker",
+        "truncated_body", "no_eoi", "missing_sos",
+    ])
+    @patch("services.images.storage")
+    def test_corrupt_jpeg_fail_closed(
+        self, mock_storage, variant, client, photographer, library
+    ):
+        good = make_jpeg_with_private_metadata(orientation=6)
+        if variant == "corrupt_exif":
+            # Point the first IFD offset of the TIFF header far outside the segment
+            pos = good.index(b"Exif\x00\x00") + 6 + 4
+            data = good[:pos] + b"\xff\xff\xff\x7f" + good[pos + 4:]
+        elif variant == "truncated_segment_length":
+            data = b"\xff\xd8\xff\xe1\x00" + good[-2:]
+        elif variant == "corrupt_marker":
+            data = good[:2] + b"\x12\x34" + good[2:]
+        elif variant == "truncated_body":
+            data = good[:-40]
+        elif variant == "no_eoi":
+            data = good[:-2]
+        else:
+            sos = good.index(b"\xff\xda")
+            data = good[:sos] + b"\xff\xd9"
+        res = upload(client, library.id, make_token(photographer), data, "bad.jpg", "image/jpeg")
+        assert res.status_code == 415
+        mock_storage.upload_fileobj.assert_not_called()
+        assert db.session.execute(select(Image)).scalars().all() == []
+
+    @pytest.mark.parametrize("trailer", ["second_image", "padding", "mp4_trailer"])
+    @patch("services.images.storage")
+    def test_data_after_eoi_truncated_not_rejected(
+        self, mock_storage, trailer, client, photographer, library
+    ):
+        mock_storage.get_presigned_url.side_effect = lambda key: f"http://example.com/{key}"
+        good = make_jpeg_with_private_metadata(orientation=6)
+        extra = {
+            "second_image": make_jpeg_with_private_metadata(orientation=3),
+            "padding": b"\x00\x00",
+            "mp4_trailer": b"\x00\x00\x00\x18ftypmp42secret-trailer",
+        }[trailer]
+
+        res = upload(client, library.id, make_token(photographer), good + extra, "mpo.jpg", "image/jpeg")
+        assert res.status_code == 201
+        stored = mock_storage.upload_fileobj.call_args_list[0][0][0].read()
+        assert stored.endswith(b"\xff\xd9")
+        assert stored.count(b"\xff\xd8") == 1
+        assert b"secret-trailer" not in stored
+        assert piexif.load(stored)["0th"] == {piexif.ImageIFD.Orientation: 6}
 
 
 class TestWebpAlpha:

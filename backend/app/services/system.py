@@ -20,6 +20,7 @@ from config import (
 )
 from models import JobRun, db
 from services import storage
+from services.backups import get_backup_status, has_backup_problem
 from services.redis_client import get_redis
 
 JOB_NAMES = ["purge-deleted-accounts", "purge-audit-logs"]
@@ -150,7 +151,11 @@ def _backend_build() -> dict:
 
 
 def _verdict(
-    checks: list, commit_mismatch: bool, jobs: list, unreachable: bool = False
+    checks: list,
+    commit_mismatch: bool,
+    jobs: list,
+    unreachable: bool = False,
+    backups: dict | None = None,
 ) -> tuple[str, str]:
     if any(c["status"] == "failed" for c in checks):
         return "degraded", "A dependency is failing"
@@ -160,6 +165,8 @@ def _verdict(
         return "warning", "Components run different commits"
     if any(j["is_overdue"] for j in jobs):
         return "warning", "A scheduled job is overdue"
+    if backups and has_backup_problem(backups):
+        return "warning", "A backup is overdue or unavailable"
     return "ok", "Everything is running"
 
 
@@ -174,11 +181,13 @@ def get_dashboard_status() -> dict:
 def get_system_status() -> dict:
     checks = [_check_database(), _check_redis(), _check_sentry()]
     # Storage and the remote version fetches are network-bound: run them concurrently.
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        backups_f = pool.submit(get_backup_status)
         storage_f = pool.submit(_check_storage)
         frontend_f = pool.submit(_remote_build, "Frontend", FRONTEND_URL)
         landing_f = pool.submit(_remote_build, "Landing page", LANDINGPAGE_URL)
         checks.append(storage_f.result())
+        backups = backups_f.result()
         builds = [_backend_build(), frontend_f.result(), landing_f.result()]
     backend = builds[0]
     commits = {b["commit"] for b in builds if b["reachable"] and b["commit"]}
@@ -193,7 +202,8 @@ def get_system_status() -> dict:
     }
 
     verdict, summary = _verdict(
-        checks, commit_mismatch, jobs, any(not b["reachable"] for b in builds)
+        checks, commit_mismatch, jobs, any(not b["reachable"] for b in builds),
+        backups,
     )
 
     return {
@@ -203,6 +213,7 @@ def get_system_status() -> dict:
         "builds": builds,
         "commit_mismatch": commit_mismatch,
         "jobs": jobs,
+        "backups": backups,
         "runtime": runtime,
         "backend": backend,
     }

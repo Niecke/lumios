@@ -34,7 +34,7 @@ postgres:
 # everybody out, which is cheaper than a volume to look after.
 # ---------------------------------------------------------------------------
 redis:
-  image: docker.io/library/redis:8.10.2-alpine@sha256:9f8d2d789b9a1d1e3f283f979aa9cbf393373806472e1ccd460e2f9c869b833b
+  image: docker.io/library/redis:8.10.3-alpine@sha256:21090af93f8324db2f0f0f4f38a7c60369d47d917e000c3423d89d2ae2883537
   # Required. `openssl rand -hex 24`. Other pods on the node can reach the
   # Service, so Redis demands it (requirepass); the backend gets it via REDIS_URL.
   password: ""
@@ -78,11 +78,19 @@ backend:
   # Required. `openssl rand -hex 32` (min. 32 chars).
   jwtSecret: ""
   jwtExpirySeconds: 3600
+  # Days a finished queue job (and its events) is kept before the daily janitor deletes it.
+  jobRetentionDays: 30
   # entrypoint.py defaults to 2 * cpus + 1, which is far more than a shared
   # 2-vCPU node has memory for.
   gunicornWorkers: 2
   maxUsers: 100
   agbVersion: "1.0"
+  # Feature gate for the video upload routes (VIDEO_UPLOADS_ENABLED). While
+  # false every video route answers 501 and the frontend hides the video UI.
+  # Needs a CORS rule on the bucket first, see deploy/README.md.
+  videoUploadsEnabled: false
+  # Largest accepted video in bytes (MAX_VIDEO_FILE_SIZE), 200 MB by default.
+  maxVideoFileSize: 209715200
   google:
     clientId: ""
     # Not a secret: the frontend container serves it in /config.js. Used for
@@ -252,6 +260,16 @@ backup:
   gcs:
     # The S3-compatible (XML API) endpoint of GCS; the keys are HMAC keys.
     endpoint: https://storage.googleapis.com
+  # Read-only HMAC keys the backend uses to list the backup buckets for the admin
+  # System page (never the write keys of the jobs below). Optional: without a key
+  # the page shows "not configured".
+  readOnly:
+    database:
+      accessKey: ""
+      secretKey: ""
+    photos:
+      accessKey: ""
+      secretKey: ""
   database:
     enabled: true
     schedule: "0 3 * * *"

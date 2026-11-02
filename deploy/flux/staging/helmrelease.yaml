@@ -72,10 +72,13 @@ spec:
           memory: 64Mi
     backend:
       gunicornWorkers: 1
+      # Needs the CORS rule on the lumios-staging bucket, see "Video uploads"
+      # in deploy/README.md.
+      videoUploadsEnabled: true
       image:
         # Managed by .github/workflows/promote.yml — do not edit by hand.
         # Placeholder until the first promotion after this lands.
-        tag: sha-a4602b1
+        tag: sha-40a8620
       resources:
         requests:
           cpu: 50m
@@ -101,7 +104,7 @@ spec:
             memory: 384Mi
     frontend:
       image:
-        tag: sha-a4602b1
+        tag: sha-40a8620
       resources:
         requests:
           cpu: 5m
@@ -110,7 +113,7 @@ spec:
           memory: 64Mi
     landingpage:
       image:
-        tag: sha-a4602b1
+        tag: sha-40a8620
       resources:
         requests:
           cpu: 5m

@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const STORAGE_KEY = "cookie_banner_dismissed";
 
 export function CookieBanner() {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(
     () => localStorage.getItem(STORAGE_KEY) !== "1"
   );
@@ -15,13 +17,12 @@ export function CookieBanner() {
   }
 
   return (
-    <div className="cookie-banner" role="region" aria-label="Cookie notice">
+    <div className="cookie-banner" role="region" aria-label={t("cookie.label")}>
       <p className="cookie-banner__text">
-        This site uses only essential cookies for session management and CSRF
-        protection. No tracking or analytics.
+        {t("cookie.text")}
       </p>
       <button className="cookie-banner__btn" onClick={dismiss}>
-        Got it
+        {t("cookie.dismiss")}
       </button>
     </div>
   );

@@ -1,0 +1,217 @@
+"""Tests for the test database helpers in conftest.py and scripts/test-db.sh."""
+
+import os
+import shutil
+import subprocess
+import uuid
+
+import psycopg
+import pytest
+from psycopg import sql
+
+import conftest
+
+SCRIPT = os.path.join(os.path.dirname(__file__), "..", "..", "..", "scripts", "test-db.sh")
+
+
+def _params(**extra):
+    return dict(
+        host="127.0.0.1",
+        port=int(os.environ["POSTGRES_PORT"]),
+        user=os.environ["POSTGRES_USER"],
+        password=os.environ["POSTGRES_PASSWORD"],
+        connect_timeout=5,
+        **extra,
+    )
+
+
+def _database_exists(name):
+    with psycopg.connect(dbname="postgres", **_params()) as conn:
+        return (
+            conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone()
+            is not None
+        )
+
+
+def _drop(name):
+    with psycopg.connect(dbname="postgres", autocommit=True, **_params()) as conn:
+        conn.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(name)))
+
+
+def test_default_test_db_name_respects_env(monkeypatch):
+    monkeypatch.setenv("POSTGRES_DB", "custom_test")
+    assert conftest._default_test_db_name("/srv/worktrees/561") == "custom_test"
+
+
+@pytest.mark.parametrize(
+    "path, expected",
+    [
+        ("/srv/worktrees/lumios/561", "lumios_test_561"),
+        ("/srv/worktrees/feature-branch", "lumios_test_feature_branch"),
+        ("/srv/worktrees/My Work.Tree", "lumios_test_my_work_tree"),
+        ("/home/me/git/lumios", "lumios_test"),
+        ("/home/me/git/Lumios", "lumios_test"),
+    ],
+)
+def test_default_test_db_name_derives_from_worktree_path(monkeypatch, path, expected):
+    monkeypatch.delenv("POSTGRES_DB", raising=False)
+    assert conftest._default_test_db_name(path) == expected
+
+
+def test_default_test_db_name_fits_identifier_limit(monkeypatch):
+    monkeypatch.delenv("POSTGRES_DB", raising=False)
+    assert len(conftest._default_test_db_name("/srv/" + "x" * 100)) == 63
+
+
+def test_is_database_missing_error():
+    class WithState(Exception):
+        sqlstate = "3D000"
+
+    assert conftest._is_database_missing_error(WithState("boom"), "x_test")
+    assert conftest._is_database_missing_error(
+        Exception('FATAL:  database "x_test" does not exist'), "x_test"
+    )
+    assert not conftest._is_database_missing_error(Exception("connection refused"), "x_test")
+    assert not conftest._is_database_missing_error(
+        Exception('FATAL:  database "other_test" does not exist'), "x_test"
+    )
+    assert not conftest._is_database_missing_error(
+        Exception('role "lumios" does not exist'), "x_test"
+    )
+
+
+def test_ensure_test_database_exists_rejects_unsafe_db(monkeypatch):
+    monkeypatch.setenv("POSTGRES_DB", "lumios")
+    with pytest.raises(RuntimeError, match="Refusing"):
+        conftest._ensure_test_database_exists()
+
+
+def test_ensure_test_database_exists_creates_missing_db(monkeypatch):
+    name = f"lumios_test_{uuid.uuid4().hex[:12]}"
+    monkeypatch.setenv("POSTGRES_DB", name)
+    try:
+        assert not _database_exists(name)
+        conftest._ensure_test_database_exists()
+        assert _database_exists(name)
+        conftest._ensure_test_database_exists()  # idempotent
+        assert _database_exists(name)
+    finally:
+        _drop(name)
+
+
+def test_ensure_test_database_exists_unreachable_server(monkeypatch):
+    monkeypatch.setenv("POSTGRES_DB", "lumios_test_unreachable")
+    monkeypatch.setenv("POSTGRES_HOST", "127.0.0.1")
+    monkeypatch.setenv("POSTGRES_PORT", "1")  # nothing listens here
+    with pytest.raises(RuntimeError, match=r"test-db\.sh start"):
+        conftest._ensure_test_database_exists()
+
+
+def _run_cleanup(prefix, *args, stdin=""):
+    env = dict(os.environ, TEST_DB_CLEANUP_PREFIX=prefix)
+    return subprocess.run(
+        [SCRIPT, "cleanup", *args],
+        capture_output=True,
+        text=True,
+        input=stdin,
+        env=env,
+        cwd=os.path.dirname(SCRIPT),
+    )
+
+
+@pytest.fixture
+def cleanup_env():
+    """Throwaway databases under a unique prefix; the script is limited to that prefix.
+
+    No real worktree can have this prefix, and cleanup never looks at other databases,
+    so a normal test run only ever drops databases it created itself.
+    """
+    if shutil.which("podman") is None and shutil.which("docker") is None:
+        pytest.skip("no container runtime")
+    if subprocess.run([SCRIPT, "status"], capture_output=True).returncode != 0:
+        pytest.skip("test database container is not running")
+    prefix = f"lumios_test_zz{uuid.uuid4().hex[:8]}_"
+    names = []
+
+    def create(suffix):
+        name = prefix + suffix
+        with psycopg.connect(dbname="postgres", autocommit=True, **_params()) as conn:
+            conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+        names.append(name)
+        return name
+
+    yield prefix, create
+    for name in names:
+        _drop(name)
+
+
+def test_cleanup_script_drops_only_prefixed_orphans_with_yes(cleanup_env):
+    prefix, create = cleanup_env
+    orphan = create("orphan")
+    other = conftest._default_test_db_name()
+    conftest._ensure_test_database_exists()
+    result = _run_cleanup(prefix, "-y")
+    assert result.returncode == 0, result.stderr
+    assert f"dropped {orphan}" in result.stdout
+    assert not _database_exists(orphan)
+    assert _database_exists(other)
+    assert _database_exists("lumios_test")
+
+
+def test_cleanup_script_asks_for_confirmation(cleanup_env):
+    prefix, create = cleanup_env
+    orphan = create("orphan")
+    declined = _run_cleanup(prefix, stdin="n\n")
+    assert declined.returncode != 0
+    assert orphan in declined.stdout
+    assert _database_exists(orphan)
+    no_input = _run_cleanup(prefix)
+    assert no_input.returncode != 0
+    assert _database_exists(orphan)
+    accepted = _run_cleanup(prefix, stdin="y\n")
+    assert accepted.returncode == 0, accepted.stderr
+    assert not _database_exists(orphan)
+
+
+@pytest.mark.parametrize("dirname", ["Feature-X.1", "a  b__c", "UPPER", "x" * 80])
+def test_cleanup_keeps_database_of_existing_worktree(cleanup_env, tmp_path, dirname, monkeypatch):
+    """The shell and Python derivations of the database name must agree."""
+    if shutil.which("git") is None:
+        pytest.skip("git not available")
+    prefix, create = cleanup_env
+    monkeypatch.delenv("POSTGRES_DB", raising=False)
+    # A real worktree whose directory name carries the unique prefix, so the derived
+    # database name falls under it and the run never touches other databases.
+    tag = prefix[len("lumios_test_"):]
+    wt = tmp_path / "wt" / (tag + dirname)
+    repo = tmp_path / "repo"
+    git = lambda *a, cwd=repo: subprocess.run(
+        ["git", *a], cwd=cwd, check=True, capture_output=True, text=True
+    )
+    repo.mkdir()
+    git("init", "-q")
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "i")
+    git("worktree", "add", "-q", "--detach", str(wt))
+    derived = conftest._default_test_db_name(str(wt))
+    # the unique prefix survives sanitising and truncation of long names
+    assert derived.startswith(prefix.rstrip("_")), derived
+    with psycopg.connect(dbname="postgres", autocommit=True, **_params()) as conn:
+        conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(derived)))
+    try:
+        orphan = create("orphan")
+        env = dict(os.environ, TEST_DB_CLEANUP_PREFIX=prefix.rstrip("_"))
+        result = subprocess.run(
+            [SCRIPT, "cleanup", "-y"], capture_output=True, text=True, env=env, cwd=wt
+        )
+        assert result.returncode == 0, result.stderr
+        assert f"dropped {orphan}" in result.stdout
+        assert derived not in result.stdout
+        assert _database_exists(derived)
+    finally:
+        _drop(derived)
+
+
+def test_cleanup_script_rejects_foreign_prefix():
+    result = _run_cleanup("production_", "-y")
+    assert result.returncode != 0
+    assert "lumios_test_" in result.stderr
