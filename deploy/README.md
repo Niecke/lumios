@@ -348,7 +348,7 @@ Secret, because neither is a secret:
 
 The backend and all worker Deployments get both through `lumios.backendEnv`.
 With the flag off every video route answers 501 and the frontend hides the
-video UI. Staging sets it to `true`, production sets it explicitly to `false`.
+video UI. Staging and production both set it to `true` (production from chart 0.5.0).
 
 Unlike the Secret keys, which only roll the pods through the credentials
 checksum, a plain env value sits in the Deployment's pod template: changing it
@@ -395,15 +395,20 @@ curl -si -X OPTIONS "https://<region>.your-objectstorage.com/lumios/cors-test" \
 
 #### Switching it on in production
 
-1. Merge the video bug fixes of #533.
-2. Release a chart that contains these values (release-please PR); production
-   keeps `videoUploadsEnabled: false`.
-3. Apply the CORS rule to the `lumios` bucket and check it with the preflight.
+Done: production has video uploads on from release 0.5.0. The steps were:
+
+1. Merge the video bug fixes of #533 (done).
+2. Release a chart that contains these values, release-please PR (done, 0.5.0).
+3. Apply the CORS rule to the `lumios` bucket and check it with the preflight
+   (done).
 4. In staging (CORS on `lumios-staging` first), upload a real video, including a
-   large one, and wait for status `ready`.
-5. Set `backend.videoUploadsEnabled: true` in `deploy/flux/prod/helmrelease.yaml`,
-   merge, and reconcile. The pods roll; confirm `video_uploads_enabled: true` in
-   the public library response.
+   large one, and wait for status `ready` (done).
+5. `backend.videoUploadsEnabled: true` is set in
+   `deploy/flux/prod/helmrelease.yaml` (#575). After the reconcile the pods
+   roll; confirm `video_uploads_enabled: true` in the public library response.
+
+To switch it off again, set the value back to `false` through a PR (all video
+routes answer 501, the frontend hides the video UI) or revert the merge commit.
 
 ### Error tracking with Sentry
 

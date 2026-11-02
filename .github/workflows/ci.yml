@@ -181,7 +181,7 @@ jobs:
           [ "$(video_env default backend MAX_VIDEO_FILE_SIZE)" = 209715200 ]
           [ "$(video_env default worker-video VIDEO_UPLOADS_ENABLED)" = false ]
           [ "$(video_env staging backend VIDEO_UPLOADS_ENABLED)" = true ]
-          [ "$(video_env prod backend VIDEO_UPLOADS_ENABLED)" = false ]
+          [ "$(video_env prod backend VIDEO_UPLOADS_ENABLED)" = true ]
           [ "$(grep -c 'kind: CronJob' "$RUNNER_TEMP/prod.yaml")" -eq 4 ]
 
   # The sha under test. For a pull_request event github.sha is the ephemeral
