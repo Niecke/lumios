@@ -117,7 +117,11 @@ def system_view():
 @login_required
 @require_role("admin")
 def workers_view():
-    return render_template("admin/workers.html", workers=get_workers_status())
+    pipeline = request.args.get("pipeline", "").strip() or None
+    task = request.args.get("task", "").strip() or None
+    return render_template(
+        "admin/workers.html", workers=get_workers_status(pipeline=pipeline, task=task)
+    )
 
 
 def _worker_job_action(id, action, done_message):
