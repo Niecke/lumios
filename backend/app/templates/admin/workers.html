@@ -9,6 +9,14 @@
 {%- endif -%}
 {%- endmacro %}
 
+{% macro duration(seconds) -%}
+{%- if seconds is none -%}—
+{%- elif seconds < 1 -%}{{ '%.2f' % seconds }} s
+{%- elif seconds < 60 -%}{{ '%.1f' % seconds }} s
+{%- else -%}{{ (seconds // 60) | int }} min {{ (seconds % 60) | int }} s
+{%- endif -%}
+{%- endmacro %}
+
 {% block content %}
 {% set dot = {'ok': 'ok', 'warning': 'warning', 'error': 'error'}[workers.verdict] %}
 <div class="page-header">
@@ -106,6 +114,58 @@
             </tr>
             {% else %}
             <tr><td colspan="8"><span class="text-muted">No failed jobs.</span></td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h2>Finished jobs</h2>
+<form method="GET" action="{{ url_for('admin.workers_view') }}" class="filter-form">
+    <div class="filter-row">
+        <div class="filter-group">
+            <label for="filter-pipeline">Pipeline</label>
+            <select name="pipeline" id="filter-pipeline">
+                <option value="">All pipelines</option>
+                {% for q in workers.queues %}
+                <option value="{{ q }}"{% if q == workers.selected_pipeline %} selected{% endif %}>{{ q }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="filter-task">Task</label>
+            <select name="task" id="filter-task">
+                <option value="">All tasks</option>
+                {% for t in workers.known_tasks %}
+                <option value="{{ t }}"{% if t == workers.selected_task %} selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-actions">
+            <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+            {% if workers.selected_pipeline or workers.selected_task %}
+            <a href="{{ url_for('admin.workers_view') }}" class="btn btn-secondary btn-sm">Reset</a>
+            {% endif %}
+        </div>
+    </div>
+</form>
+<div class="table-container">
+    <table class="table" id="finished-jobs-table">
+        <thead>
+            <tr><th>ID</th><th>Pipeline</th><th>Task</th><th>Target</th><th>Finished</th><th>Duration</th><th>Attempts</th></tr>
+        </thead>
+        <tbody>
+            {% for job in workers.finished %}
+            <tr>
+                <td>{{ job.id }}</td>
+                <td class="text-mono">{{ job.queue }}</td>
+                <td class="text-mono">{{ job.task }}</td>
+                <td class="text-mono">{{ job.target or '—' }}</td>
+                <td>{% if job.finished_at %}{{ job.finished_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC{% else %}—{% endif %}</td>
+                <td>{{ duration(job.duration) }}</td>
+                <td>{{ job.attempts }}{% if job.retried %} <span class="badge badge-warning">retried</span>{% endif %}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7"><span class="text-muted">No finished jobs.</span></td></tr>
             {% endfor %}
         </tbody>
     </table>

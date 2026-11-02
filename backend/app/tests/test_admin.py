@@ -1303,6 +1303,127 @@ class TestAdminWorkers:
         login_admin(client, admin_user)
         assert "hunter2" not in html_text(client.get("/admin/workers"))
 
+    def test_workers_finished_empty_state(self, client, admin_user):
+        login_admin(client, admin_user)
+        html = html_text(client.get("/admin/workers"))
+        assert "No finished jobs." in html.split('id="finished-jobs-table"')[1]
+
+    def test_workers_finished_renders_job_details(self, client, admin_user):
+        job_id = _add_job(status="succeeded", attempts=0)
+        login_admin(client, admin_user)
+
+        html = html_text(client.get("/admin/workers"))
+
+        row = html.split('id="finished-jobs-table"')[1].split("</tr>", 2)[1]
+        assert f"<td>{job_id}</td>" in row
+        assert "process_video" in row
+        assert VIDEO_UUID in row
+        assert "UTC" in row
+        assert "<td>1</td>" in row
+        assert "retried" not in row
+
+    def test_workers_finished_duration(self, client, admin_user):
+        from sqlalchemy import text
+
+        job_id = _add_job(status="succeeded")
+        db.session.execute(
+            text("UPDATE procrastinate_events SET at = now() - interval '20 seconds' "
+                 "WHERE job_id = :id AND type = 'started'"),
+            {"id": job_id},
+        )
+        db.session.commit()
+        login_admin(client, admin_user)
+
+        html = html_text(client.get("/admin/workers"))
+
+        row = html.split('id="finished-jobs-table"')[1].split("</tr>", 2)[1]
+        assert "20." in row and " s</td>" in row
+
+    def test_workers_finished_order_newest_first(self, client, admin_user):
+        first = _add_job(status="succeeded", video_uuid="aaa")
+        second = _add_job(status="succeeded", video_uuid="bbb")
+        login_admin(client, admin_user)
+
+        html = html_text(client.get("/admin/workers")).split('id="finished-jobs-table"')[1]
+
+        assert html.index(f"<td>{second}</td>") < html.index(f"<td>{first}</td>")
+
+    def test_workers_finished_filters(self, client, admin_user):
+        video = _add_job(status="succeeded", video_uuid="vid-1")
+        mail = _add_job(queue="default", task="send_activation_email", status="succeeded", video_uuid="mail-1")
+        login_admin(client, admin_user)
+
+        def table(query):
+            return html_text(client.get(f"/admin/workers{query}")).split('id="finished-jobs-table"')[1]
+
+        by_pipeline = table("?pipeline=video")
+        assert f"<td>{video}</td>" in by_pipeline and f"<td>{mail}</td>" not in by_pipeline
+        by_task = table("?task=send_activation_email")
+        assert f"<td>{mail}</td>" in by_task and f"<td>{video}</td>" not in by_task
+        combined = table("?pipeline=default&task=process_video")
+        assert "No finished jobs." in combined
+        both = table("?pipeline=default&task=send_activation_email")
+        assert f"<td>{mail}</td>" in both and f"<td>{video}</td>" not in both
+
+    def test_workers_finished_retried_marker(self, client, admin_user):
+        plain = _add_job(status="succeeded", attempts=0, video_uuid="plain")
+        retried = _add_job(status="succeeded", attempts=1, video_uuid="again")
+        login_admin(client, admin_user)
+
+        html = html_text(client.get("/admin/workers")).split('id="finished-jobs-table"')[1]
+
+        rows = {r.split("</td>")[0]: r for r in html.split("<tr>")[1:]}
+        assert "retried" not in rows[f"\n                <td>{plain}"]
+        assert '<span class="badge badge-warning">retried</span>' in rows[f"\n                <td>{retried}"]
+
+    def test_workers_finished_target_does_not_leak_payload(self, client, admin_user):
+        from sqlalchemy import text
+
+        job_id = _add_job(status="succeeded")
+        db.session.execute(
+            text("UPDATE procrastinate_jobs SET args = CAST(:a AS jsonb) WHERE id = :id"),
+            {"a": json.dumps({"video_uuid": VIDEO_UUID, "secret": "hunter2"}), "id": job_id},
+        )
+        db.session.commit()
+        login_admin(client, admin_user)
+        html = html_text(client.get("/admin/workers"))
+        assert VIDEO_UUID in html.split('id="finished-jobs-table"')[1]
+        assert "hunter2" not in html
+
+    def test_workers_finished_respects_retention(self, client, admin_user):
+        from sqlalchemy import text
+
+        old = _add_job(status="succeeded", video_uuid="old")
+        recent = _add_job(status="succeeded", video_uuid="recent")
+        db.session.execute(
+            text("UPDATE procrastinate_events SET at = now() - interval '31 days' WHERE job_id = :id"),
+            {"id": old},
+        )
+        db.session.commit()
+        login_admin(client, admin_user)
+
+        html = html_text(client.get("/admin/workers")).split('id="finished-jobs-table"')[1]
+
+        assert f"<td>{recent}</td>" in html
+        assert f"<td>{old}</td>" not in html
+
+    def test_workers_finished_capped_at_limit(self, client, admin_user):
+        from services.workers import FINISHED_JOBS_LIMIT, _finished_jobs
+
+        ids = [_add_job(status="succeeded", video_uuid=f"v{i}") for i in range(FINISHED_JOBS_LIMIT + 5)]
+
+        jobs = _finished_jobs(datetime.now(timezone.utc))
+
+        assert [j["id"] for j in jobs] == sorted(ids, reverse=True)[:FINISHED_JOBS_LIMIT]
+
+    def test_workers_finished_filter_form_reset_link(self, client, admin_user):
+        login_admin(client, admin_user)
+        plain = html_text(client.get("/admin/workers"))
+        filtered = html_text(client.get("/admin/workers?pipeline=video"))
+        assert ">Reset</a>" not in plain
+        assert ">Reset</a>" in filtered
+        assert '<option value="video" selected>' in filtered
+
     def test_worker_job_retry_action(self, client, admin_user):
         from models import VideoProcessingStatus, WorkerJobError
 

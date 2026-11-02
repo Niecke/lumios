@@ -15,11 +15,22 @@ QUEUE_STALE_SECONDS = 600
 # Pipelines whose workers must run; "photo" is off by default and only matters with work waiting
 REQUIRED_QUEUES = ("default", "video")
 
+# Finished jobs carry recipient addresses in their arguments: the list and the pruning job
+# must agree on the retention
+FINISHED_JOBS_LIMIT = 100
+FINISHED_JOBS_RETENTION_DAYS = 30
+
 
 def _queues() -> tuple[str, ...]:
     from worker import QUEUES
 
     return QUEUES
+
+
+def _known_tasks() -> list[str]:
+    from worker import worker_app
+
+    return sorted(name for name in worker_app.tasks if not name.startswith("procrastinate."))
 
 
 def _target(args: dict | None) -> str | None:
@@ -160,6 +171,59 @@ def _failed_jobs() -> list[dict]:
     ]
 
 
+def _finished_jobs(
+    now: datetime,
+    pipeline: str | None = None,
+    task: str | None = None,
+    limit: int = FINISHED_JOBS_LIMIT,
+) -> list[dict]:
+    """Newest successful jobs within the retention window, optionally for one pipeline/task."""
+    where = ["j.status = 'succeeded'"]
+    params: dict = {
+        "limit": limit,
+        "cutoff": now - timedelta(days=FINISHED_JOBS_RETENTION_DAYS),
+    }
+    if pipeline:
+        where.append("j.queue_name = :pipeline")
+        params["pipeline"] = pipeline
+    if task:
+        where.append("j.task_name = :task")
+        params["task"] = task
+    rows = db.session.execute(
+        text(
+            "SELECT * FROM ("
+            "SELECT j.id, j.queue_name, j.task_name, j.args, j.attempts, "
+            "(SELECT max(e.at) FROM procrastinate_events e "
+            " WHERE e.job_id = j.id AND e.type = 'started') AS started_at, "
+            "(SELECT max(e.at) FROM procrastinate_events e "
+            " WHERE e.job_id = j.id AND e.type = 'succeeded') AS finished_at "
+            f"FROM procrastinate_jobs j WHERE {' AND '.join(where)}"
+            ") f WHERE f.finished_at IS NULL OR f.finished_at >= :cutoff "
+            "ORDER BY f.id DESC LIMIT :limit"
+        ),
+        params,
+    ).mappings()
+    jobs = []
+    for row in rows:
+        started_at, finished_at = row["started_at"], row["finished_at"]
+        duration = None
+        if started_at is not None and finished_at is not None:
+            duration = max(0.0, (finished_at - started_at).total_seconds())
+        jobs.append(
+            {
+                "id": row["id"],
+                "queue": row["queue_name"],
+                "task": row["task_name"],
+                "target": _target(row["args"]),
+                "attempts": max(1, row["attempts"] + 1),
+                "retried": row["attempts"] > 0,
+                "finished_at": finished_at,
+                "duration": duration,
+            }
+        )
+    return jobs
+
+
 def _verdict(pipelines: dict[str, dict]) -> tuple[str, str]:
     for queue, p in pipelines.items():
         needed = queue in REQUIRED_QUEUES or p["queued"] or p["running"]
@@ -181,7 +245,7 @@ def _pipelines(now: datetime) -> dict[str, dict]:
     return {q: {**counts[q], **liveness[q]} for q in counts}
 
 
-def get_workers_status() -> dict:
+def get_workers_status(pipeline: str | None = None, task: str | None = None) -> dict:
     now = datetime.now(timezone.utc)
     pipelines = _pipelines(now)
     verdict, summary = _verdict(pipelines)
@@ -191,6 +255,11 @@ def get_workers_status() -> dict:
         "pipelines": pipelines,
         "running": _running_jobs(now),
         "failed": _failed_jobs(),
+        "finished": _finished_jobs(now, pipeline, task),
+        "selected_pipeline": pipeline,
+        "selected_task": task,
+        "queues": _queues(),
+        "known_tasks": _known_tasks(),
     }
 
 

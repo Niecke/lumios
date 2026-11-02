@@ -119,3 +119,8 @@ input:focus { outline: none; border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(2
     cursor: pointer; width: auto;
 }
 .cookie-banner button:hover { background: #1557b0; color: #fff; border-color: transparent; }
+
+.filter-form { margin-top: 1rem; }
+.filter-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
+.filter-group { display: flex; flex-direction: column; gap: 0.25rem; }
+.filter-actions { display: flex; gap: 0.5rem; }
