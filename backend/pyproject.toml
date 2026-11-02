@@ -1,6 +1,6 @@
 [project]
 name = "lumios-backend"
-version = "0.4.0"
+version = "0.5.0"
 description = "Lumios photo library platform — backend API"
 requires-python = "==3.14.*"
 dependencies = [
