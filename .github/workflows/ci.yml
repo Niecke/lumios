@@ -170,6 +170,18 @@ jobs:
               --set backend.jwtSecret=ci-jwt-secret-ci-jwt-secret-ci-jwt-secret > "$RUNNER_TEMP/$env.yaml"
           done
           [ "$(grep -c 'component: backup-' "$RUNNER_TEMP/staging.yaml")" -eq 0 ]
+
+          # Video uploads: off with the default size unless an environment turns
+          # them on; the workers get the same variables as the backend.
+          video_env() {
+            yq -e "select(.kind == \"Deployment\" and .metadata.labels[\"app.kubernetes.io/component\"] == \"$2\")
+              | .spec.template.spec.containers[0].env[] | select(.name == \"$3\") | .value" "$RUNNER_TEMP/$1.yaml"
+          }
+          [ "$(video_env default backend VIDEO_UPLOADS_ENABLED)" = false ]
+          [ "$(video_env default backend MAX_VIDEO_FILE_SIZE)" = 209715200 ]
+          [ "$(video_env default worker-video VIDEO_UPLOADS_ENABLED)" = false ]
+          [ "$(video_env staging backend VIDEO_UPLOADS_ENABLED)" = true ]
+          [ "$(video_env prod backend VIDEO_UPLOADS_ENABLED)" = false ]
           [ "$(grep -c 'kind: CronJob' "$RUNNER_TEMP/prod.yaml")" -eq 4 ]
 
   # The sha under test. For a pull_request event github.sha is the ephemeral
