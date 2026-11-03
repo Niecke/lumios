@@ -73,8 +73,17 @@ export const tokenStore = {
 
 // Drop every piece of client-side session state. Used on logout and when the
 // backend rejects the stored token, so the login page can initialise GIS again.
+const sessionClearedListeners = new Set<() => void>();
+export function onSessionCleared(fn: () => void) {
+  sessionClearedListeners.add(fn);
+  return () => {
+    sessionClearedListeners.delete(fn);
+  };
+}
+
 function clearAuthSession() {
   tokenStore.clear();
+  sessionClearedListeners.forEach((fn) => fn());
   resetGsiInitialized();
   languageUpdate = null;
   accountLanguageApplied = false;

@@ -251,6 +251,31 @@ test("bindBeforeUnload cleanup removes the listener", async () => {
   await tick();
 });
 
+test("reset clears items and abandons running uploads", async () => {
+  const gate = deferred();
+  let started = 0;
+  const { store, done } = setup({
+    uploadImage: () => {
+      started++;
+      return gate.promise;
+    },
+  });
+  store.addFiles(1, "L", [img("a.jpg"), img("b.jpg")]);
+  await tick();
+  store.reset();
+  assert.equal(store.getSnapshot().length, 0);
+  gate.resolve();
+  await tick();
+  assert.equal(store.getSnapshot().length, 0);
+  assert.equal(started, 1);
+  assert.equal(done.length, 0);
+  gate.promise.then(() => {});
+  store.addFiles(2, "M", [img("c.jpg")]);
+  await tick();
+  assert.equal(started, 2);
+  assert.equal(store.getSnapshot()[0].status, "done");
+});
+
 test("widget markup and root wiring", () => {
   const widget = readFileSync(new URL("../src/components/UploadWidget.tsx", import.meta.url), "utf8");
   assert.ok(widget.includes("aria-expanded"));

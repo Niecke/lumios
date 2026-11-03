@@ -83,12 +83,15 @@ export interface UploadStore {
   getSnapshot(): QueuedUpload[];
   addFiles(libraryId: number, libraryName: string, files: File[]): void;
   clearFinished(): void;
+  /** Drops every item and abandons running work (logout). */
+  reset(): void;
 }
 
 export function createUploadStore(deps: UploadDeps): UploadStore {
   let items: QueuedUpload[] = [];
   const listeners = new Set<() => void>();
   let draining = false;
+  let generation = 0;
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
   function set(next: QueuedUpload[]) {
@@ -96,7 +99,8 @@ export function createUploadStore(deps: UploadDeps): UploadStore {
     listeners.forEach((l) => l());
   }
 
-  function patch(id: string, change: Partial<QueuedUpload>) {
+  function patch(id: string, change: Partial<QueuedUpload>, gen = generation) {
+    if (gen !== generation) return;
     set(items.map((i) => (i.id === id ? { ...i, ...change } : i)));
   }
 
@@ -108,39 +112,43 @@ export function createUploadStore(deps: UploadDeps): UploadStore {
   }
 
   async function runItem(item: QueuedUpload) {
-    patch(item.id, { status: "uploading", progress: 0 });
+    const gen = generation;
+    patch(item.id, { status: "uploading", progress: 0 }, gen);
     try {
       if (isVideoFile(item.file)) {
         const status = await deps.uploadVideo(item.libraryId, item.file, (pct) =>
-          patch(item.id, { progress: pct })
+          patch(item.id, { progress: pct }, gen)
         );
-        patch(item.id, { status: "processing", progress: 100 });
+        patch(item.id, { status: "processing", progress: 100 }, gen);
         if (status.processing_status !== "ready" && status.processing_status !== "failed") {
           await deps.pollVideoStatus(item.libraryId, status.uuid);
         }
       } else {
         await deps.uploadImage(item.libraryId, item.file);
       }
-      patch(item.id, { status: "done" });
+      if (gen !== generation) return;
+      patch(item.id, { status: "done" }, gen);
       deps.onFileDone(item.libraryId);
     } catch (err) {
       const error: DisplayError =
         err instanceof Error ? { error: err } : { key: "watermark.uploadFailed" };
-      patch(item.id, { status: "error", error });
+      patch(item.id, { status: "error", error }, gen);
     }
   }
 
   async function drain() {
     if (draining) return;
     draining = true;
+    const gen = generation;
     try {
       for (;;) {
+        if (gen !== generation) return;
         const next = items.find((i) => i.status === "pending");
         if (!next) break;
         await runItem(next);
       }
     } finally {
-      draining = false;
+      if (gen === generation) draining = false;
     }
     deps.onDrained?.();
     if (summarize(items).state === "done") {
@@ -179,6 +187,12 @@ export function createUploadStore(deps: UploadDeps): UploadStore {
       void drain();
     },
     clearFinished,
+    reset() {
+      generation++;
+      draining = false;
+      cancelHide();
+      if (items.length) set([]);
+    },
   };
 }
 
