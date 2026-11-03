@@ -1550,6 +1550,93 @@ body {
   flex-shrink: 0;
 }
 
+/* ── Upload widget ─────────────────────────────────────── */
+.upload-item--done .upload-item__icon {
+  color: var(--clr-primary);
+}
+
+.upload-widget__live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.upload-widget {
+  position: fixed;
+  right: 1.5rem;
+  bottom: calc(1.5rem + 56px + 0.75rem);
+  z-index: 300;
+  width: min(360px, calc(100vw - 3rem));
+  background: var(--clr-surface);
+  box-shadow: var(--dp4);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.upload-widget__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.upload-widget__toggle:focus-visible {
+  outline: 2px solid var(--clr-primary);
+  outline-offset: -2px;
+}
+
+.upload-widget__summary {
+  flex: 1;
+  min-width: 0;
+}
+
+.upload-widget__failed {
+  color: var(--clr-error);
+}
+
+.upload-widget__progress {
+  height: 4px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.upload-widget__progress-bar {
+  height: 100%;
+  background: var(--clr-primary);
+  transition: width 0.2s;
+}
+
+.upload-widget__list {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0.75rem;
+  max-height: min(50vh, 320px);
+  overflow-y: auto;
+}
+
+.upload-widget__footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.25rem 0.5rem;
+}
+
+@media (max-width: 600px) {
+  .upload-widget {
+    right: 1rem;
+    bottom: calc(1.5rem + 56px + 0.5rem);
+    width: calc(100vw - 2rem);
+  }
+}
+
 /* ── Cookie banner ─────────────────────────────────────── */
 .cookie-banner {
   position: fixed;

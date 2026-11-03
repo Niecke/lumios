@@ -18,8 +18,27 @@ import { createRoot } from "react-dom/client";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { routeTree } from "./routeTree.gen";
+import { imagesApi } from "./api/images";
+import { uploadVideo, pollVideoStatus } from "./api/videos";
+import { createUploadStore } from "./uploads/uploadStore";
+import { onSessionCleared } from "./api/auth";
+import { UploadProvider } from "./uploads/UploadContext";
 
 const queryClient = new QueryClient();
+// App-level upload queue: lives outside React so uploads survive page changes.
+const uploadStore = createUploadStore({
+  uploadImage: (id, file) => imagesApi.upload(id, file),
+  uploadVideo,
+  pollVideoStatus,
+  onFileDone: (id) => {
+    queryClient.resetQueries({ queryKey: ["images", id] });
+  },
+  onDrained: () => {
+    queryClient.invalidateQueries({ queryKey: ["libraries"] });
+  },
+});
+// Logout / rejected token: drop the previous user's uploads and stop their queue.
+onSessionCleared(() => uploadStore.reset());
 const router = createRouter({ routeTree });
 
 // Required for TanStack Router's TypeScript type inference
@@ -32,7 +51,9 @@ declare module "@tanstack/react-router" {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <UploadProvider store={uploadStore}>
+        <RouterProvider router={router} />
+      </UploadProvider>
     </QueryClientProvider>
   </StrictMode>
 );

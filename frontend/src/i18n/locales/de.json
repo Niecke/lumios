@@ -293,5 +293,16 @@
     "ratingRequired": "Bitte wählen Sie eine Bewertung",
     "accountDeactivated": "Konto deaktiviert",
     "sessionExpired": "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an."
+  },
+  "uploads": {
+    "widgetLabel": "Uploads",
+    "pending_one": "Hochladen: {{count}} ausstehend",
+    "pending_other": "Hochladen: {{count}} ausstehend",
+    "failed_one": "{{count}} fehlgeschlagen",
+    "failed_other": "{{count}} fehlgeschlagen",
+    "allDone": "Alle Uploads abgeschlossen",
+    "clearFinished": "Erledigte entfernen",
+    "currentProgress": "Fortschritt von {{name}}",
+    "toggle": "Upload-Details anzeigen"
   }
 }
