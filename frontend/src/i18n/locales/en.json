@@ -293,5 +293,16 @@
     "ratingRequired": "Please choose a rating",
     "accountDeactivated": "Account deactivated",
     "sessionExpired": "Your session has expired. Please sign in again."
+  },
+  "uploads": {
+    "widgetLabel": "Uploads",
+    "pending_one": "Uploading: {{count}} pending",
+    "pending_other": "Uploading: {{count}} pending",
+    "failed_one": "{{count}} failed",
+    "failed_other": "{{count}} failed",
+    "allDone": "All uploads done",
+    "clearFinished": "Clear finished",
+    "currentProgress": "Progress of {{name}}",
+    "toggle": "Show upload details"
   }
 }

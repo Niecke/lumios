@@ -81,7 +81,8 @@ lumios/
 ├── frontend/                 # React SPA (TanStack Router file-based routing)
 │   ├── src/
 │   │   ├── api/              # API client modules (auth, images, libraries, etc.)
-│   │   ├── components/       # AppBar, CookieBanner, FeedbackWidget, LanguageSwitcher
+│   │   ├── components/       # AppBar, CookieBanner, FeedbackWidget, LanguageSwitcher, UploadWidget
+│   │   ├── uploads/          # App-level upload queue: store + provider, survives page changes
 │   │   ├── i18n/             # i18next setup (index.ts) + locales/de.json, locales/en.json
 │   │   ├── routes/           # File-based routes (TanStack Router): __root, index, login, register, activate, account, support, library.$libraryUuid
 │   │   └── main.tsx

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchVersion, formatFooterVersion } from "../api/version";
 import { CookieBanner } from "../components/CookieBanner";
 import { FeedbackWidget } from "../components/FeedbackWidget";
+import { UploadWidget } from "../components/UploadWidget";
 
 function Footer() {
   const { data } = useQuery({
@@ -26,6 +27,7 @@ export const Route = createRootRoute({
       <Footer />
       <CookieBanner />
       <FeedbackWidget />
+      <UploadWidget />
     </>
   ),
 });

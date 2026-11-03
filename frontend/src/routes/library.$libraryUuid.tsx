@@ -14,7 +14,9 @@ import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { librariesApi } from "../api/libraries";
 import { imagesApi, type Image } from "../api/images";
 import { publicApi, type PublicImage } from "../api/public";
-import { uploadVideo, pollVideoStatus, videosApi } from "../api/videos";
+import { videosApi } from "../api/videos";
+import { isVideoFile, uploadStatusIcon, type UploadItem } from "../uploads/uploadStore.ts";
+import { useUploadStore } from "../uploads/UploadContext.tsx";
 import { AppBar } from "../components/AppBar";
 import { InfiniteScrollSentinel } from "../components/InfiniteScrollSentinel";
 
@@ -37,8 +39,6 @@ const ACCEPTED_TYPES = new Set([
   "video/mp4", "video/quicktime", "video/webm", "video/x-m4v",
 ]);
 const ACCEPTED_EXTS = new Set(["jpg", "jpeg", "png", "webp", "mp4", "mov", "webm", "m4v"]);
-const VIDEO_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm", "video/x-m4v"]);
-const VIDEO_EXTS = new Set(["mp4", "mov", "webm", "m4v"]);
 
 function filterFiles(files: FileList | File[]): File[] {
   return Array.from(files).filter((f) => {
@@ -46,16 +46,6 @@ function filterFiles(files: FileList | File[]): File[] {
     const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
     return ACCEPTED_EXTS.has(ext);
   });
-}
-
-// ── Upload queue item ─────────────────────────────────────────────────────────
-
-interface UploadItem {
-  id: string;
-  file: File;
-  status: "pending" | "uploading" | "processing" | "done" | "error";
-  progress?: number;
-  error?: DisplayError;
 }
 
 // ── Image tile (authenticated) ────────────────────────────────────────────────
@@ -420,13 +410,7 @@ function UploadQueue({ items }: { items: UploadItem[] }) {
       {active.map((item) => (
         <div key={item.id} className={`upload-item upload-item--${item.status}`}>
           <span className="material-icons upload-item__icon">
-            {item.status === "uploading"
-              ? "hourglass_top"
-              : item.status === "processing"
-                ? "sync"
-                : item.status === "error"
-                  ? "error_outline"
-                  : "schedule"}
+            {uploadStatusIcon(item.status)}
           </span>
           <span className="upload-item__name">{item.file.name}</span>
           {item.status === "uploading" && item.progress !== undefined && (
@@ -896,7 +880,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [queue, setQueue] = useState<UploadItem[]>([]);
+  const uploads = useUploadStore();
   const [viewImage, setViewImage] = useState<Image | null>(null);
   const [showShare, setShowShare] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -959,57 +943,8 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
     }
   }
 
-  function isVideoFile(f: File): boolean {
-    if (VIDEO_TYPES.has(f.type)) return true;
-    const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
-    return VIDEO_EXTS.has(ext);
-  }
-
-  async function handleFiles(files: File[]) {
-    if (libId === undefined) return;
-    const newItems: UploadItem[] = files.map((f) => ({
-      id: crypto.randomUUID(),
-      file: f,
-      status: "pending",
-    }));
-    setQueue((q) => [...q, ...newItems]);
-
-    for (const item of newItems) {
-      setQueue((q) =>
-        q.map((i) => (i.id === item.id ? { ...i, status: "uploading", progress: 0 } : i))
-      );
-      try {
-        if (isVideoFile(item.file)) {
-          const status = await uploadVideo(libId, item.file, (pct) => {
-            setQueue((q) =>
-              q.map((i) => (i.id === item.id ? { ...i, progress: pct } : i))
-            );
-          });
-          setQueue((q) =>
-            q.map((i) => (i.id === item.id ? { ...i, status: "processing", progress: 100 } : i))
-          );
-          if (status.processing_status !== "ready" && status.processing_status !== "failed") {
-            await pollVideoStatus(libId, status.uuid);
-          }
-          setQueue((q) =>
-            q.map((i) => (i.id === item.id ? { ...i, status: "done" } : i))
-          );
-        } else {
-          await imagesApi.upload(libId, item.file);
-          setQueue((q) =>
-            q.map((i) => (i.id === item.id ? { ...i, status: "done" } : i))
-          );
-        }
-        invalidate();
-      } catch (err) {
-        const message: DisplayError = err instanceof Error ? { error: err } : { key: "watermark.uploadFailed" };
-        setQueue((q) =>
-          q.map((i) =>
-            i.id === item.id ? { ...i, status: "error", error: message } : i
-          )
-        );
-      }
-    }
+  function handleFiles(files: File[]) {
+    if (library) uploads.addFiles(library.id, library.name, files);
   }
 
   const allImages = data?.pages.flatMap((p) => p.images) ?? [];
@@ -1115,8 +1050,6 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
             e.target.value = "";
           }}
         />
-
-        <UploadQueue items={queue} />
 
         {isLoading && (
           <div className="photo-grid">
@@ -1258,12 +1191,6 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
     } finally {
       setFinishing(false);
     }
-  }
-
-  function isVideoFile(f: File): boolean {
-    if (VIDEO_TYPES.has(f.type)) return true;
-    const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
-    return VIDEO_EXTS.has(ext);
   }
 
   async function handlePublicFiles(files: File[]) {
