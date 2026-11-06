@@ -1,5 +1,9 @@
 # mail.py — transactional email service (Brevo)
 #
+# The texts of the user-facing mails (registration, activation, gallery
+# finished, account cancellation, AGB change) come from services/mail_texts.py
+# per language. The mails to the operator (admin, support) stay German.
+#
 # Mails are sent by the ``default`` worker (worker.py): the ``notify_*``
 # functions only enqueue a job, the ``send_*`` functions build and send the mail
 # inside the job. A failed delivery raises so the job is retried; after the last
@@ -9,7 +13,8 @@
 
 import hashlib
 import secrets
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from functools import partial
 
 import requests
 import sentry_sdk
@@ -22,6 +27,15 @@ from config import (
     FRONTEND_URL,
     MAIL_SENDER_EMAIL,
     MAIL_SENDER_NAME,
+)
+from services.mail_texts import (
+    DEFAULT_LANG,
+    MAILS,
+    format_date,
+    format_int,
+    normalize_lang,
+    plural,
+    text,
 )
 
 _BREVO_CONTACTS_URL = "https://api.brevo.com/v3/contacts"
@@ -174,18 +188,19 @@ def _enqueue(task, lock: str | None = None, **kwargs) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def send_registration_email(user_email: str) -> None:
+def send_registration_email(user_email: str, lang: str = DEFAULT_LANG) -> None:
     """Send a registration confirmation email to a newly created account."""
+    lang = normalize_lang(lang)
+    t = partial(text, lang, "registration")
     html = _html(
         f"""
-        <h2>Willkommen bei Lumios!</h2>
-        <p>Ihr Konto wurde erfolgreich eingerichtet.<br>
-           Sie können sich jetzt mit <strong>{user_email}</strong> anmelden.</p>
-        {_btn(f"{FRONTEND_URL}/login", "Zur Anmeldung")}
-        <p>Falls Sie diese E-Mail nicht erwartet haben, können Sie sie ignorieren.</p>
+        <h2>{t("heading")}</h2>
+        <p>{t("body", user_email=user_email)}</p>
+        {_btn(f"{FRONTEND_URL}/login", t("button"))}
+        <p>{t("body_after")}</p>
     """
     )
-    _send(user_email, "Willkommen bei Lumios – Ihr Konto ist bereit", html)
+    _send(user_email, t("subject"), html)
 
 
 def send_gallery_finished_email(
@@ -193,67 +208,86 @@ def send_gallery_finished_email(
     library_name: str,
     library_uuid: str,
     liked_count: int,
+    lang: str = DEFAULT_LANG,
 ) -> None:
     """Notify the photographer that a customer has finished reviewing their gallery."""
-    plural = "Foto" if liked_count == 1 else "Fotos"
+    lang = normalize_lang(lang)
+    t = partial(text, lang, "gallery_finished")
+    values = {
+        "library_name": library_name,
+        "count": format_int(liked_count, lang),
+        "photos": plural(lang, "gallery_finished", "photos", liked_count),
+    }
     gallery_url = f"{FRONTEND_URL}/libraries/{library_uuid}"
     html = _html(
         f"""
-        <h2>Galerie abgeschlossen</h2>
-        <p>Ihr Kunde hat die Galerie <strong>{library_name}</strong> abgeschlossen
-           und <strong>{liked_count} {plural}</strong> ausgewählt.</p>
-        {_btn(gallery_url, "Galerie öffnen")}
+        <h2>{t("heading")}</h2>
+        <p>{t("body", **values)}</p>
+        {_btn(gallery_url, t("button"))}
     """
     )
-    _send(
-        photographer_email,
-        f"Galerie abgeschlossen: {library_name} ({liked_count} {plural} ausgewählt)",
-        html,
-    )
+    _send(photographer_email, t("subject", **values), html)
 
 
-def send_account_cancellation_email(user_email: str) -> None:
+def send_account_cancellation_email(user_email: str, lang: str = DEFAULT_LANG) -> None:
     """Confirm to the user that their account has been deactivated."""
+    lang = normalize_lang(lang)
+    t = partial(text, lang, "account_cancellation")
     html = _html(
         f"""
-        <h2>Ihr Lumios-Konto wurde deaktiviert</h2>
-        <p>Wir bestätigen, dass Ihr Konto (<strong>{user_email}</strong>)
-           auf Ihren Wunsch hin deaktiviert wurde.</p>
-        <p>Ihre Daten werden gemäß unserer Datenschutzerklärung behandelt.
-           Bei Fragen wenden Sie sich bitte an unseren Support.</p>
+        <h2>{t("heading")}</h2>
+        <p>{t("body", user_email=user_email)}</p>
+        <p>{t("body_after")}</p>
     """
     )
-    _send(user_email, "Ihr Lumios-Konto wurde deaktiviert", html)
+    _send(user_email, t("subject"), html)
 
 
-def send_agb_change_email(user_email: str, agb_version: str, summary: str) -> None:
+def send_agb_change_email(
+    user_email: str,
+    agb_version: str,
+    summary: str,
+    effective_date: str | None = None,
+    lang: str = DEFAULT_LANG,
+) -> None:
     """Notify a single user of an AGB or Datenschutz update (call per recipient).
 
     Callers are responsible for iterating over all affected users.
-    AGB §13 requires this notification.
+    AGB §13 requires this notification. ``effective_date`` is an ISO date
+    (``YYYY-MM-DD``); jobs queued before it existed carry none and the mail then
+    has no date sentence.
     """
+    lang = normalize_lang(lang)
+    t = partial(text, lang, "agb_change")
+    effective = ""
+    if effective_date:
+        try:
+            parsed = date.fromisoformat(effective_date)
+        except (TypeError, ValueError):
+            parsed = None
+        if parsed is not None:
+            effective = f"\n        <p>{t('effective', date=format_date(parsed, lang))}</p>"
     html = _html(
         f"""
-        <h2>Aktualisierung unserer Allgemeinen Geschäftsbedingungen</h2>
-        <p>Wir haben unsere AGB und/oder Datenschutzerklärung aktualisiert
-           (<strong>{agb_version}</strong>).</p>
-        <p><strong>Zusammenfassung der Änderungen:</strong><br>
-           {summary}</p>
-        <p>Die vollständigen Bedingungen finden Sie auf unserer Website:</p>
-        {_btn(f"{FRONTEND_URL}/agb", "AGB lesen")}
-        <p>Gemäß §13 unserer AGB sind Sie mit der weiteren Nutzung von Lumios
-           nach Inkrafttreten der neuen Bedingungen einverstanden.</p>
+        <h2>{t("heading")}</h2>
+        <p>{t("body", agb_version=agb_version)}</p>
+        <p>{t("summary", summary=summary)}</p>
+        <p>{t("button_intro")}</p>
+        {_btn(f"{FRONTEND_URL}/agb", t("button"))}
+        <p>{t("body_after")}</p>{effective}
     """
     )
-    _send(user_email, f"Lumios AGB-Änderung: {agb_version}", html)
+    _send(user_email, t("subject", agb_version=agb_version), html)
 
 
-def send_activation_email(user_id: int) -> None:
+def send_activation_email(user_id: int, lang: str | None = None) -> None:
     """Mail the one-time activation link of a pending account.
 
     The job only carries the user id, so the token never lands in the job
     table. A no-op once the account is active or deleted, so a re-run after a
-    partial failure cannot send a second mail for a used link.
+    partial failure cannot send a second mail for a used link. The language is
+    the stored one of the user; ``lang`` (from a resend request) is only the
+    fallback for an account without one.
     """
     from models import User, db
 
@@ -265,21 +299,21 @@ def send_activation_email(user_id: int) -> None:
         or not user.activation_token
     ):
         return
+    lang = normalize_lang(user.language or lang)
+    t = partial(text, lang, "activation")
     activation_link = f"{FRONTEND_URL}/activate?token={user.activation_token}"
     html = _html(
         f"""
-        <h2>Willkommen bei Lumios!</h2>
-        <p>Vielen Dank für Ihre Registrierung. Bitte aktivieren Sie Ihr Konto
-           (<strong>{user.email}</strong>) durch Klick auf den folgenden Link.</p>
-        {_btn(activation_link, "Konto aktivieren")}
-        <p>Der Link ist 72 Stunden gültig. Falls Sie sich nicht registriert haben,
-           können Sie diese E-Mail ignorieren.</p>
+        <h2>{t("heading")}</h2>
+        <p>{t("body", user_email=user.email)}</p>
+        {_btn(activation_link, t("button"))}
+        <p>{t("body_after")}</p>
     """
     )
-    _send(user.email, "Lumios – Konto aktivieren", html)
+    _send(user.email, t("subject"), html)
 
 
-def process_resend_activation(email: str, ip: str) -> None:
+def process_resend_activation(email: str, ip: str, lang: str | None = None) -> None:
     """Issue a fresh token and queue the mail, but only for a pending account.
 
     Runs in the worker, so the request takes the same time for pending, active
@@ -309,7 +343,7 @@ def process_resend_activation(email: str, ip: str) -> None:
     from worker import open_for_defer, send_activation_email_task
 
     open_for_defer()
-    send_activation_email_task.configure().defer(user_id=user.id)
+    send_activation_email_task.configure().defer(user_id=user.id, **_lang_kwargs(lang))
     current_app.logger.info(
         "Activation email resent: %s", user.email, extra={"log_type": "audit"}
     )
@@ -415,28 +449,42 @@ def send_new_support_ticket_email(ticket_id: int, subject: str, user_email: str)
 # ---------------------------------------------------------------------------
 
 
-def notify_registration(user_email: str) -> bool:
+def _lang_kwargs(lang: object) -> dict:
+    """``{"lang": lang}`` for a supported language, else nothing (job without lang)."""
+    return {"lang": lang} if isinstance(lang, str) and lang in MAILS else {}
+
+
+def notify_registration(user_email: str, lang: str | None = None) -> bool:
     from worker import send_registration_email_task
 
-    return _enqueue(send_registration_email_task, user_email=user_email)
+    return _enqueue(
+        send_registration_email_task, user_email=user_email, lang=normalize_lang(lang)
+    )
 
 
-def notify_activation_email(user_id: int) -> bool:
+def notify_activation_email(user_id: int, lang: str | None = None) -> bool:
     from worker import send_activation_email_task
 
     # One waiting mail per account: a second call collapses into it.
     return _enqueue(
-        send_activation_email_task, lock=f"activation-{user_id}", user_id=user_id
+        send_activation_email_task,
+        lock=f"activation-{user_id}",
+        user_id=user_id,
+        **_lang_kwargs(lang),
     )
 
 
-def notify_resend_activation(email: str, ip: str) -> bool:
+def notify_resend_activation(email: str, ip: str, lang: str | None = None) -> bool:
     from worker import resend_activation_task
 
     # One waiting job per address, so a flood for one victim queues a single mail.
     digest = hashlib.sha256(email.encode()).hexdigest()[:32]
     return _enqueue(
-        resend_activation_task, lock=f"resend-activation-{digest}", email=email, ip=ip
+        resend_activation_task,
+        lock=f"resend-activation-{digest}",
+        email=email,
+        ip=ip,
+        **_lang_kwargs(lang),
     )
 
 
@@ -448,26 +496,43 @@ def notify_admin_new_account(user_email: str, account_type: str) -> bool:
     )
 
 
-def notify_account_cancellation(user_email: str) -> bool:
+def notify_account_cancellation(user_email: str, lang: str | None = None) -> bool:
     from worker import send_account_cancellation_email_task
 
-    return _enqueue(send_account_cancellation_email_task, user_email=user_email)
+    return _enqueue(
+        send_account_cancellation_email_task,
+        user_email=user_email,
+        lang=normalize_lang(lang),
+    )
 
 
-def notify_agb_change(user_email: str, agb_version: str, summary: str) -> bool:
+def notify_agb_change(
+    user_email: str,
+    agb_version: str,
+    summary: str,
+    effective_date: str | None = None,
+    lang: str | None = None,
+) -> bool:
     """Queue the AGB notice for one recipient (callers iterate over the users)."""
     from worker import send_agb_change_email_task
 
+    extra = {} if effective_date is None else {"effective_date": effective_date}
     return _enqueue(
         send_agb_change_email_task,
         user_email=user_email,
         agb_version=agb_version,
         summary=summary,
+        lang=normalize_lang(lang),
+        **extra,
     )
 
 
 def notify_gallery_finished(
-    photographer_email: str, library_name: str, library_uuid: str, liked_count: int
+    photographer_email: str,
+    library_name: str,
+    library_uuid: str,
+    liked_count: int,
+    lang: str | None = None,
 ) -> bool:
     from worker import send_gallery_finished_email_task
 
@@ -477,6 +542,7 @@ def notify_gallery_finished(
         library_name=library_name,
         library_uuid=library_uuid,
         liked_count=liked_count,
+        lang=normalize_lang(lang),
     )
 
 

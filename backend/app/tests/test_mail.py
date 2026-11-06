@@ -189,6 +189,20 @@ class TestProcessResendActivation:
         user = db.session.get(User, pending_user.id)
         assert user.activation_token not in (None, "secret-token")
         task.configure.return_value.defer.assert_called_once_with(user_id=user.id)
+
+    def test_supported_language_is_passed_to_the_activation_job(self, pending_user):
+        with patch("worker.send_activation_email_task") as task:
+            mail.process_resend_activation("pending@test.com", "1.2.3.4", "en")
+
+        task.configure.return_value.defer.assert_called_once_with(
+            user_id=pending_user.id, lang="en"
+        )
+
+    def test_invalid_language_is_not_passed(self, pending_user):
+        with patch("worker.send_activation_email_task") as task:
+            mail.process_resend_activation("pending@test.com", "1.2.3.4", "fr")
+
+        task.configure.return_value.defer.assert_called_once_with(user_id=pending_user.id)
         (entry,) = db.session.execute(
             select(AuditLog).where(
                 AuditLog.audit_type == AuditLogType.activation_token_resent
@@ -224,3 +238,147 @@ class TestEnqueueFailure:
             assert mail.notify_registration("a@test.com") is False
 
         sentry.capture_exception.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Languages
+# ---------------------------------------------------------------------------
+
+GOLDEN_REGISTRATION_DE = (
+    "<!DOCTYPE html><html><head><meta charset='utf-8'><style>\n"
+    "  body { font-family: Arial, sans-serif; color: #222; background: #f9f9f9; margin: 0; padding: 0; }\n"
+    "  .wrap { max-width: 560px; margin: 32px auto; background: #fff;\n"
+    "          border-radius: 6px; padding: 32px 40px; }\n"
+    "  h2 { color: #1a1a1a; margin-top: 0; }\n"
+    "  p  { line-height: 1.6; }\n"
+    "  .foot { margin-top: 32px; font-size: 12px; color: #888; border-top: 1px solid #eee;\n"
+    "          padding-top: 12px; }\n"
+    "</style></head><body><div class='wrap'>\n"
+    "        <h2>Willkommen bei Lumios!</h2>\n"
+    "        <p>Ihr Konto wurde erfolgreich eingerichtet.<br>\n"
+    "           Sie können sich jetzt mit <strong>a@test.com</strong> anmelden.</p>\n"
+    "        <a href=\"{url}/login\" style=\"{style}\">Zur Anmeldung</a>\n"
+    "        <p>Falls Sie diese E-Mail nicht erwartet haben, können Sie sie ignorieren.</p>\n"
+    "    <p class='foot'>Lumios · lumios.niecke-it.de</p></div></body></html>"
+)
+
+# (sender, args, {lang: (subject marker, body marker)})
+_MAILS = {
+    "registration": (
+        lambda lang: mail.send_registration_email("a@test.com", lang),
+        {"de": "Willkommen bei Lumios", "en": "Welcome to Lumios"},
+        {"de": "Zur Anmeldung", "en": "Sign in"},
+    ),
+    "cancellation": (
+        lambda lang: mail.send_account_cancellation_email("a@test.com", lang),
+        {"de": "Ihr Lumios-Konto wurde deaktiviert", "en": "Your Lumios account has been deactivated"},
+        {"de": "Datenschutzerklärung", "en": "privacy policy"},
+    ),
+    "agb": (
+        lambda lang: mail.send_agb_change_email("a@test.com", "2.0", "Summary", None, lang),
+        {"de": "AGB-Änderung: 2.0", "en": "Terms of Service update: 2.0"},
+        {"de": "AGB lesen", "en": "Read the Terms"},
+    ),
+    "gallery": (
+        lambda lang: mail.send_gallery_finished_email("a@test.com", "Lib", "uu", 3, lang),
+        {"de": "Galerie abgeschlossen: Lib (3 Fotos ausgewählt)", "en": "Library completed: Lib (3 photos selected)"},
+        {"de": "Galerie öffnen", "en": "Open library"},
+    ),
+}
+
+
+def _captured(call):
+    with patch.object(mail, "_send") as send:
+        call()
+    send.assert_called_once()
+    return send.call_args.args
+
+
+@pytest.mark.parametrize("lang", ["de", "en"])
+@pytest.mark.parametrize("name", list(_MAILS))
+def test_mail_renders_in_the_language(name, lang):
+    sender, subjects, bodies = _MAILS[name]
+    to, subject, html = _captured(lambda: sender(lang))
+    assert to == "a@test.com"
+    assert subjects[lang] in subject
+    assert bodies[lang] in html
+    for other in {"de", "en"} - {lang}:
+        assert bodies[other] not in html
+    assert "{" not in html.split("</style>")[1]
+
+
+@pytest.mark.parametrize("name", list(_MAILS))
+@pytest.mark.parametrize("lang", ["fr", "", None, 1])
+def test_unknown_language_renders_german(name, lang):
+    sender, subjects, _ = _MAILS[name]
+    _to, subject, _html = _captured(lambda: sender(lang))
+    assert subjects["de"] in subject
+
+
+def test_german_registration_is_unchanged():
+    _to, subject, html = _captured(lambda: mail.send_registration_email("a@test.com"))
+    assert subject == "Willkommen bei Lumios – Ihr Konto ist bereit"
+    expected = GOLDEN_REGISTRATION_DE.replace("{url}", mail.FRONTEND_URL).replace(
+        "{style}", mail._BTN_STYLE
+    )
+    assert html == expected
+
+
+class TestAgbDate:
+    def test_date_is_localised(self):
+        for lang, expected in (("de", "1. Dezember 2026"), ("en", "December 1, 2026")):
+            _to, _s, html = _captured(
+                lambda: mail.send_agb_change_email("a@test.com", "2.0", "S", "2026-12-01", lang)
+            )
+            assert expected in html
+
+    @pytest.mark.parametrize("value", [None, "", "not-a-date", "2026-13-40"])
+    def test_no_or_bad_date_leaves_out_the_sentence(self, value):
+        _to, _s, html = _captured(
+            lambda: mail.send_agb_change_email("a@test.com", "2.0", "S", value, "en")
+        )
+        assert "take effect on" not in html
+        assert "Read the Terms" in html
+
+
+class TestGalleryNumbers:
+    def test_singular_and_plural(self):
+        _t, subject, _h = _captured(
+            lambda: mail.send_gallery_finished_email("a@test.com", "Lib", "u", 1, "en")
+        )
+        assert "(1 photo selected)" in subject
+        _t, subject, _h = _captured(
+            lambda: mail.send_gallery_finished_email("a@test.com", "Lib", "u", 1, "de")
+        )
+        assert "(1 Foto ausgewählt)" in subject
+
+    def test_number_format_follows_the_language(self):
+        _t, subject, _h = _captured(
+            lambda: mail.send_gallery_finished_email("a@test.com", "Lib", "u", 1234, "de")
+        )
+        assert "1.234 Fotos" in subject
+        _t, subject, _h = _captured(
+            lambda: mail.send_gallery_finished_email("a@test.com", "Lib", "u", 1234, "en")
+        )
+        assert "1,234 photos" in subject
+
+
+class TestActivationLanguage:
+    def test_stored_language_wins_over_the_fallback(self, pending_user):
+        pending_user.language = "en"
+        db.session.commit()
+        _to, subject, _h = _captured(lambda: mail.send_activation_email(pending_user.id, "de"))
+        assert subject == "Lumios – activate your account"
+
+    def test_fallback_is_used_without_a_stored_language(self, pending_user):
+        _to, subject, html = _captured(lambda: mail.send_activation_email(pending_user.id, "en"))
+        assert subject == "Lumios – activate your account"
+        assert "Activate account" in html
+
+    def test_german_without_any_language(self, pending_user):
+        _to, subject, _h = _captured(lambda: mail.send_activation_email(pending_user.id))
+        assert subject == "Lumios – Konto aktivieren"
+
+    def test_unknown_fallback_is_german(self, pending_user):
+        _to, subject, _h = _captured(lambda: mail.send_activation_email(pending_user.id, "fr"))
+        assert subject == "Lumios – Konto aktivieren"

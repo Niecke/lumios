@@ -603,8 +603,42 @@ class TestMailEnqueue:
             "library_name": "Lib",
             "library_uuid": "uuid",
             "liked_count": 3,
+            "lang": "de",
         }
         assert jobs["resend_activation"]["args"] == {"email": "a@test.com", "ip": "1.2.3.4"}
+        assert jobs["send_registration_email"]["args"] == {
+            "user_email": "a@test.com",
+            "lang": "de",
+        }
+        assert jobs["send_agb_change_email"]["args"] == {
+            "user_email": "a@test.com",
+            "agb_version": "2.0",
+            "summary": "text",
+            "lang": "de",
+        }
+
+    def test_language_is_stored_as_plain_value_and_unknown_becomes_de(self, app):
+        from services import mail
+
+        mail.notify_gallery_finished("a@test.com", "Lib", "uuid", 3, lang="en")
+        mail.notify_gallery_finished("b@test.com", "Lib", "uuid", 3, lang="fr")
+        mail.notify_agb_change("c@test.com", "2.0", "t", "2026-12-01", "en")
+
+        jobs = _mail_jobs()
+        langs = {j["args"].get("photographer_email") or j["args"]["user_email"]: j["args"]["lang"] for j in jobs}
+        assert langs == {"a@test.com": "en", "b@test.com": "de", "c@test.com": "en"}
+        (agb,) = [j for j in jobs if j["task_name"] == "send_agb_change_email"]
+        assert agb["args"]["effective_date"] == "2026-12-01"
+
+    def test_resend_job_carries_a_supported_language_only(self, app):
+        from services import mail
+
+        mail.notify_resend_activation("a@test.com", "1.2.3.4", "en")
+        mail.notify_resend_activation("b@test.com", "1.2.3.4", "fr")
+
+        args = {j["args"]["email"]: j["args"] for j in _mail_jobs()}
+        assert args["a@test.com"]["lang"] == "en"
+        assert "lang" not in args["b@test.com"]
 
     def test_activation_job_holds_only_the_user_id(self, app, mail_user):
         from services import mail
@@ -614,6 +648,16 @@ class TestMailEnqueue:
         (job,) = _mail_jobs()
         assert job["args"] == {"user_id": mail_user.id}
         assert "raw-secret-token" not in str(job)
+
+    def test_activation_job_with_language_holds_only_id_and_language(
+        self, app, mail_user
+    ):
+        from services import mail
+
+        mail.notify_activation_email(mail_user.id, "en")
+
+        (job,) = _mail_jobs()
+        assert job["args"] == {"user_id": mail_user.id, "lang": "en"}
 
     def test_duplicate_activation_and_resend_jobs_collapse(self, app):
         from services import mail
@@ -638,6 +682,26 @@ class TestMailExecution:
         send.assert_called_once()
         assert "raw-secret-token" in send.call_args.args[2]
         assert _mail_jobs()[0]["status"] == "succeeded"
+
+    def test_job_queued_before_the_language_existed_sends_german(self, app, mail_user):
+        """Old jobs have no ``lang`` / ``effective_date`` argument."""
+
+        worker.open_for_defer()
+        worker.send_registration_email_task.configure().defer(user_email="a@test.com")
+        worker.send_agb_change_email_task.configure().defer(
+            user_email="a@test.com", agb_version="2.0", summary="s"
+        )
+        worker.send_activation_email_task.configure().defer(user_id=mail_user.id)
+        with patch("services.mail._send") as send:
+            _run_worker("default")
+
+        assert {j["status"] for j in _mail_jobs()} == {"succeeded"}
+        subjects = sorted(call.args[1] for call in send.call_args_list)
+        assert subjects == [
+            "Lumios AGB-Änderung: 2.0",
+            "Lumios – Konto aktivieren",
+            "Willkommen bei Lumios – Ihr Konto ist bereit",
+        ]
 
     def test_failure_is_retried_records_error_and_ends_failed(self, app, mail_user):
         from models import WorkerJobError
