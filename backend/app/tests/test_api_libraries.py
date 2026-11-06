@@ -140,6 +140,49 @@ class TestListLibraries:
         res = client.get(BASE, headers=auth_header(token))
         assert res.get_json()["total"] == 0
 
+    def test_cover_url_is_null_without_cover(self, client, photographer, library):
+        res = client.get(BASE, headers=auth_header(make_token(photographer)))
+        assert res.get_json()["libraries"][0]["cover_url"] is None
+
+    def test_cover_url_is_presigned_from_cover_key(self, client, photographer, library):
+        library.cover_key = "photos/1/1/covers/cover-abcd1234.jpg"
+        db.session.commit()
+        with patch("services.covers.storage") as st:
+            st.get_presigned_url.return_value = "http://signed/cover"
+            res = client.get(BASE, headers=auth_header(make_token(photographer)))
+        assert res.get_json()["libraries"][0]["cover_url"] == "http://signed/cover"
+        st.get_presigned_url.assert_called_once_with("photos/1/1/covers/cover-abcd1234.jpg")
+
+    def test_cover_key_itself_is_not_exposed(self, client, photographer, library):
+        library.cover_key = "photos/1/1/covers/cover-abcd1234.jpg"
+        db.session.commit()
+        with patch("services.covers.storage") as st:
+            st.get_presigned_url.return_value = "http://signed/cover"
+            res = client.get(BASE, headers=auth_header(make_token(photographer)))
+        assert "cover_key" not in res.get_json()["libraries"][0]
+
+    def test_presign_error_gives_null_cover_url(self, client, photographer, library):
+        library.cover_key = "photos/1/1/covers/cover-abcd1234.jpg"
+        db.session.commit()
+        with patch("services.covers.storage") as st:
+            st.get_presigned_url.side_effect = RuntimeError("boom")
+            res = client.get(BASE, headers=auth_header(make_token(photographer)))
+        assert res.status_code == 200
+        assert res.get_json()["libraries"][0]["cover_url"] is None
+
+    def test_other_photographers_cover_is_not_listed(
+        self, client, photographer, other_photographer
+    ):
+        lib = Library(
+            user_id=other_photographer.id, name="Other", cover_key="photos/2/2/covers/c.jpg"
+        )
+        db.session.add(lib)
+        db.session.commit()
+        with patch("services.covers.storage") as st:
+            res = client.get(BASE, headers=auth_header(make_token(photographer)))
+        assert res.get_json()["libraries"] == []
+        st.get_presigned_url.assert_not_called()
+
     def test_no_auth_returns_401(self, client):
         res = client.get(BASE)
         assert res.status_code == 401

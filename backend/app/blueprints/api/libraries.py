@@ -9,6 +9,7 @@ import io
 import secrets
 from PIL import Image as PilImage, ImageOps
 from services import storage
+from services.covers import cover_url, enqueue_library_cover
 from config import (
     WATERMARK_PREVIEW_CACHE_MAX_BYTES,
     WATERMARK_PREVIEW_CACHE_MAX_PER_LIBRARY,
@@ -63,7 +64,9 @@ def list_libraries():
     user = db.session.get(User, user_id)
     return jsonify(
         {
-            "libraries": [lib.to_dict() for lib in libraries],
+            "libraries": [
+                {**lib.to_dict(), "cover_url": cover_url(lib)} for lib in libraries
+            ],
             "total": total,
             "page": page,
             "page_size": page_size,
@@ -490,6 +493,8 @@ def apply_watermark(library_id: int):
         logo.close()
 
     cache_delete_pattern(f"public:library:{library.uuid}:*")
+    if updated > 0:
+        enqueue_library_cover(library.id)
     return jsonify({"updated": updated, "failed": failed, "total": len(images)}), 200
 
 
