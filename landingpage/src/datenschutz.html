@@ -23,7 +23,7 @@
 
     <main class="impressum-main">
         <h1>Datenschutzerklärung</h1>
-        <p class="impressum-subtitle">Stand: 23. März 2026</p>
+        <p class="impressum-subtitle">Stand: 6. November 2026</p>
 
         <!-- Präambel -->
         <div class="dsg-section">
@@ -48,11 +48,13 @@
                 <li><a href="#anonyme-clients">Anonymer Clientzugriff auf Fotogalerien</a></li>
                 <li><a href="#zahlungsverfahren">Zahlungsverfahren</a></li>
                 <li><a href="#hosting">Bereitstellung des Onlineangebots und Webhosting</a></li>
-                <li><a href="#fehlerberichte">Frontend-Fehlerberichte</a></li>
-                <li><a href="#cookies">Einsatz von Cookies</a></li>
+                <li><a href="#fehlerueberwachung">Fehlerüberwachung (Sentry)</a></li>
+                <li><a href="#hintergrund">Hintergrundverarbeitung</a></li>
+                <li><a href="#cookies">Cookies und lokale Speicherung</a></li>
                 <li><a href="#registrierung">Registrierung, Anmeldung und Nutzerkonto</a></li>
-                <li><a href="#sso">Single-Sign-On-Anmeldung</a></li>
+                <li><a href="#sso">Anmeldung mit Google</a></li>
                 <li><a href="#email">E-Mail-Benachrichtigungen</a></li>
+                <li><a href="#support">Support und Feedback</a></li>
                 <li><a href="#aenderung">Änderung und Aktualisierung</a></li>
                 <li><a href="#begriffe">Begriffsdefinitionen</a></li>
             </ul>
@@ -80,7 +82,7 @@
             <ul>
                 <li>Bestandsdaten (Name, E-Mail-Adresse, Nutzer-ID)</li>
                 <li>Kontaktdaten</li>
-                <li>Inhaltsdaten (hochgeladene Fotos)</li>
+                <li>Inhaltsdaten (hochgeladene Fotos und Videos, Support- und Feedbacktexte)</li>
                 <li>Vertragsdaten</li>
                 <li>Zahlungsdaten</li>
                 <li>Nutzungsdaten (Seitenaufrufe, Klickpfade, Fotoauswahl)</li>
@@ -102,9 +104,9 @@
                 <li>Bereitstellung der Plattform und Nutzerfreundlichkeit</li>
                 <li>Sicherheitsmaßnahmen und Missbrauchsprävention</li>
                 <li>Transaktionale Kommunikation per E-Mail</li>
-                <li>Anmeldeverfahren (SSO)</li>
+                <li>Anmeldeverfahren (E-Mail und Passwort oder Google Sign-In)</li>
                 <li>Zahlungsabwicklung</li>
-                <li>Betrieb der informationstechnischen Infrastruktur</li>
+                <li>Betrieb der informationstechnischen Infrastruktur, Fehlerüberwachung und Datensicherung</li>
             </ul>
         </div>
 
@@ -127,7 +129,10 @@
             <p>Wir treffen nach Maßgabe der gesetzlichen Vorgaben geeignete technische und organisatorische Maßnahmen, um ein dem Risiko angemessenes Schutzniveau zu gewährleisten. Dazu gehören insbesondere:</p>
             <ul>
                 <li>Verschlüsselte Datenübertragung mittels TLS 1.2-1.3/HTTPS</li>
-                <li>Verschlüsselte Speicherung von Fotodaten in Google Cloud Storage</li>
+                <li>Speicherung der Daten in Rechenzentren der Hetzner Online GmbH in Nürnberg, Deutschland <!-- OWNER CHECK: Standort laut Eigentümer Nürnberg; Objektspeicher-Standort ggf. in Niecke/infrastructure gegenprüfen --></li>
+                <li>Speicherung der Passwörter lokaler Konten ausschließlich als Argon2id-Hash; vorübergehende Sperre einer IP-Adresse nach mehreren fehlgeschlagenen Anmeldeversuchen</li>
+                <li>Entfernung privater Metadaten (u. a. GPS-Standort) aus hochgeladenen Fotos</li>
+                <li>Bereinigung von Fehlerberichten vor dem Versand (siehe Abschnitt „Fehlerüberwachung")</li>
                 <li>Clientlinks verwenden nicht erratbare UUIDs</li>
                 <li>Zugangskontrollen und Authentifizierungspflicht für Fotografen</li>
                 <li>Standardmäßig Wasserzeichenversionen als Clientvorschau; der Fotograf kann pro Bibliothek das Original als Vorschau aktivieren</li>
@@ -139,10 +144,12 @@
             <h2>Übermittlung von personenbezogenen Daten</h2>
             <p>Personenbezogene Daten werden nur an Dritte übermittelt, soweit dies zur Vertragserfüllung, aufgrund gesetzlicher Verpflichtungen oder auf Basis berechtigter Interessen erforderlich ist. Mit allen eingesetzten Auftragsverarbeitern wurden Auftragsverarbeitungsverträge (AVV) gemäß Art. 28 DSGVO geschlossen:</p>
             <ul>
-                <li><strong>Google Cloud Platform (GCP)</strong> – Hosting der Anwendung und Speicherung von Fotodaten (Google Cloud Storage); Verarbeitung primär in der EU/EWR; Grundlage Drittlandtransfers: Data Privacy Framework (DPF), Standardvertragsklauseln (SCC).</li>
-                <li><strong>Cloudflare, Inc.</strong> – Content Delivery Network (CDN) und DNS; Sitz: USA; Grundlage Drittlandtransfers: DPF, SCC.</li>
-                <li><strong>Brevo SAS</strong> – Versand transaktionaler E-Mails; Sitz: Frankreich (EU); keine Drittlandübermittlung.</li>
-                <li><strong>Paddle.com Market Ltd.</strong> – Zahlungsabwicklung als Merchant of Record; Sitz: UK; Grundlage Drittlandtransfers: UK Adequacy Decision, SCC.</li>
+                <li><strong>Hetzner Online GmbH</strong> – Hosting der Anwendung und der Datenbank sowie Objektspeicher für Fotos und Videos; Sitz: Industriestr. 25, 91710 Gunzenhausen, Deutschland; Rechenzentrum in Nürnberg; keine Drittlandübermittlung. <!-- OWNER CHECK: Anschrift der Hetzner Online GmbH nicht im Repository belegt, bitte prüfen --></li>
+                <li><strong>Cloudflare, Inc.</strong> – Content Delivery Network (CDN), DNS und Proxy; Sitz: USA; Grundlage Drittlandtransfers: DPF, SCC. <!-- OWNER CHECK: Falls kein Datenverkehr über Cloudflare geleitet wird, Eintrag entfernen --></li>
+                <li><strong>Brevo SAS</strong> – Versand transaktionaler E-Mails und Verwaltung der Warteliste; Sitz: Frankreich (EU); keine Drittlandübermittlung.</li>
+                <li><strong>Functional Software, Inc. (Sentry)</strong> – Fehlerüberwachung; Sitz: 45 Fremont Street, 8th Floor, San Francisco, CA 94105, USA; Speicherung der Daten in der EU (Frankfurt); Grundlage Drittlandtransfers: Data Privacy Framework (DPF), Standardvertragsklauseln (SCC). <!-- OWNER CHECK: Der Auftragsverarbeitungsvertrag (DPA) mit Sentry ist noch nicht geschlossen. Diese PR erst nach Abschluss des DPA mergen. Anschrift prüfen. --></li>
+                <li><strong>Google Cloud (Google Ireland Limited)</strong> – verschlüsselte externe Datensicherungen (Backups) der Datenbank sowie der Fotos und Videos in Google Cloud Storage, EU-Region; Grundlage Drittlandtransfers: Data Privacy Framework (DPF), Standardvertragsklauseln (SCC). Zum Google Sign-In siehe Abschnitt „Anmeldung mit Google". <!-- OWNER CHECK: Region der Backup-Buckets steht in Niecke/infrastructure; Standard „EU-Region" --></li>
+                <li><strong>Paddle.com Market Ltd.</strong> – Zahlungsabwicklung als Merchant of Record, erst ab Einführung kostenpflichtiger Tarife; Sitz: UK; Grundlage Drittlandtransfers: UK Adequacy Decision, SCC. <!-- OWNER CHECK: Im Repository existiert kein Zahlungscode; ggf. bis zur Einführung entfernen --></li>
             </ul>
         </div>
 
@@ -159,7 +166,10 @@
             <ul>
                 <li><strong>7 Jahre</strong> – Steuerlich relevante Unterlagen gemäß § 132 BAO und §§ 190–212 UGB.</li>
                 <li><strong>3 Jahre</strong> – Daten zur Geltendmachung oder Abwehr vertraglicher Ansprüche gemäß § 1489 ABGB.</li>
-                <li><strong>30 Tage</strong> – Server-Logfiles; Fotodaten und Kontodaten nach Kündigung des Nutzerkontos.</li>
+                <li><strong>30 Tage</strong> – Fotodaten, Videos und Kontodaten nach Kündigung des Nutzerkontos; Fehlerberichte bei Sentry; abgeschlossene Hintergrundaufträge.</li>
+                <li><strong>90 Tage</strong> – Audit-Protokolle (Anmeldungen, Uploads, Downloads, Kontoänderungen) einschließlich IP-Adresse.</li>
+                <li><strong>15 Minuten</strong> – vorübergehende Sperre einer IP-Adresse nach fehlgeschlagenen Anmeldeversuchen (Zwischenspeicher).</li>
+                <li><strong>Datensicherungen</strong> – Datenbank-Backups werden 14 Tage aufbewahrt; gelöschte oder überschriebene Fotos und Videos verbleiben bis zu 30 Tage in der Datensicherung und werden danach endgültig gelöscht.</li>
             </ul>
         </div>
 
@@ -198,18 +208,18 @@
         <!-- Fotodaten -->
         <div class="dsg-section" id="fotodaten">
             <h2>Verarbeitung von Fotodaten und besonderen Datenkategorien</h2>
-            <p>Der Kernzweck von Lumios ist die Verwaltung und Bereitstellung professioneller Fotogalerien. Im Rahmen dieser Leistung verarbeiten wir von Fotografen hochgeladene Bilddateien. Diese können personenbezogene Daten enthalten, insbesondere:</p>
+            <p>Der Kernzweck von Lumios ist die Verwaltung und Bereitstellung professioneller Fotogalerien. Im Rahmen dieser Leistung verarbeiten wir von Fotografen hochgeladene Bilddateien und Videos. Über einen Galerie-Link können Clients Fotos und Videos in eine Galerie hochladen, sofern der Fotograf diese Funktion aktiviert hat; der Fotograf bleibt auch für diese Inhalte Verantwortlicher. Diese können personenbezogene Daten enthalten, insbesondere:</p>
             <ul>
                 <li><strong>Abbildungen von Personen:</strong> Fotos, die Gesichter oder anderweitig identifizierbare Merkmale zeigen, können biometrische Daten im Sinne von Art. 4 Nr. 14 DSGVO darstellen und fallen ggf. unter die besonderen Datenkategorien gemäß Art. 9 DSGVO.</li>
             </ul>
             <p><strong>Verantwortlichkeit:</strong> Der Fotograf (Nutzer) ist für die Rechtmäßigkeit der Verarbeitung der von ihm hochgeladenen Bildinhalte verantwortlich, insbesondere für das Vorliegen einer geeigneten Rechtsgrundlage gegenüber den abgebildeten Personen (z. B. Einwilligung, Vertragserfüllung im Rahmen eines Fotoauftrags). Lumios verarbeitet diese Daten im Auftrag des Fotografen als Auftragsverarbeiter gemäß Art. 28 DSGVO.</p>
-            <p><strong>Technische Schutzmaßnahmen:</strong> Alle hochgeladenen Fotos werden verschlüsselt in Google Cloud Storage gespeichert. Für die Clientansicht werden standardmäßig Wasserzeichenversionen als Vorschau verwendet; der Fotograf kann pro Bibliothek konfigurieren, dass stattdessen das Original als Vorschau ausgespielt wird. Der Zugriff auf Originaldateien erfolgt über zeitlich begrenzte, signierte URLs; Clientlinks verwenden nicht erratbare UUIDs ohne Ablaufdatum.</p>
+            <p><strong>Technische Schutzmaßnahmen:</strong> Alle hochgeladenen Fotos und Videos werden im Objektspeicher von Hetzner in Deutschland gespeichert. Bei Videos wird die Originaldatei gespeichert; Vorschaubild und technische Metadaten (Dauer, Codec) erzeugt ein Hintergrundprozess auf unserer eigenen Infrastruktur. Für die Clientansicht werden standardmäßig Wasserzeichenversionen als Vorschau verwendet; der Fotograf kann pro Bibliothek konfigurieren, dass stattdessen das Original als Vorschau ausgespielt wird. Der Zugriff auf Originaldateien erfolgt über zeitlich begrenzte, signierte URLs; Clientlinks verwenden nicht erratbare UUIDs ohne Ablaufdatum.</p>
             <div class="dsg-info-block">
                 <ul>
-                    <li><strong>Verarbeitete Datenarten:</strong> Inhaltsdaten (Fotos).</li>
-                    <li><strong>Betroffene Personen:</strong> Fotografen; auf Fotos abgebildete Dritte.</li>
+                    <li><strong>Verarbeitete Datenarten:</strong> Inhaltsdaten (Fotos, Videos).</li>
+                    <li><strong>Betroffene Personen:</strong> Fotografen; Clients, die Inhalte hochladen; auf Fotos und Videos abgebildete Dritte.</li>
                     <li><strong>Zwecke:</strong> Bereitstellung der Plattformleistung (Galerie-Hosting, Client-Ansicht, Fotoauswahl).</li>
-                    <li><strong>Aufbewahrung:</strong> Bis zur Löschung durch den Fotografen oder bis zu 30 Tage nach Kündigung des Kontos.</li>
+                    <li><strong>Aufbewahrung:</strong> Bis zur Löschung durch den Fotografen oder bis zu 30 Tage nach Kündigung des Kontos; in der Datensicherung bis zu weitere 30 Tage.</li>
                     <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung); Art. 9 Abs. 2 lit. a DSGVO (Einwilligung) für besondere Datenkategorien, soweit einschlägig.</li>
                 </ul>
             </div>
@@ -240,7 +250,7 @@
             <h2>Anonymer Clientzugriff auf Fotogalerien</h2>
             <p>Clients (Endkunden der Fotografen) erhalten Zugang zu freigegebenen Fotogalerien über einen privaten Share-Link. Ein Nutzerkonto bei Lumios ist nicht erforderlich. Im Rahmen des Zugriffs verarbeiten wir folgende Daten:</p>
             <ul>
-                <li><strong>IP-Adresse und Zugriffszeit</strong> – zur technischen Bereitstellung und Missbrauchsprävention (Server-Logfiles).</li>
+                <li><strong>IP-Adresse und Zugriffszeit</strong> – zur technischen Bereitstellung und Missbrauchsprävention (Server-Logfiles und Audit-Protokoll).</li>
                 <li><strong>Fotoauswahl / Favoriten</strong> – die vom Client markierten Fotos werden gespeichert und dem Fotografen als Auswahlliste übermittelt.</li>
                 <li><strong>Abschluss-Status</strong> – wenn ein Client die Auswahl als abgeschlossen markiert, wird der Fotograf per E-Mail benachrichtigt.</li>
             </ul>
@@ -250,7 +260,7 @@
                     <li><strong>Verarbeitete Datenarten:</strong> Nutzungsdaten (Fotoauswahl), Meta- und Protokolldaten (IP-Adresse, Zugriffszeit).</li>
                     <li><strong>Betroffene Personen:</strong> Clients (anonyme Besucher mit Share-Link).</li>
                     <li><strong>Zwecke:</strong> Bereitstellung der Galerieansicht; Übermittlung der Fotoauswahl an den Fotografen.</li>
-                    <li><strong>Aufbewahrung:</strong> Protokolldaten max. 30 Tage; Fotoauswahl bis zur Löschung durch den Fotografen.</li>
+                    <li><strong>Aufbewahrung:</strong> Protokolldaten (Audit-Protokoll) 90 Tage; Fotoauswahl bis zur Löschung durch den Fotografen.</li>
                     <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. f DSGVO (berechtigte Interessen des Fotografen an der Übermittlung der Auswahl).</li>
                 </ul>
             </div>
@@ -259,7 +269,7 @@
         <!-- Zahlungsverfahren -->
         <div class="dsg-section" id="zahlungsverfahren">
             <h2>Zahlungsverfahren</h2>
-            <p>Die Zahlungsabwicklung erfolgt ausschließlich über <strong>Paddle.com Market Ltd.</strong> (Paddle), der als Merchant of Record sämtliche Zahlungstransaktionen im eigenen Namen abwickelt. Paddle ist verantwortlich für die Verarbeitung von Zahlungsdaten, die Ausstellung von Rechnungen sowie die Abführung anfallender EU-Umsatzsteuer. Wir erhalten von Paddle keine vollständigen Zahlungsdaten (z. B. Kreditkartennummern), sondern lediglich eine Bestätigung über den Zahlungsstatus sowie die für die Kontoverwaltung erforderlichen Abonnementdaten.</p>
+            <p>Sobald kostenpflichtige Tarife eingeführt werden, erfolgt die Zahlungsabwicklung ausschließlich über <strong>Paddle.com Market Ltd.</strong> (Paddle), der als Merchant of Record sämtliche Zahlungstransaktionen im eigenen Namen abwickelt. Paddle ist verantwortlich für die Verarbeitung von Zahlungsdaten, die Ausstellung von Rechnungen sowie die Abführung anfallender EU-Umsatzsteuer. Wir erhalten von Paddle keine vollständigen Zahlungsdaten (z. B. Kreditkartennummern), sondern lediglich eine Bestätigung über den Zahlungsstatus sowie die für die Kontoverwaltung erforderlichen Abonnementdaten.</p>
             <p>Weitere Informationen: <a href="https://www.paddle.com/legal/privacy">https://www.paddle.com/legal/privacy</a></p>
             <div class="dsg-info-block">
                 <ul>
@@ -276,72 +286,57 @@
         <!-- Hosting -->
         <div class="dsg-section" id="hosting">
             <h2>Bereitstellung des Onlineangebots und Webhosting</h2>
-            <p>Unser Onlineangebot wird auf einer virtuellen Maschine der <strong>Google Cloud Platform (GCP)</strong> betrieben (Region: europe-west). Fotodaten werden in Google Cloud Storage gespeichert. Die Auslieferung von Inhalten erfolgt über das CDN von <strong>Cloudflare</strong>. Im Rahmen des Betriebs werden Server-Logfiles erstellt, die IP-Adresse, Zeitstempel, aufgerufene URLs, Browsertyp und Betriebssystem enthalten. Diese dienen der Betriebssicherheit, Fehleranalyse und Abwehr von Angriffen (z. B. DDoS).</p>
+            <p>Unser Onlineangebot wird auf einem Server der <strong>Hetzner Online GmbH</strong> (Rechenzentrum Nürnberg, Deutschland) in einem Kubernetes-Cluster (k3s) betrieben; Datenbank und Zwischenspeicher laufen im selben Cluster, Fotos und Videos liegen im Objektspeicher von Hetzner. Die Auslieferung von Inhalten und die Namensauflösung erfolgen über <strong>Cloudflare</strong> (CDN, DNS, Proxy). Beim Betrieb entstehen Anwendungsprotokolle, die IP-Adresse, Zeitstempel, aufgerufene URLs, Browsertyp und Betriebssystem enthalten können, sowie Audit-Protokolle (Anmeldung, Upload, Download, Kontoänderungen) mit IP-Adresse, die 90 Tage gespeichert werden. Sie dienen der Betriebssicherheit, Fehleranalyse und Abwehr von Angriffen (z. B. DDoS).</p>
             <div class="dsg-info-block">
                 <ul>
-                    <li><strong>Verarbeitete Datenarten:</strong> Nutzungsdaten, Meta- und Protokolldaten, Inhaltsdaten (Fotos).</li>
+                    <li><strong>Verarbeitete Datenarten:</strong> Nutzungsdaten, Meta- und Protokolldaten, Inhaltsdaten (Fotos, Videos).</li>
                     <li><strong>Betroffene Personen:</strong> Alle Nutzer und Besucher des Onlineangebots.</li>
                     <li><strong>Zwecke:</strong> Bereitstellung und Sicherheit des Onlineangebots, Fehlerbehebung.</li>
-                    <li><strong>Aufbewahrung:</strong> Logfiles max. 30 Tage; Fotodaten bis zur Löschung durch den Nutzer.</li>
+                    <li><strong>Aufbewahrung:</strong> Audit-Protokolle 90 Tage; Fotodaten bis zur Löschung durch den Nutzer.</li>
                     <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. f DSGVO (berechtigte Interessen an stabilem und sicherem Betrieb).</li>
                 </ul>
             </div>
         </div>
 
-        <!-- Monitoring & Tracing -->
-        <div class="dsg-section" id="monitoring">
-            <h2>Performance-Monitoring und Distributed Tracing</h2>
-            <p>Zur Überwachung der Systemstabilität, Fehlerdiagnose und Optimierung der Antwortzeiten setzen wir <strong>OpenTelemetry</strong> in Verbindung mit <strong>Google Cloud Trace</strong> und <strong>Google Cloud Monitoring</strong> (GCP) ein. Dabei werden beim Aufruf von API-Endpunkten automatisch Traces erzeugt, die folgende Daten enthalten können:</p>
+        <!-- Fehlerüberwachung (Sentry) -->
+        <div class="dsg-section" id="fehlerueberwachung">
+            <h2>Fehlerüberwachung (Sentry)</h2>
+            <p>Um technische Fehler in der Webanwendung und im Server zu erkennen und zu beheben, setzen wir den Dienst <strong>Sentry</strong> ein. Tritt ein unbehandelter Fehler auf, wird ein Fehlerbericht an Sentry übermittelt (Browser und Server). Dieser kann folgende Daten enthalten:</p>
             <ul>
-                <li>Aufgerufener HTTP-Endpunkt (URL-Pfad, Methode, HTTP-Statuscode),</li>
-                <li>Antwortdauer und Latenz einzelner Verarbeitungsschritte,</li>
-                <li>Datenbankabfragen (ohne Inhalte oder personenbezogene Nutzerdaten),</li>
-                <li>IP-Adresse des Anfragenden (als Teil der HTTP-Anfragemetadaten).</li>
+                <li>Fehlermeldung und Stack-Trace (Dateiname, Zeilen- und Spaltennummer),</li>
+                <li>Pfad und Methode der Anfrage sowie die URL der Seite, jeweils bereinigt,</li>
+                <li>Browser- und Betriebssystemtyp sowie Informationen zum SDK,</li>
+                <li>Programmversion (Release) und Umgebung.</li>
             </ul>
-            <p>Die Traces werden ausschließlich intern zur technischen Betriebsüberwachung verwendet. Eine Auswertung zur Nutzerprofilierung oder Weitergabe an Dritte zu anderen Zwecken findet nicht statt. Google Cloud Trace speichert Trace-Daten standardmäßig für 30 Tage.</p>
+            <p>Vor dem Versand werden die Berichte bereinigt: IP-Adresse, Cookies, Authentifizierungs-Header, Anfrageinhalte, E-Mail-Adressen, Zugangstoken und die UUIDs von Galerie-Links werden entfernt oder durch Platzhalter ersetzt. Fehler des Browsers werden zusätzlich in das Serverprotokoll geschrieben.</p>
             <div class="dsg-info-block">
                 <ul>
-                    <li><strong>Eingesetzte Dienste:</strong> OpenTelemetry (open-source SDK); Google Cloud Trace und Google Cloud Monitoring (Google LLC, 1600 Amphitheatre Parkway, Mountain View, CA 94043, USA).</li>
-                    <li><strong>Verarbeitete Datenarten:</strong> Meta- und Protokolldaten (IP-Adresse, Endpunkte, Latenzen).</li>
-                    <li><strong>Betroffene Personen:</strong> Alle Nutzer und Besucher des Onlineangebots.</li>
-                    <li><strong>Zwecke:</strong> Systemstabilität, Fehlerdiagnose, Performance-Optimierung.</li>
-                    <li><strong>Aufbewahrung:</strong> 30 Tage (Google Cloud Trace Standard-Aufbewahrungsfrist).</li>
-                    <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. f DSGVO (berechtigte Interessen an stabilem und performantem Betrieb).</li>
-                    <li><strong>Datentransfer:</strong> Google LLC mit Sitz in den USA; Grundlage: EU-Standardvertragsklauseln (SCC) gemäß Art. 46 Abs. 2 lit. c DSGVO. Weitere Informationen: <a href="https://cloud.google.com/terms/data-processing-addendum">Google Cloud Data Processing Addendum</a>.</li>
+                    <li><strong>Dienstanbieter:</strong> Functional Software, Inc. (Sentry), 45 Fremont Street, 8th Floor, San Francisco, CA 94105, USA. <!-- OWNER CHECK: Der Auftragsverarbeitungsvertrag (DPA) mit Sentry ist noch nicht geschlossen; erst nach Abschluss mergen. Anschrift und Tarif prüfen (bei Team-Tarif 90 statt 30 Tage). --></li>
+                    <li><strong>Datenschutzerklärung:</strong> <a href="https://sentry.io/privacy/">https://sentry.io/privacy/</a></li>
+                    <li><strong>Speicherort:</strong> EU-Region (Frankfurt). Ein Zugriff von Sentry aus den USA ist nicht ausgeschlossen.</li>
+                    <li><strong>Verarbeitete Datenarten:</strong> Technische Fehlerdaten (Stack-Traces, bereinigte URLs, Browser- und Systeminformationen).</li>
+                    <li><strong>Betroffene Personen:</strong> Alle Nutzer der Webanwendung.</li>
+                    <li><strong>Zwecke:</strong> Fehlerdiagnose und Qualitätssicherung.</li>
+                    <li><strong>Aufbewahrung:</strong> 30 Tage.</li>
+                    <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. f DSGVO (berechtigte Interessen an stabilem und fehlerfreiem Betrieb).</li>
+                    <li><strong>Datentransfer:</strong> Grundlage: Data Privacy Framework (DPF) und Standardvertragsklauseln (SCC).</li>
                 </ul>
             </div>
         </div>
 
-        <!-- Frontend-Fehlerberichte -->
-        <div class="dsg-section" id="fehlerberichte">
-            <h2>Frontend-Fehlerberichte</h2>
-            <p>Um technische Fehler in der Webanwendung zu erkennen und zu beheben, erfassen wir automatisch unbehandelte JavaScript-Fehler und leiten diese an <strong>Google Cloud Error Reporting</strong> (GCP) weiter. Dabei werden folgende Daten übermittelt:</p>
-            <ul>
-                <li>Fehlermeldung und Stack-Trace (Dateiname, Zeilennummer, Spaltennummer),</li>
-                <li>URL der Seite, auf der der Fehler aufgetreten ist,</li>
-                <li>Browser-Typ und -Version (User-Agent).</li>
-            </ul>
-            <p>Es werden keine personenbezogenen Nutzerdaten (z. B. Name, E-Mail-Adresse) in den Fehlerberichten übertragen. Die Berichte werden ausschließlich zur technischen Fehlerdiagnose verwendet. Google Cloud Error Reporting speichert Fehlereinträge standardmäßig für 30 Tage.</p>
-            <div class="dsg-info-block">
-                <ul>
-                    <li><strong>Eingesetzte Dienste:</strong> Google Cloud Error Reporting (Google LLC, 1600 Amphitheatre Parkway, Mountain View, CA 94043, USA).</li>
-                    <li><strong>Verarbeitete Datenarten:</strong> Technische Fehlerdaten (Stack-Traces, URLs, User-Agent).</li>
-                    <li><strong>Betroffene Personen:</strong> Alle Nutzer der Webanwendung.</li>
-                    <li><strong>Zwecke:</strong> Fehlerdiagnose und Qualitätssicherung der Webanwendung.</li>
-                    <li><strong>Aufbewahrung:</strong> 30 Tage.</li>
-                    <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. f DSGVO (berechtigte Interessen an stabilem und fehlerfreiem Betrieb).</li>
-                    <li><strong>Datentransfer:</strong> Google LLC mit Sitz in den USA; Grundlage: EU-Standardvertragsklauseln (SCC) gemäß Art. 46 Abs. 2 lit. c DSGVO. Weitere Informationen: <a href="https://cloud.google.com/terms/data-processing-addendum">Google Cloud Data Processing Addendum</a>.</li>
-                </ul>
-            </div>
+        <!-- Hintergrundverarbeitung -->
+        <div class="dsg-section" id="hintergrund">
+            <h2>Hintergrundverarbeitung</h2>
+            <p>E-Mail-Versand und Videoverarbeitung laufen als Hintergrundaufträge. Die Aufträge werden in unserer eigenen PostgreSQL-Datenbank vorgemerkt und von unseren eigenen Prozessen auf derselben Infrastruktur ausgeführt; dadurch ist kein zusätzlicher Dienstleister beteiligt. Abgeschlossene Aufträge werden nach 30 Tagen gelöscht.</p>
         </div>
 
         <!-- Cookies -->
         <div class="dsg-section" id="cookies">
-            <h2>Einsatz von Cookies</h2>
-            <p>Wir verwenden Cookies ausschließlich, soweit sie für den Betrieb der Plattform technisch notwendig sind. Tracking- oder Werbe-Cookies werden nicht eingesetzt. Technisch notwendige Cookies erfordern keine Einwilligung und werden auf Basis unserer berechtigten Interessen an einem funktionsfähigen Angebot gesetzt.</p>
+            <h2>Cookies und lokale Speicherung</h2>
+            <p>Wir verwenden Cookies und die lokale Speicherung des Browsers ausschließlich, soweit sie für den Betrieb der Plattform technisch notwendig sind (§ 165 Abs. 3 TKG 2021). Tracking- oder Werbe-Cookies werden nicht eingesetzt. Technisch notwendige Speicherungen erfordern keine Einwilligung und erfolgen auf Basis unserer berechtigten Interessen an einem funktionsfähigen Angebot.</p>
             <div class="dsg-info-block">
                 <ul>
-                    <li><strong>Verarbeitete Datenarten:</strong> Meta- und Verfahrensdaten (Session-IDs).</li>
+                    <li><strong>Verarbeitete Datenarten:</strong> Meta- und Verfahrensdaten (Session-IDs, Anmeldetoken, Spracheinstellung).</li>
                     <li><strong>Betroffene Personen:</strong> Registrierte Nutzer.</li>
                     <li><strong>Zwecke:</strong> Authentifizierung, Sitzungsverwaltung.</li>
                     <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. f DSGVO (berechtigte Interessen).</li>
@@ -365,6 +360,30 @@
                             <td>Sitzungsende (Browser schließen)</td>
                         </tr>
                         <tr>
+                            <td><code>lumios_token</code> (sessionStorage)</td>
+                            <td>Lumios (Erstanbieter)</td>
+                            <td>Anmeldetoken der angemeldeten Fotografen</td>
+                            <td>Bis zum Schließen des Browser-Tabs</td>
+                        </tr>
+                        <tr>
+                            <td><code>lumios_locale</code> (localStorage)</td>
+                            <td>Lumios (Erstanbieter)</td>
+                            <td>Gewählte Sprache</td>
+                            <td>Bis zur Löschung durch den Nutzer</td>
+                        </tr>
+                        <tr>
+                            <td><code>lumios_locale_chosen</code> (sessionStorage)</td>
+                            <td>Lumios (Erstanbieter)</td>
+                            <td>Merkt, dass die Sprache in dieser Sitzung gewählt wurde</td>
+                            <td>Bis zum Schließen des Browser-Tabs</td>
+                        </tr>
+                        <tr>
+                            <td><code>cookie_banner_dismissed</code> (localStorage)</td>
+                            <td>Lumios (Erstanbieter)</td>
+                            <td>Merkt, dass der Cookie-Hinweis bestätigt wurde</td>
+                            <td>Bis zur Löschung durch den Nutzer</td>
+                        </tr>
+                        <tr>
                             <td>Google Identity Services (GIS)</td>
                             <td>Google (Drittanbieter)</td>
                             <td>CSRF-Schutz und Zustandsverwaltung beim Google-Login</td>
@@ -379,11 +398,11 @@
         <!-- Registrierung -->
         <div class="dsg-section" id="registrierung">
             <h2>Registrierung, Anmeldung und Nutzerkonto</h2>
-            <p>Fotografen können sich über Single-Sign-On (Google) registrieren. Im Rahmen der Registrierung werden die vom SSO-Anbieter übermittelten Daten (Name, E-Mail-Adresse, Nutzer-ID) gespeichert und zur Bereitstellung des Nutzerkontos verarbeitet. IP-Adresse und Zeitstempel der Registrierung werden zur Missbrauchsprävention protokolliert. Während der Beta-Phase ist die Registrierung auf 100 Nutzerkonten begrenzt; darüber hinaus besteht die Möglichkeit, sich auf eine Warteliste einzutragen.</p>
+            <p>Fotografen können sich auf zwei Wegen registrieren: mit E-Mail-Adresse und Passwort (der Zugang wird per Aktivierungs-E-Mail bestätigt) oder über Google Sign-In. Bei der Registrierung mit E-Mail und Passwort speichern wir die E-Mail-Adresse und einen Argon2id-Hash des Passworts, jedoch keinen Namen. Bei Google Sign-In werden die von Google übermittelten Daten (Name, E-Mail-Adresse, Nutzer-ID) gespeichert und zur Bereitstellung des Nutzerkontos verarbeitet. IP-Adresse und Zeitstempel von Registrierung und Anmeldung werden zur Missbrauchsprävention im Audit-Protokoll 90 Tage gespeichert; fehlgeschlagene Passwort-Anmeldungen führen nach mehreren Versuchen zu einer vorübergehenden Sperre der IP-Adresse. Während der Beta-Phase ist die Registrierung auf 100 Nutzerkonten begrenzt; darüber hinaus besteht die Möglichkeit, sich auf eine Warteliste einzutragen.</p>
             <p>Nach Kündigung des Nutzerkontos werden alle Konto- und Inhaltsdaten innerhalb von 30 Tagen unwiderruflich gelöscht, sofern keine gesetzlichen Aufbewahrungspflichten entgegenstehen. Es obliegt dem Nutzer, eigene Daten vor Kündigung zu sichern.</p>
             <div class="dsg-info-block">
                 <ul>
-                    <li><strong>Verarbeitete Datenarten:</strong> Bestandsdaten (Name, E-Mail-Adresse, Nutzer-ID), Protokolldaten.</li>
+                    <li><strong>Verarbeitete Datenarten:</strong> Bestandsdaten (E-Mail-Adresse, Nutzer-ID, Passwort-Hash; Name nur bei Google Sign-In), Protokolldaten.</li>
                     <li><strong>Betroffene Personen:</strong> Registrierte Nutzer (Fotografen); Interessenten (Warteliste).</li>
                     <li><strong>Zwecke:</strong> Kontobereitstellung, Authentifizierung, Missbrauchsprävention.</li>
                     <li><strong>Aufbewahrung:</strong> Bis zur Kündigung; Inhaltsdaten max. 30 Tage nach Kündigung; Wartelisten-E-Mails bis zur Öffnung der regulären Registrierung.</li>
@@ -394,8 +413,8 @@
 
         <!-- SSO -->
         <div class="dsg-section" id="sso">
-            <h2>Single-Sign-On-Anmeldung</h2>
-            <p>Die Anmeldung bei Lumios erfolgt ausschließlich über Single-Sign-On (SSO). Dabei werden keine eigenen Passwörter durch Lumios gespeichert. Wir setzen folgende SSO-Anbieter ein:</p>
+            <h2>Anmeldung mit Google</h2>
+            <p>Neben der Anmeldung mit E-Mail-Adresse und Passwort bieten wir Single-Sign-On (SSO) an. Wird Google Sign-In genutzt, speichert Lumios kein Passwort. Wir setzen folgenden SSO-Anbieter ein:</p>
 
             <h3>Google Sign-In</h3>
             <p>Bei der Anmeldung via Google erhalten wir von Google Ireland Limited eine Nutzer-ID sowie – nach Freigabe durch den Nutzer – Name und E-Mail-Adresse. Das bei Google eingegebene Passwort ist für uns weder einsehbar noch wird es von uns gespeichert. Nutzer können die Verknüpfung jederzeit in ihren Google-Kontoeinstellungen aufheben.</p>
@@ -413,9 +432,11 @@
         <!-- E-Mail -->
         <div class="dsg-section" id="email">
             <h2>E-Mail-Benachrichtigungen</h2>
-            <p>Wir versenden transaktionale E-Mails über den Dienstleister <strong>Brevo SAS</strong>. Es handelt sich ausschließlich um betriebsnotwendige Benachrichtigungen im Rahmen der Vertragserfüllung sowie gesetzlich erforderliche Mitteilungen; Werbe-Newsletter werden nicht versandt. Folgende E-Mails werden versendet:</p>
+            <p>Wir versenden transaktionale E-Mails über den Dienstleister <strong>Brevo SAS</strong>. Der Versand wird über die Hintergrundverarbeitung (siehe oben) gesteuert. Es handelt sich ausschließlich um betriebsnotwendige Benachrichtigungen im Rahmen der Vertragserfüllung sowie gesetzlich erforderliche Mitteilungen; Werbe-Newsletter werden nicht versandt. Folgende E-Mails werden versendet:</p>
             <ul>
-                <li><strong>Registrierungsbestätigung</strong> – einmalig nach erfolgreicher Kontoerstellung an den Fotografen.</li>
+                <li><strong>Registrierungsbestätigung und Aktivierung</strong> – einmalig nach Kontoerstellung an den Fotografen; bei Registrierung mit E-Mail und Passwort mit Aktivierungslink. Zusätzlich erhält der Betreiber eine Benachrichtigung über neue Konten.</li>
+                <li><strong>Galerie angesehen</strong> – Benachrichtigung an den Fotografen, wenn eine Galerie von einem Client geöffnet wurde.</li>
+                <li><strong>Antworten auf Support-Anfragen</strong> – Hinweis an den Fotografen bei einem neuen Kommentar zu einem Ticket.</li>
                 <li><strong>Galerieauswahl abgeschlossen</strong> – Benachrichtigung an den Fotografen, wenn ein Client die Fotoauswahl als abgeschlossen markiert. Die E-Mail enthält den Galerienamen, eine Client-Kennung sowie einen Deep-Link zur Galerie in der App.</li>
                 <li><strong>Kündigungsbestätigung</strong> – Bestätigung der Kündigung des Abonnements an den Fotografen.</li>
                 <li><strong>Änderungen an AGB oder Datenschutzerklärung</strong> – Information an alle registrierten Fotografen bei wesentlichen Änderungen der Nutzungsbedingungen oder dieser Datenschutzerklärung.</li>
@@ -426,9 +447,25 @@
                     <li><strong>Dienstanbieter:</strong> Brevo SAS, 7 rue de Madrid, 75008 Paris, Frankreich.</li>
                     <li><strong>Datenschutzerklärung:</strong> <a href="https://www.brevo.com/legal/privacypolicy/">https://www.brevo.com/legal/privacypolicy/</a></li>
                     <li><strong>Verarbeitete Datenarten:</strong> Kontaktdaten (E-Mail-Adresse), Inhaltsdaten (Galeriename, Client-Kennung).</li>
-                    <li><strong>Betroffene Personen:</strong> Registrierte Fotografen.</li>
+                    <li><strong>Warteliste:</strong> Eine E-Mail-Adresse auf der Warteliste wird zusätzlich in einer Kontaktliste bei Brevo gespeichert.</li>
+                    <li><strong>Betroffene Personen:</strong> Registrierte Fotografen; Personen auf der Warteliste.</li>
                     <li><strong>Zwecke:</strong> Transaktionale Kommunikation im Rahmen der Vertragserfüllung; gesetzlich erforderliche Informationspflichten.</li>
                     <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung); Art. 6 Abs. 1 lit. c DSGVO (rechtliche Verpflichtung) für Pflichtmitteilungen zu AGB- und Datenschutzänderungen.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Support und Feedback -->
+        <div class="dsg-section" id="support">
+            <h2>Support und Feedback</h2>
+            <p>Fotografen können Support-Anfragen (Betreff und Text, Kommentare) sowie Feedback mit Bewertung und Text übermitteln. Die Angaben werden gespeichert, damit wir die Anfrage bearbeiten und das Angebot verbessern können.</p>
+            <div class="dsg-info-block">
+                <ul>
+                    <li><strong>Verarbeitete Datenarten:</strong> Bestandsdaten, Inhaltsdaten (freier Text).</li>
+                    <li><strong>Betroffene Personen:</strong> Registrierte Fotografen.</li>
+                    <li><strong>Zwecke:</strong> Bearbeitung von Anfragen, Qualitätssicherung.</li>
+                    <li><strong>Aufbewahrung:</strong> Bis zur Löschung des Nutzerkontos.</li>
+                    <li><strong>Rechtsgrundlagen:</strong> Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung).</li>
                 </ul>
             </div>
         </div>
@@ -448,7 +485,7 @@
                 <li><strong>Verantwortlicher:</strong> Die natürliche oder juristische Person, die über Zwecke und Mittel der Verarbeitung entscheidet (Art. 4 Nr. 7 DSGVO).</li>
                 <li><strong>Auftragsverarbeiter:</strong> Eine Person oder Stelle, die personenbezogene Daten im Auftrag des Verantwortlichen verarbeitet (Art. 4 Nr. 8 DSGVO).</li>
                 <li><strong>Bestandsdaten:</strong> Daten zur Identifikation und Verwaltung von Nutzerkonten (Name, E-Mail-Adresse, Nutzer-ID).</li>
-                <li><strong>Inhaltsdaten:</strong> Vom Nutzer hochgeladene oder erstellte Inhalte, insbesondere Fotos.</li>
+                <li><strong>Inhaltsdaten:</strong> Vom Nutzer hochgeladene oder erstellte Inhalte, insbesondere Fotos und Videos.</li>
                 <li><strong>Nutzungsdaten:</strong> Informationen über die Interaktion mit der Plattform (Seitenaufrufe, Klickpfade, Fotoauswahl).</li>
                 <li><strong>Protokolldaten:</strong> Technische Zugriffsprotokolle (IP-Adressen, Zeitstempel, aufgerufene URLs).</li>
             </ul>

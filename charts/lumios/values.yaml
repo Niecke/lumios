@@ -84,7 +84,7 @@ backend:
   # 2-vCPU node has memory for.
   gunicornWorkers: 2
   maxUsers: 100
-  agbVersion: "1.0"
+  agbVersion: "1.1"
   # Feature gate for the video upload routes (VIDEO_UPLOADS_ENABLED). While
   # false every video route answers 501 and the frontend hides the video UI.
   # Needs a CORS rule on the bucket first, see deploy/README.md.

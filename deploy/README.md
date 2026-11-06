@@ -50,6 +50,7 @@ keeps running the previous release.
 | `postgres` | StatefulSet + Service `:5432` | One replica, PVC on `local-path`. |
 | `redis` | Deployment + Service `:6379` | Sessions and rate limits. No persistence. |
 | `purge-deleted-accounts`, `purge-audit-logs` | one CronJob each | The backend image, daily at 02:00 UTC. Replaces the Cloud Run cleanup job. |
+| `apply_agb_acceptance` | periodic task on the `default` worker, no CronJob | Daily at 03:00 UTC (`worker.py`, logic in `services/agb.py`): applies AGB notices whose effective date has passed. Manual run: `flask apply-agb-acceptance`. Keep `worker-default` enabled. |
 | `backup-database`, `backup-photos` | one CronJob each, **off in staging** | The `backup` image (`backup/`): a daily `pg_dump` and a mirror of the object storage, both shipped to GCS and reported to healthchecks.io. See "Backup and disaster recovery". |
 | Ingress | one per host, plus Traefik Middlewares | cert-manager issues one certificate per host. |
 
@@ -460,9 +461,10 @@ process):
 - Logged errors are not forwarded automatically (they stay breadcrumbs); only
   explicit reports and unhandled exceptions are events.
 
-Remaining personal data is limited to stack traces and request paths. Before
-go-live, conclude the Sentry data processing agreement (EU data residency) and
-list Sentry as a processor in the privacy policy, as for Brevo and Cloudflare.
+Remaining personal data is limited to stack traces and request paths. Sentry is listed as a processor in the section "Fehlerüberwachung (Sentry)"
+of `landingpage/src/datenschutz.html` and in `avv.html`; the Sentry data
+processing agreement (EU data residency) has to be concluded before that text
+goes live.
 
 ### Running a maintenance command now
 
@@ -554,8 +556,8 @@ decided in the infrastructure repository. Set the mode in `backup.photos.mode`.
 **Deleted photos stay in the backup.** A photo that is deleted, or purged with
 its account by `purge-deleted-accounts`, remains in `deleted/<date>/` for up to
 the retention period (30 days in `backup-dir` mode) and in database archives for
-14 days; in `copy` mode it is never removed. The privacy policy (issue 517)
-has to say so.
+14 days; in `copy` mode it is never removed. The privacy policy says so (section
+"Datenspeicherung und Löschung").
 
 #### Running a backup now
 

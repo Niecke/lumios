@@ -529,6 +529,27 @@ async def clean_old_jobs(timestamp: int) -> None:
     await clean_old_jobs_now()
 
 
+def _apply_agb_acceptance_sync() -> int:
+    from models import db
+    from services.agb import apply_agb_acceptance_now
+
+    with get_flask_app().app_context():
+        try:
+            return apply_agb_acceptance_now()
+        finally:
+            db.session.remove()
+
+
+@worker_app.periodic(cron="0 3 * * *")
+@worker_app.task(
+    queue=QUEUE_DEFAULT,
+    name="apply_agb_acceptance",
+    queueing_lock="apply_agb_acceptance",
+)
+async def apply_agb_acceptance_task(timestamp: int) -> None:
+    await asyncio.to_thread(_apply_agb_acceptance_sync)
+
+
 def check_worker_health() -> int:
     """0 when the queue database answers and the Procrastinate schema is there."""
     try:

@@ -181,6 +181,17 @@ class TestSendActivationEmail:
         send.assert_not_called()
 
 
+class TestSendAgbChangeEmail:
+    def test_links_to_the_published_agb(self):
+        with patch.object(mail, "_send") as send:
+            mail.send_agb_change_email("a@test.com", "1.1", "Sentry ergänzt")
+
+        send.assert_called_once()
+        html = send.call_args.args[2]
+        assert f"{mail.LANDINGPAGE_URL}/agb.html" in html
+        assert f'{mail.FRONTEND_URL}/agb"' not in html
+
+
 class TestProcessResendActivation:
     def test_pending_user_gets_new_token_audit_entry_and_job(self, pending_user):
         with patch("worker.send_activation_email_task") as task:

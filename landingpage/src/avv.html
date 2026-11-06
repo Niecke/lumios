@@ -23,7 +23,7 @@
 
     <main class="impressum-main">
         <h1>Auftragsverarbeitungsvertrag (AVV)</h1>
-        <p class="impressum-subtitle">Vereinbarung über eine Auftragsverarbeitung gemäß Art. 28 DSGVO<br>Stand: 23. März 2026</p>
+        <p class="impressum-subtitle">Vereinbarung über eine Auftragsverarbeitung gemäß Art. 28 DSGVO<br>Version 1.1, Stand: 6. November 2026</p>
 
         <!-- Präambel -->
         <div class="dsg-section">
@@ -71,20 +71,23 @@
             <h2>§ 2 Gegenstand und Zweck der Verarbeitung</h2>
             <p>(1) Gegenstand dieses Auftrags ist die Durchführung folgender Aufgaben im Rahmen der SaaS-Plattform Lumios:</p>
             <ul>
-                <li>Speicherung und Hosting von durch den Fotografen hochgeladenen Bilddateien in Google Cloud Storage</li>
+                <li>Speicherung und Hosting von durch den Fotografen oder – bei aktivierter Funktion – von Clients hochgeladenen Bild- und Videodateien im Objektspeicher von Hetzner</li>
                 <li>Technische Verarbeitung der Bilddateien, insbesondere Erstellung von Wasserzeichenversionen und Vorschaubildern sowie Entfernung von EXIF-Metadaten (einschließlich GPS-Standortdaten) beim Upload</li>
                 <li>Bereitstellung der Fotogalerien über private Share-Links für Clients (Endkunden des Fotografen)</li>
+                <li>Verarbeitung von Videodateien im Hintergrund (Erzeugung eines Vorschaubilds, Auslesen technischer Metadaten)</li>
+                <li>Tägliche verschlüsselte externe Datensicherung von Datenbank und Mediendateien
+                </li>
                 <li>Erfassung und Übermittlung der Fotoauswahl (Favoriten) der Clients an den Fotografen</li>
                 <li>Versand transaktionaler E-Mail-Benachrichtigungen an den Fotografen (z. B. bei abgeschlossener Clientauswahl)</li>
             </ul>
-            <p>Diese Vereinbarung ist als Ergänzung zu den Allgemeinen Geschäftsbedingungen von Lumios (Stand: 23. März 2026) zu verstehen.</p>
+            <p>Diese Vereinbarung ist als Ergänzung zu den Allgemeinen Geschäftsbedingungen von Lumios (Stand: 6. November 2026) zu verstehen.</p>
 
             <p>(2) Folgende Datenkategorien werden verarbeitet:</p>
             <ul>
-                <li><strong>Inhaltsdaten:</strong> Vom Fotografen hochgeladene Bilddateien (Fotos)</li>
-                <li><strong>Bestandsdaten des Fotografen:</strong> Name, E-Mail-Adresse, Nutzer-ID (übermittelt via SSO)</li>
+                <li><strong>Inhaltsdaten:</strong> Vom Fotografen oder von Clients hochgeladene Bild- und Videodateien</li>
+                <li><strong>Bestandsdaten des Fotografen:</strong> Name, E-Mail-Adresse, Nutzer-ID (Name nur bei Google Sign-In)</li>
                 <li><strong>Nutzungsdaten der Clients:</strong> Fotoauswahl (Favoriten), Abschluss-Status</li>
-                <li><strong>Protokolldaten der Clients:</strong> IP-Adresse, Zugriffszeit (Server-Logfiles, max. 30 Tage)</li>
+                <li><strong>Protokolldaten der Clients:</strong> IP-Adresse, Zugriffszeit (Audit-Protokoll, 90 Tage)</li>
             </ul>
 
             <p>(3) Folgende Kategorien betroffener Personen unterliegen der Verarbeitung:</p>
@@ -132,7 +135,7 @@
         <!-- § 6 Ort der Datenverarbeitung -->
         <div class="dsg-section" id="ort">
             <h2>§ 6 Ort der Datenverarbeitung</h2>
-            <p>(1) Die primäre Datenverarbeitung erfolgt auf einer virtuellen Maschine der Google Cloud Platform (GCP) in der Region Europe-West (EU/EWR). Fotodaten werden in Google Cloud Storage innerhalb der EU/EWR gespeichert.</p>
+            <p>(1) Die primäre Datenverarbeitung erfolgt in Rechenzentren der Hetzner Online GmbH in Nürnberg, Deutschland. Fotos und Videos werden im Objektspeicher von Hetzner gespeichert. Externe Sicherungskopien liegen bei Google Cloud (EU-Region). <!-- OWNER CHECK: Region der Backup-Buckets in Niecke/infrastructure prüfen --></p>
             <p>(2) Durch den Einsatz der in § 7 genannten Sub-Auftragsverarbeiter kann eine Verarbeitung auch außerhalb der EU/des EWR stattfinden. In diesen Fällen wird die Datenübermittlung durch geeignete Garantien gemäß Art. 46 DSGVO abgesichert (Standardvertragsklauseln, Data Privacy Framework). Details sind der Datenschutzerklärung zu entnehmen.</p>
         </div>
 
@@ -143,21 +146,29 @@
 
             <div class="dsg-info-block">
                 <ul>
-                    <li><strong>Google Cloud Platform (Google Ireland Ltd.)</strong><br>
-                        Sitz: Gordon House, Barrow Street, Dublin 4, Irland<br>
-                        Tätigkeit: Hosting der Anwendung (GCP e2-small VM, Region Europe-West) und Speicherung von Fotodaten (Google Cloud Storage)<br>
-                        Grundlage Drittlandtransfers: Data Privacy Framework (DPF), Standardvertragsklauseln (SCC)</li>
+                    <li><strong>Hetzner Online GmbH</strong><br>
+                        Sitz: Industriestr. 25, 91710 Gunzenhausen, Deutschland <!-- OWNER CHECK: Anschrift prüfen --><br>
+                        Tätigkeit: Hosting der Anwendung (Rechenzentrum Nürnberg) und Objektspeicher für Fotos und Videos<br>
+                        Drittlandtransfer: Keiner (EU)</li>
                     <li><strong>Cloudflare, Inc.</strong><br>
                         Sitz: 101 Townsend St, San Francisco, CA 94107, USA<br>
-                        Tätigkeit: Content Delivery Network (CDN), DNS, DDoS-Schutz<br>
+                        Tätigkeit: Content Delivery Network (CDN), DNS, Proxy, DDoS-Schutz <!-- OWNER CHECK: Entfernen, falls nichts über Cloudflare geleitet wird --><br>
                         Grundlage Drittlandtransfers: Data Privacy Framework (DPF), Standardvertragsklauseln (SCC)</li>
                     <li><strong>Brevo SAS</strong><br>
                         Sitz: 7 rue de Madrid, 75008 Paris, Frankreich<br>
                         Tätigkeit: Versand transaktionaler E-Mails<br>
                         Drittlandtransfer: Keiner (EU)</li>
+                    <li><strong>Functional Software, Inc. (Sentry)</strong><br>
+                        Sitz: 45 Fremont Street, 8th Floor, San Francisco, CA 94105, USA<br>
+                        Tätigkeit: Fehlerüberwachung (bereinigte Fehlerberichte, Speicherung in der EU, Frankfurt) <!-- OWNER CHECK: Der Auftragsverarbeitungsvertrag (DPA) mit Sentry ist noch nicht geschlossen; erst nach Abschluss mergen. Anschrift prüfen. --><br>
+                        Grundlage Drittlandtransfers: Data Privacy Framework (DPF), Standardvertragsklauseln (SCC)</li>
+                    <li><strong>Google Cloud (Google Ireland Ltd.)</strong><br>
+                        Sitz: Gordon House, Barrow Street, Dublin 4, Irland<br>
+                        Tätigkeit: Verschlüsselte externe Datensicherung (Google Cloud Storage, EU-Region); Google Sign-In nur auf Veranlassung des Nutzers<br>
+                        Grundlage Drittlandtransfers: Data Privacy Framework (DPF), Standardvertragsklauseln (SCC)</li>
                     <li><strong>Paddle.com Market Ltd.</strong><br>
                         Sitz: Judd House, 18–29 Mora Street, London, EC1V 8BT, UK<br>
-                        Tätigkeit: Zahlungsabwicklung als Merchant of Record<br>
+                        Tätigkeit: Zahlungsabwicklung als Merchant of Record (erst ab Einführung kostenpflichtiger Tarife) <!-- OWNER CHECK: Im Repository existiert kein Zahlungscode --><br>
                         Grundlage Drittlandtransfers: UK Adequacy Decision, Standardvertragsklauseln (SCC)</li>
                 </ul>
             </div>
@@ -196,9 +207,9 @@
         <!-- § 10 Beendigung -->
         <div class="dsg-section" id="beendigung">
             <h2>§ 10 Beendigung und Datenrückgabe</h2>
-            <p>(1) Nach Beendigung des Vertragsverhältnisses löscht der Auftragnehmer alle im Auftrag des Fotografen verarbeiteten personenbezogenen Daten innerhalb von 30 Tagen unwiderruflich, sofern keine gesetzlichen Aufbewahrungspflichten entgegenstehen.</p>
+            <p>(1) Nach Beendigung des Vertragsverhältnisses löscht der Auftragnehmer alle im Auftrag des Fotografen verarbeiteten personenbezogenen Daten innerhalb von 30 Tagen unwiderruflich, sofern keine gesetzlichen Aufbewahrungspflichten entgegenstehen. Kopien in der externen Datensicherung werden danach spätestens nach 14 Tagen (Datenbank) bzw. 30 Tagen (Fotos und Videos) gelöscht.</p>
             <p>(2) Vor der Löschung hat der Auftraggeber die Möglichkeit, seine Daten über die Plattformfunktionen herunterzuladen. Die Fotodaten werden in dem Format herausgegeben, in dem sie vom Auftraggeber hochgeladen wurden (Originaldateien).</p>
-            <p>(3) Server-Logfiles, die personenbezogene Daten des Auftraggebers oder seiner Clients enthalten, werden spätestens 30 Tage nach Erstellung automatisiert gelöscht.</p>
+            <p>(3) Audit-Protokolle, die personenbezogene Daten des Auftraggebers oder seiner Clients enthalten, werden spätestens 90 Tage nach Erstellung automatisiert gelöscht.</p>
             <p>(4) Steuerlich relevante Vertragsdaten (z. B. Abonnementinformationen) werden gemäß § 132 BAO und §§ 190–212 UGB für bis zu 7 Jahre aufbewahrt und anschließend gelöscht.</p>
         </div>
 
@@ -210,13 +221,13 @@
             <h3>A. Vertraulichkeit</h3>
 
             <h4>Zutrittskontrolle</h4>
-            <p>Die Infrastruktur wird vollständig in der Cloud betrieben (Google Cloud Platform). Physische Zutrittskontrollen werden durch den Cloud-Anbieter gewährleistet (ISO 27001-zertifizierte Rechenzentren). Es gibt keine physischen Datenverarbeitungsanlagen beim Auftragnehmer.</p>
+            <p>Die Infrastruktur wird in den Rechenzentren der Hetzner Online GmbH in Nürnberg betrieben. Physische Zutrittskontrollen werden durch den Anbieter gewährleistet (ISO/IEC 27001-zertifizierte Rechenzentren). Es gibt keine physischen Datenverarbeitungsanlagen beim Auftragnehmer.</p>
 
             <h4>Zugangskontrolle</h4>
             <ul>
-                <li>Authentifizierung der Fotografen ausschließlich über Single-Sign-On (Google Sign-In) — keine eigene Passwortspeicherung durch Lumios</li>
-                <li>Zugang zur Serverinfrastruktur (GCP VM) über SSH-Key-basierte Authentifizierung</li>
-                <li>Zugriff auf Datenbank und Cloud Storage über rollenbasierte IAM-Berechtigungen (Google Cloud IAM)</li>
+                <li>Authentifizierung der Fotografen mit E-Mail und Passwort (ausschließlich als Argon2id-Hash gespeichert) oder über Google Sign-In</li>
+                <li>Sperre einer IP-Adresse nach mehreren fehlgeschlagenen Anmeldeversuchen sowie Ratenbegrenzung der Schnittstellen</li>
+                <li>Zugang zur Serverinfrastruktur (Kubernetes-Cluster k3s) nur über SSH-Key bzw. Kubeconfig des Betreibers</li>
                 <li>Automatische Sperrmechanismen bei Inaktivität</li>
             </ul>
 
@@ -224,7 +235,7 @@
             <ul>
                 <li>Strikte Mandantentrennung: Jeder Fotograf hat ausschließlich Zugriff auf seine eigenen Bibliotheken und Daten</li>
                 <li>Clientzugriff auf Fotogalerien über nicht erratbare UUIDs in Share-Links</li>
-                <li>Zugriff auf Originaldateien in Google Cloud Storage über zeitlich begrenzte, signierte URLs</li>
+                <li>Zugriff auf Dateien im Objektspeicher über zeitlich begrenzte, signierte (Presigned) URLs; Originale werden Clients nicht ausgeliefert</li>
                 <li>Administrativer Zugriff auf Produktionssysteme ist auf den Betreiber beschränkt</li>
             </ul>
 
@@ -234,18 +245,19 @@
             <ul>
                 <li>Verschlüsselte Datenübertragung mittels TLS 1.2–1.3/HTTPS für alle Verbindungen</li>
                 <li>Cloudflare als CDN mit erzwungenem HTTPS</li>
-                <li>Verschlüsselte Speicherung von Fotodaten in Google Cloud Storage (serverseitige Verschlüsselung, AES-256)</li>
+                <li>Bereinigung von Fehlerberichten vor dem Versand an Sentry (keine IP-Adressen, Cookies, Header mit Zugangsdaten, Anfrageinhalte, E-Mail-Adressen, Token oder Galerie-UUIDs)</li>
+                <li>Externe Datensicherungen werden verschlüsselt übertragen und gespeichert</li>
             </ul>
 
             <h4>Eingabekontrolle</h4>
             <ul>
                 <li>Protokollierung von Dateneingaben (Upload, Löschung) mit Zeitstempel und Nutzer-ID</li>
-                <li>Server-Logfiles zur Nachvollziehbarkeit von Zugriffen (Aufbewahrung max. 30 Tage)</li>
+                <li>Audit-Protokolle zur Nachvollziehbarkeit von Zugriffen (Aufbewahrung 90 Tage)</li>
             </ul>
 
             <h4>Schutz von Fotodaten</h4>
             <ul>
-                <li>Automatische Entfernung von EXIF-Metadaten (insbesondere GPS-Standortdaten) beim Upload</li>
+                <li>Automatische Entfernung privater Metadaten (insbesondere GPS-Standortdaten) aus Fotos beim Upload</li>
                 <li>Standardmäßige Wasserzeichenversionen als Clientvorschau; der Fotograf kann pro Bibliothek das Original als Vorschau aktivieren</li>
             </ul>
 
@@ -253,17 +265,17 @@
 
             <h4>Verfügbarkeitskontrolle</h4>
             <ul>
-                <li>Hosting auf Google Cloud Platform mit hoher Verfügbarkeit der Infrastruktur</li>
+                <li>Hosting bei Hetzner in einem Kubernetes-Cluster (k3s)</li>
                 <li>Cloudflare CDN für DDoS-Schutz und Lastverteilung</li>
-                <li>Containerisierte Anwendung (Podman) für schnelle Wiederherstellung</li>
-                <li>Infrastruktur als Code (Terraform) und CI/CD (GitHub Actions) für reproduzierbare Deployments</li>
+                <li>Containerisierte Anwendung für schnelle Wiederherstellung</li>
+                <li>Deployments über Helm und Flux (GitOps) sowie CI/CD (GitHub Actions) für reproduzierbare Deployments</li>
             </ul>
 
             <h4>Rasche Wiederherstellbarkeit</h4>
             <ul>
-                <li>Fotodaten in Google Cloud Storage sind georedundant gespeichert</li>
-                <li>PostgreSQL-Datenbank mit regelmäßigen Backups</li>
-                <li>Infrastruktur-Recovery über Terraform möglich</li>
+                <li>Tägliche verschlüsselte externe Datensicherung von Datenbank und Mediendateien mit überwachtem Alarm bei Ausbleiben (der Überwachungsdienst erhält nur Statusmeldungen, keine personenbezogenen Daten)</li>
+                <li>Aufbewahrung der Datenbanksicherungen 14 Tage, gelöschter Fotos und Videos bis zu 30 Tage</li>
+                <li>Wiederherstellung der Infrastruktur über die Konfiguration in Helm und Flux</li>
             </ul>
 
             <h3>D. Verfahren zur regelmäßigen Überprüfung</h3>
