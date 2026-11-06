@@ -196,7 +196,8 @@
     "share": "Teilen",
     "addMedia": "Fotos hinzufügen",
     "mediaCount": "{{total}} von {{max}} Medien",
-    "loadFailed": "Die Fotos konnten nicht geladen werden. Bitte laden Sie die Seite neu."
+    "loadFailed": "Die Fotos konnten nicht geladen werden. Bitte laden Sie die Seite neu.",
+    "uploadNotQueued": "Die Galerie konnte nicht geladen werden, die Dateien wurden daher nicht hochgeladen."
   },
   "settings": {
     "title": "Galerie-Einstellungen",

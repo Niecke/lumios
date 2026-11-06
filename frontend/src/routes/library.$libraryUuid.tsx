@@ -943,8 +943,29 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
     }
   }
 
+  // Files dropped before the library query resolved: queued once it has, dropped
+  // with a message if it failed.
+  const [heldFiles, setHeldFiles] = useState<File[]>([]);
+  const [heldFilesLost, setHeldFilesLost] = useState(false);
+
+  useEffect(() => {
+    if (heldFiles.length === 0) return;
+    if (library) {
+      uploads.addFiles(library.id, library.name, heldFiles);
+      setHeldFiles([]);
+    } else if (libraryError) {
+      setHeldFiles([]);
+      setHeldFilesLost(true);
+    }
+  }, [library, libraryError, heldFiles, uploads]);
+
   function handleFiles(files: File[]) {
-    if (library) uploads.addFiles(library.id, library.name, files);
+    if (library) {
+      uploads.addFiles(library.id, library.name, files);
+    } else {
+      setHeldFilesLost(false);
+      setHeldFiles((prev) => [...prev, ...files]);
+    }
   }
 
   const allImages = data?.pages.flatMap((p) => p.images) ?? [];
@@ -1061,6 +1082,10 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
 
         {isError && (
           <div className="alert alert--error">{t("library.loadFailed")}</div>
+        )}
+
+        {heldFilesLost && (
+          <div className="alert alert--error">{t("library.uploadNotQueued")}</div>
         )}
 
         {!isLoading && !isError && !hasImages && (
