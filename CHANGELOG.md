@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/Niecke/lumios/compare/v0.5.0...v0.6.0) (2026-11-06)
+
+
+### Features
+
+* **frontend:** app-wide upload widget that survives page changes ([#579](https://github.com/Niecke/lumios/issues/579)) ([56135f4](https://github.com/Niecke/lumios/commit/56135f48f3f40359f146f09c6bdff0702f2df44e))
+
+
+### Bug Fixes
+
+* **deps:** update dependency boto3 to v1.43.123 ([#577](https://github.com/Niecke/lumios/issues/577)) ([8076dcd](https://github.com/Niecke/lumios/commit/8076dcd5e0f5ff4090a048f1e33903152e30c6eb))
+
 ## [0.5.0](https://github.com/Niecke/lumios/compare/v0.4.0...v0.5.0) (2026-11-02)
 
 
