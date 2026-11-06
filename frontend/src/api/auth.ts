@@ -71,19 +71,20 @@ export const tokenStore = {
   clear: () => sessionStorage.removeItem(TOKEN_KEY),
 };
 
-// Drop every piece of client-side session state. Used on logout and when the
-// backend rejects the stored token, so the login page can initialise GIS again.
-const sessionClearedListeners = new Set<() => void>();
-export function onSessionCleared(fn: () => void) {
-  sessionClearedListeners.add(fn);
+// Listeners for an explicit logout only. A rejected token (401) does not call
+// them, so state such as the upload queue survives an expired session.
+const logoutListeners = new Set<() => void>();
+export function onLogout(fn: () => void) {
+  logoutListeners.add(fn);
   return () => {
-    sessionClearedListeners.delete(fn);
+    logoutListeners.delete(fn);
   };
 }
 
+// Drop every piece of client-side session state. Used on logout and when the
+// backend rejects the stored token, so the login page can initialise GIS again.
 function clearAuthSession() {
   tokenStore.clear();
-  sessionClearedListeners.forEach((fn) => fn());
   resetGsiInitialized();
   languageUpdate = null;
   accountLanguageApplied = false;
@@ -291,6 +292,7 @@ export const authApi = {
 
   logout: () => {
     clearAuthSession();
+    logoutListeners.forEach((fn) => fn());
     return Promise.resolve({ ok: true });
   },
 };

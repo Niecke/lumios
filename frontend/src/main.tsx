@@ -21,7 +21,7 @@ import { routeTree } from "./routeTree.gen";
 import { imagesApi } from "./api/images";
 import { uploadVideo, pollVideoStatus } from "./api/videos";
 import { createUploadStore } from "./uploads/uploadStore";
-import { onSessionCleared } from "./api/auth";
+import { onLogout } from "./api/auth";
 import { UploadProvider } from "./uploads/UploadContext";
 
 const queryClient = new QueryClient();
@@ -37,8 +37,9 @@ const uploadStore = createUploadStore({
     queryClient.invalidateQueries({ queryKey: ["libraries"] });
   },
 });
-// Logout / rejected token: drop the previous user's uploads and stop their queue.
-onSessionCleared(() => uploadStore.reset());
+// Explicit logout: drop the previous user's uploads and stop their queue. A rejected
+// token keeps the queue, so failed items stay visible after the user logs in again.
+onLogout(() => uploadStore.reset());
 const router = createRouter({ routeTree });
 
 // Required for TanStack Router's TypeScript type inference
