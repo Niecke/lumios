@@ -712,7 +712,33 @@ class TestResendActivationByEmail:
         with patch("blueprints.api.auth.notify_activation_email") as mock_mail:
             res = client.post(self.ENDPOINT, json={"token": "pending-token"})
         assert res.status_code == 200
-        mock_mail.assert_called_once_with(pending.id)
+        mock_mail.assert_called_once_with(pending.id, None)
+
+    def test_token_path_passes_the_ui_language(self, client, pending):
+        with patch("blueprints.api.auth.notify_activation_email") as mock_mail:
+            res = client.post(
+                self.ENDPOINT, json={"token": "pending-token", "language": "en"}
+            )
+        assert res.status_code == 200
+        mock_mail.assert_called_once_with(pending.id, "en")
+
+    @patch("blueprints.api.auth.notify_resend_activation")
+    def test_email_path_passes_the_ui_language(self, mock_notify, client):
+        res = client.post(
+            self.ENDPOINT, json={"email": "pending@test.com", "language": "en"}
+        )
+        assert res.status_code == 200
+        assert mock_notify.call_args.args[0] == "pending@test.com"
+        assert mock_notify.call_args.args[2] == "en"
+
+    @pytest.mark.parametrize("bad", ["fr", "", None, 1, ["en"]])
+    @patch("blueprints.api.auth.notify_resend_activation")
+    def test_invalid_language_is_ignored(self, mock_notify, bad, client):
+        res = client.post(
+            self.ENDPOINT, json={"email": "pending@test.com", "language": bad}
+        )
+        assert res.status_code == 200
+        assert mock_notify.call_args.args[2] is None
 
     def test_missing_params_returns_400(self, client):
         assert client.post(self.ENDPOINT, json={}).status_code == 400
@@ -850,7 +876,19 @@ class TestDeactivateAccount:
     def test_sends_cancellation_email(self, mock_mail, client, photographer_user):
         token = make_token(photographer_user)
         client.delete(self.ENDPOINT, headers=auth_header(token))
-        mock_mail.assert_called_once_with(photographer_user.email)
+        mock_mail.assert_called_once_with(
+            photographer_user.email, photographer_user.language
+        )
+
+    @patch("blueprints.api.auth.notify_account_cancellation", return_value=True)
+    def test_cancellation_email_uses_the_stored_language(
+        self, mock_mail, client, photographer_user
+    ):
+        photographer_user.language = "en"
+        db.session.commit()
+        token = make_token(photographer_user)
+        client.delete(self.ENDPOINT, headers=auth_header(token))
+        mock_mail.assert_called_once_with(photographer_user.email, "en")
 
     @patch(
         "blueprints.api.auth.notify_account_cancellation",

@@ -172,6 +172,17 @@ class TestFinishLibrary:
             res = client.post(f"{BASE}/libraries/{public_library.uuid}/finish")
         assert res.status_code == 200
 
+    def test_finish_mails_in_the_photographers_language(
+        self, client, public_library, image_in_library, photographer
+    ):
+        photographer.language = "en"
+        image_in_library.customer_state = CustomerState.liked
+        db.session.commit()
+        with patch("blueprints.api.public.notify_gallery_finished") as notify:
+            res = client.post(f"{BASE}/libraries/{public_library.uuid}/finish")
+        assert res.status_code == 200
+        assert notify.call_args.kwargs["lang"] == "en"
+
     def test_finish_without_liked_image_returns_422(self, client, public_library):
         res = client.post(f"{BASE}/libraries/{public_library.uuid}/finish")
         assert res.status_code == 422

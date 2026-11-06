@@ -186,6 +186,28 @@ class TestAdminUserDelete:
         html = html_text(response)
         assert "Access denied." in html
 
+    def test_user_delete_mails_the_cancellation_in_the_users_language(
+        self, client, admin_user, regular_user
+    ):
+        regular_user.language = "en"
+        db.session.commit()
+        login_admin(client, admin_user)
+        with patch("blueprints.admin.notify_account_cancellation") as mock_mail:
+            client.post(f"/admin/user_delete/{regular_user.id}", follow_redirects=True)
+        mock_mail.assert_called_once_with(regular_user.email, "en")
+
+    def test_user_create_mails_the_registration_without_language(
+        self, client, admin_user
+    ):
+        login_admin(client, admin_user)
+        with patch("blueprints.admin.notify_registration") as mock_mail:
+            client.post(
+                "/admin/user_create",
+                data={"email": "lang@test.com", "password": "NewUserPass1!"},
+                follow_redirects=True,
+            )
+        mock_mail.assert_called_once_with("lang@test.com", None)
+
     def test_user_delete_removes_user(self, client, admin_user, regular_user):
         user_id = regular_user.id
         login_admin(client, admin_user)
@@ -662,6 +684,8 @@ class TestNotifyAgb:
         self, client, admin_user, regular_user
     ):
         login_admin(client, admin_user)
+        regular_user.language = "en"
+        db.session.commit()
         effective = (datetime.now(timezone.utc) + timedelta(days=30)).date().isoformat()
         with patch("blueprints.admin.notify_agb_change") as mock_mail:
             client.post(
@@ -676,6 +700,8 @@ class TestNotifyAgb:
         assert mock_mail.called
         called_emails = {call.args[0] for call in mock_mail.call_args_list}
         assert regular_user.email in called_emails
+        (call,) = [c for c in mock_mail.call_args_list if c.args[0] == regular_user.email]
+        assert call.args[1:] == ("2.0", "Test change.", effective, "en")
 
     def test_notify_agb_get_shows_existing_updates(self, client, admin_user):
         agb_update = AgbUpdate(
