@@ -50,6 +50,7 @@ keeps running the previous release.
 | `postgres` | StatefulSet + Service `:5432` | One replica, PVC on `local-path`. |
 | `redis` | Deployment + Service `:6379` | Sessions and rate limits. No persistence. |
 | `purge-deleted-accounts`, `purge-audit-logs` | one CronJob each | The backend image, daily at 02:00 UTC. Replaces the Cloud Run cleanup job. |
+| `apply_agb_acceptance` | periodic task on the `default` worker, no CronJob | Daily at 03:00 UTC (`worker.py`, logic in `services/agb.py`): applies AGB notices whose effective date has passed. Manual run: `flask apply-agb-acceptance`. Keep `worker-default` enabled. |
 | `backup-database`, `backup-photos` | one CronJob each, **off in staging** | The `backup` image (`backup/`): a daily `pg_dump` and a mirror of the object storage, both shipped to GCS and reported to healthchecks.io. See "Backup and disaster recovery". |
 | Ingress | one per host, plus Traefik Middlewares | cert-manager issues one certificate per host. |
 

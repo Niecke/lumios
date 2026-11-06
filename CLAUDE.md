@@ -49,6 +49,7 @@ lumios/
 │   │   │       ├── support.py        # /api/v1/support — support tickets
 │   │   │       └── feedback.py       # /api/v1/feedback — user feedback/ratings
 │   │   ├── services/
+│   │   │   ├── agb.py        # apply_agb_acceptance_now(): shared by the CLI command and the daily worker task
 │   │   │   ├── audit.py      # Audit log creation helpers
 │   │   │   ├── auth.py       # Auth service logic
 │   │   │   ├── images.py     # Pillow processing: watermarked preview + thumbnail
@@ -145,7 +146,7 @@ python -m procrastinate --app=worker.worker_app shell         # inspect/retry jo
 # CLI commands (registered in main.py)
 flask purge-deleted-accounts             # Hard-delete accounts soft-deleted > 1 year
 flask purge-audit-logs                   # Purge audit logs older than 90 days
-flask apply-agb-acceptance               # Apply AGB acceptance after effective date
+flask apply-agb-acceptance               # Apply AGB acceptance after effective date (manual run; the default worker does it daily at 03:00 UTC)
 flask seed-test-data                     # Seed demo data (only runs when DEBUG=true; also run by entrypoint if SEED_TEST_DATA=true)
 
 # Docker image (CI pattern)
@@ -431,7 +432,7 @@ Jobs are enqueued by the backend and run by separate worker pods. Queue and resu
 
 | Queue | Deployment | Concurrency | Used for |
 |---|---|---|---|
-| `default` | `worker-default` | 4 | mail jobs (`send_*_email`, `resend_activation`, `services/mail.py`: `notify_*` enqueues, `send_*` sends; 3 runs, a Brevo 4xx other than 429 is not retried); the periodic `recover_stalled_jobs` task (every 5 min); the periodic `clean_old_jobs` janitor (daily, 00:00 UTC: deletes finished jobs older than `WORKER_JOB_RETENTION_DAYS` in batches of 1000, with their events and `worker_job_errors` rows; logs the count only) |
+| `default` | `worker-default` | 4 | mail jobs (`send_*_email`, `resend_activation`, `services/mail.py`: `notify_*` enqueues, `send_*` sends; 3 runs, a Brevo 4xx other than 429 is not retried); the periodic `recover_stalled_jobs` task (every 5 min); the periodic `apply_agb_acceptance` task (daily, 03:00 UTC: `services/agb.py::apply_agb_acceptance_now`, shared with `flask apply-agb-acceptance`; applies notices whose effective date has passed, idempotent); the periodic `clean_old_jobs` janitor (daily, 00:00 UTC: deletes finished jobs older than `WORKER_JOB_RETENTION_DAYS` in batches of 1000, with their events and `worker_job_errors` rows; logs the count only) |
 | `video` | `worker-video` | 1 | `process_video`: ffmpeg probe + thumbnail |
 | `photo` | `worker-photo`, **off by default** | 2 | prepared for image thumbnails/previews, nothing is enqueued on it yet |
 

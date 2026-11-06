@@ -591,7 +591,7 @@ class AgbUpdate(db.Model):
     """Append-only record of each AGB/AVV change notification sent to users.
 
     When an admin sends an AGB update notification, a row is created here.
-    The `apply-agb-acceptance` CLI command sets `applied_at` once the
+    The daily `apply_agb_acceptance` worker task (or `flask apply-agb-acceptance`) sets `applied_at` once the
     effective date has passed and all active users' agb_version has been updated.
     """
 

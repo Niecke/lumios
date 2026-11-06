@@ -22,9 +22,7 @@ from models import (
     roles_users,
     JobRun,
     AuditLog,
-    AgbUpdate,
 )
-from sqlalchemy import update
 import services.storage as storage
 
 ACCOUNT_RETENTION_DAYS = 30
@@ -166,95 +164,14 @@ def purge_audit_logs() -> None:
 def apply_agb_acceptance() -> None:
     """Apply pending AGB/AVV acceptance to all active users.
 
-    For each AgbUpdate whose effective_at has passed and that has not yet been
-    applied, bulk-updates every active user's agb_version and agb_accepted_at,
-    then marks the AgbUpdate as applied.
-
-    Run daily as a Kubernetes CronJob alongside purge-deleted-accounts.
+    Thin wrapper for manual runs; the `default` worker runs the same function
+    daily (`apply_agb_acceptance` task in worker.py).
     """
-    now = datetime.now(timezone.utc)
-    ran_at = now
+    from services.agb import apply_agb_acceptance_now
 
     try:
-        pending = (
-            db.session.execute(
-                select(AgbUpdate).where(
-                    AgbUpdate.effective_at <= now,
-                    AgbUpdate.applied_at.is_(None),
-                )
-            )
-            .scalars()
-            .all()
-        )
-
-        if not pending:
-            current_app.logger.info(
-                "apply-agb-acceptance: no pending updates",
-                extra={"log_type": "cleanup"},
-            )
-            db.session.add(
-                JobRun(
-                    job_name="apply-agb-acceptance",
-                    ran_at=ran_at,
-                    status="success",
-                    records_affected=0,
-                )
-            )
-            db.session.commit()
-            return
-
-        total_affected = 0
-        for agb_update in pending:
-            result = db.session.execute(
-                update(User)
-                .where(User.deleted_at.is_(None), User.active.is_(True))
-                .values(
-                    agb_version=agb_update.version,
-                    agb_accepted_at=agb_update.effective_at,
-                )
-            )
-            affected = result.rowcount
-            agb_update.applied_at = now
-            total_affected += affected
-
-            current_app.logger.info(
-                "apply-agb-acceptance: applied version=%r to %d user(s)",
-                agb_update.version,
-                affected,
-                extra={"log_type": "audit"},
-            )
-
-        db.session.add(
-            JobRun(
-                job_name="apply-agb-acceptance",
-                ran_at=ran_at,
-                status="success",
-                records_affected=total_affected,
-            )
-        )
-        db.session.commit()
-
-        current_app.logger.info(
-            "apply-agb-acceptance: complete, %d update(s) applied",
-            len(pending),
-            extra={"log_type": "cleanup"},
-        )
+        apply_agb_acceptance_now()
     except Exception as exc:
-        current_app.logger.exception(
-            "apply-agb-acceptance: failed", extra={"log_type": "cleanup"}
-        )
-        sentry_sdk.capture_exception(exc)
-        sentry_sdk.flush(timeout=2.0)
-        db.session.rollback()
-        db.session.add(
-            JobRun(
-                job_name="apply-agb-acceptance",
-                ran_at=ran_at,
-                status="error",
-                error_message=str(exc),
-            )
-        )
-        db.session.commit()
         raise SystemExit(1) from exc
 
 

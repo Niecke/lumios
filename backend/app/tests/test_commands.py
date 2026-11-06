@@ -366,16 +366,19 @@ class TestFailureReportedToSentry:
         [
             ("purge-deleted-accounts", "commands._purge_user"),
             ("purge-audit-logs", "commands.delete"),
-            ("apply-agb-acceptance", "commands.select"),
+            ("apply-agb-acceptance", "services.agb.select"),
         ],
     )
     def test_failure_captures_and_flushes(self, app, command, target):
         if command == "purge-deleted-accounts":
             _soft_deleted_user("sentryfail@test.com", deleted_days_ago=31)
         boom = RuntimeError("boom")
+        sentry_target = (
+            "services.agb.sentry_sdk" if command == "apply-agb-acceptance" else "commands.sentry_sdk"
+        )
         with (
             patch(target, side_effect=boom),
-            patch("commands.sentry_sdk") as sentry,
+            patch(sentry_target) as sentry,
         ):
             result = app.test_cli_runner().invoke(args=[command])
 

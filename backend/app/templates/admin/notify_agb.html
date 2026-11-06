@@ -9,7 +9,7 @@
         Sendet eine E-Mail an alle aktiven Nutzer über eine Änderung der AGB,
         Datenschutzerklärung oder des Auftragsverarbeitungsvertrags (AVV)
         (gemäß AGB §13). Nach Ablauf des Inkrafttreten-Datums aktualisiert
-        <code>flask apply-agb-acceptance</code> automatisch die gespeicherte
+        der tägliche Worker-Job (<code>apply_agb_acceptance</code>, 03:00 UTC) automatisch die gespeicherte
         Version bei allen aktiven Nutzern.
     </p>
 

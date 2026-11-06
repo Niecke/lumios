@@ -2,7 +2,7 @@
 
 import asyncio
 import io
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -556,8 +556,11 @@ class TestWorkerDashboardSupport:
         assert hosts == {"new-pod"}
 
 
+_PERIODIC_TASKS = ("recover_stalled_jobs", "clean_old_jobs", "apply_agb_acceptance")
+
+
 def _mail_jobs():
-    return [j for j in _jobs() if j["task_name"] not in ("recover_stalled_jobs", "clean_old_jobs")]
+    return [j for j in _jobs() if j["task_name"] not in _PERIODIC_TASKS]
 
 
 @pytest.fixture
@@ -745,3 +748,61 @@ class TestCloseWorkerApp:
 
         assert second is not first
         assert not second.closed
+
+
+# ---------------------------------------------------------------------------
+# apply_agb_acceptance: daily periodic task on the default queue
+# ---------------------------------------------------------------------------
+
+
+class TestApplyAgbAcceptanceTask:
+    def _user(self, email="agbtask@test.com"):
+        user = User(email=email, active=True, account_type="google", auth_string="sub")
+        db.session.add(user)
+        db.session.commit()
+        return user
+
+    def _agb(self, days):
+        from models import AgbUpdate
+
+        row = AgbUpdate(
+            version="9.9",
+            summary="s",
+            effective_at=datetime.now(timezone.utc) + timedelta(days=days),
+        )
+        db.session.add(row)
+        db.session.commit()
+        return row
+
+    def _run(self):
+        asyncio.run(worker.apply_agb_acceptance_task(0))
+        db.session.expire_all()
+
+    def test_registered_daily_on_default_queue(self):
+        task = worker.worker_app.tasks["apply_agb_acceptance"]
+        assert task.queue == worker.QUEUE_DEFAULT
+        assert task.queueing_lock == "apply_agb_acceptance"
+        periodic = [p for p in worker.worker_app.periodic_registry.periodic_tasks.values()]
+        crons = [p.cron for p in periodic if p.task.name == "apply_agb_acceptance"]
+        assert crons == ["0 3 * * *"]
+
+    def test_does_nothing_before_effective_date(self, app):
+        user = self._user()
+        row = self._agb(days=5)
+        self._run()
+        assert user.agb_version != "9.9"
+        assert row.applied_at is None
+
+    def test_applies_after_effective_date_and_second_run_changes_nothing(self, app):
+        user = self._user()
+        row = self._agb(days=-1)
+        self._run()
+        assert user.agb_version == "9.9"
+        applied_at = row.applied_at
+        assert applied_at is not None
+
+        user.agb_version = "manual"
+        db.session.commit()
+        self._run()
+        assert user.agb_version == "manual"
+        assert row.applied_at == applied_at
