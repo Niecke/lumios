@@ -460,9 +460,10 @@ process):
 - Logged errors are not forwarded automatically (they stay breadcrumbs); only
   explicit reports and unhandled exceptions are events.
 
-Remaining personal data is limited to stack traces and request paths. Before
-go-live, conclude the Sentry data processing agreement (EU data residency) and
-list Sentry as a processor in the privacy policy, as for Brevo and Cloudflare.
+Remaining personal data is limited to stack traces and request paths. Sentry is listed as a processor in the section "Fehlerüberwachung (Sentry)"
+of `landingpage/src/datenschutz.html` and in `avv.html`; the Sentry data
+processing agreement (EU data residency) has to be concluded before that text
+goes live.
 
 ### Running a maintenance command now
 
@@ -554,8 +555,8 @@ decided in the infrastructure repository. Set the mode in `backup.photos.mode`.
 **Deleted photos stay in the backup.** A photo that is deleted, or purged with
 its account by `purge-deleted-accounts`, remains in `deleted/<date>/` for up to
 the retention period (30 days in `backup-dir` mode) and in database archives for
-14 days; in `copy` mode it is never removed. The privacy policy (issue 517)
-has to say so.
+14 days; in `copy` mode it is never removed. The privacy policy says so (section
+"Datenspeicherung und Löschung").
 
 #### Running a backup now
 

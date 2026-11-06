@@ -730,8 +730,7 @@ lumios-api.niecke-it.de   → backend Service
 - Customer sessions are anonymous — no name or email collected
 - Photographer right-to-erasure: soft-delete → hard-delete after 1 year
 - AGB (Terms of Service) acceptance tracked per user (`agb_accepted_at`, `agb_version`)
-- DPAs required with the processors in use: Hetzner, Cloudflare, Brevo, Sentry
-- Google Cloud stays a processor only if it is still used for the off-site database and photo backups (#411). Owner decision, to be reflected in the privacy policy (#517)
+- DPAs required with the processors in use: Hetzner, Cloudflare, Brevo, Sentry, and Google Cloud for the off-site backups (#411). All are listed in `landingpage/src/datenschutz.html` and `avv.html`; keep them in step when a processor changes
 - Privacy policy + Impressum pages required before go-live
 
 ---
