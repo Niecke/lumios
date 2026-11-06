@@ -34,9 +34,9 @@ def _known_tasks() -> list[str]:
 
 
 def _target(args: dict | None) -> str | None:
-    """What a job works on (video, user, ticket or recipient), never the rest of its payload."""
+    """What a job works on (video, library, user, ticket or recipient), never the rest of its payload."""
     args = args or {}
-    for key in ("video_uuid", "user_id", "ticket_id", "user_email", "photographer_email", "email"):
+    for key in ("video_uuid", "library_id", "user_id", "ticket_id", "user_email", "photographer_email", "email"):
         if args.get(key):
             return str(args[key])
     return None

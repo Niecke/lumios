@@ -15,6 +15,7 @@ import piexif
 from models import db, Image, AuditLogType
 from services.audit import write_audit_log
 from services import storage
+from services.covers import enqueue_library_cover
 from services.redis_client import cache_delete, cache_delete_pattern
 
 # Type-only imports to avoid circular dependency at runtime
@@ -587,4 +588,5 @@ def process_and_store_image(
     cache_delete_pattern(f"public:library:{library.uuid}:*")
     invalidate_watermark_previews(library.id)
     cache_delete(f"user:storage:{owner.id}")
+    enqueue_library_cover(library.id)
     return image
