@@ -583,12 +583,16 @@ def resend_activation():
     """
     data = request.get_json(silent=True) or {}
     email = data.get("email")
+    # UI language as fallback for an account without a stored one; ignored when invalid.
+    language = data.get("language")
+    if not isinstance(language, str) or language not in SUPPORTED_LANGUAGES:
+        language = None
     if isinstance(email, str) and email.strip():
         email = email.strip().lower()
         if not _EMAIL_RE.fullmatch(email):
             return jsonify({"error": "Invalid email address"}), 400
         # No lookup here: the worker job decides, so every address takes the same path.
-        notify_resend_activation(email, get_client_ip())
+        notify_resend_activation(email, get_client_ip(), language)
         return jsonify({"ok": True}), 200
 
     token = data.get("token")
@@ -613,7 +617,7 @@ def resend_activation():
     )
     db.session.commit()
 
-    notify_activation_email(user.id)
+    notify_activation_email(user.id, language)
     current_app.logger.info(
         "Activation email resent: %s", user.email, extra={"log_type": "audit"}
     )
@@ -652,6 +656,6 @@ def deactivate_account():
         "Account self-deactivated: %s", user.email, extra={"log_type": "audit"}
     )
 
-    notify_account_cancellation(user.email)
+    notify_account_cancellation(user.email, user.language)
 
     return jsonify({"ok": True})

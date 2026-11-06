@@ -411,6 +411,7 @@ def finish_library(library_uuid: str):
         library_name=library.name,
         library_uuid=library.uuid,
         liked_count=liked_count,
+        lang=library.photographer.language,
     )
 
     return jsonify(
