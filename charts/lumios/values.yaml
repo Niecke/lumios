@@ -147,7 +147,7 @@ landingpage:
 # its own queue, concurrency and limits, so heavy work cannot starve light work.
 #   default  short jobs; the stalled-job recovery runs here, keep it enabled
 #   video    ffmpeg thumbnail extraction, one job at a time
-#   photo    image thumbnails/previews: prepared, off until a follow-up moves them
+#   photo    library covers for the library list (image previews follow in #521)
 # priorityClassName falls back to the chart-wide one.
 # ---------------------------------------------------------------------------
 workers:
@@ -179,7 +179,7 @@ workers:
       limits:
         memory: 512Mi
   photo:
-    enabled: false
+    enabled: true
     replicas: 1
     concurrency: 2
     terminationGracePeriodSeconds: 30
