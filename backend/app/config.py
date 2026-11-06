@@ -175,7 +175,7 @@ TRUSTED_PROXY_COUNT = max(1, int(os.getenv("TRUSTED_PROXY_COUNT", 1)))
 
 # Current AGB (Terms of Service) + AVV (Data Processing Agreement) version.
 # Update this when publishing a new version of the legal documents.
-CURRENT_AGB_VERSION = os.getenv("CURRENT_AGB_VERSION", "1.0")
+CURRENT_AGB_VERSION = os.getenv("CURRENT_AGB_VERSION", "1.1")
 
 # Origin of the landing page — allowed to make cross-origin requests to /api/v1/public/*
 LANDINGPAGE_URL = os.getenv("LANDINGPAGE_URL", "https://lumios.niecke-it.de")

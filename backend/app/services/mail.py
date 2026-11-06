@@ -20,6 +20,7 @@ from config import (
     ADMIN_EMAIL,
     BREVO_API_KEY,
     FRONTEND_URL,
+    LANDINGPAGE_URL,
     MAIL_SENDER_EMAIL,
     MAIL_SENDER_NAME,
 )
@@ -240,7 +241,7 @@ def send_agb_change_email(user_email: str, agb_version: str, summary: str) -> No
         <p><strong>Zusammenfassung der Änderungen:</strong><br>
            {summary}</p>
         <p>Die vollständigen Bedingungen finden Sie auf unserer Website:</p>
-        {_btn(f"{FRONTEND_URL}/agb", "AGB lesen")}
+        {_btn(f"{LANDINGPAGE_URL}/agb.html", "AGB lesen")}
         <p>Gemäß §13 unserer AGB sind Sie mit der weiteren Nutzung von Lumios
            nach Inkrafttreten der neuen Bedingungen einverstanden.</p>
     """
