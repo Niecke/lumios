@@ -51,6 +51,7 @@ lumios/
 │   │   ├── services/
 │   │   │   ├── audit.py      # Audit log creation helpers
 │   │   │   ├── auth.py       # Auth service logic
+│   │   │   ├── covers.py     # Library cover: enqueue, generate from previews, presigned cover_url
 │   │   │   ├── images.py     # Pillow processing: watermarked preview + thumbnail
 │   │   │   ├── mail.py       # Brevo email sending
 │   │   │   ├── redis_client.py # Shared Redis client
@@ -286,7 +287,7 @@ Quota limits come solely from the subscription tier (`SUBSCRIPTION_LIMITS` in `c
 
 **roles_users** — `user_id FK, role_id FK` (junction table, indexed on both columns)
 
-**libraries** — `id, uuid (unique, indexed), user_id FK, name, created_at, archived_at, deleted_at, finished_at, use_original_as_preview, download_enabled, is_private, last_viewed_at, watermark_gcs_key, watermark_scale, watermark_position, public_upload_enabled`
+**libraries** — `id, uuid (unique, indexed), user_id FK, name, created_at, archived_at, deleted_at, finished_at, use_original_as_preview, download_enabled, is_private, last_viewed_at, watermark_gcs_key, watermark_scale, watermark_position, public_upload_enabled, cover_key`
 
 **images** — `id, uuid (unique, indexed), library_id FK, s3_key, original_filename, content_type, size, width, height, customer_state (CustomerState, default none), is_external, created_at, deleted_at`
 
@@ -391,6 +392,7 @@ def login():
 f"photos/{photographer_id}/{library_id}/originals/{uuid}.{ext}"
 f"photos/{photographer_id}/{library_id}/previews/{uuid}.{ext}"   # watermarked
 f"photos/{photographer_id}/{library_id}/thumbs/{uuid}.{ext}"     # 600px longest side
+f"photos/{photographer_id}/{library_id}/covers/cover-{8 hex}.jpg"  # library cover (640x400), fresh key per run
 
 # Access rules
 # - Originals: NEVER served to customers, no signed URLs issued
@@ -433,7 +435,7 @@ Jobs are enqueued by the backend and run by separate worker pods. Queue and resu
 |---|---|---|---|
 | `default` | `worker-default` | 4 | mail jobs (`send_*_email`, `resend_activation`, `services/mail.py`: `notify_*` enqueues, `send_*` sends; 3 runs, a Brevo 4xx other than 429 is not retried); the periodic `recover_stalled_jobs` task (every 5 min); the periodic `clean_old_jobs` janitor (daily, 00:00 UTC: deletes finished jobs older than `WORKER_JOB_RETENTION_DAYS` in batches of 1000, with their events and `worker_job_errors` rows; logs the count only) |
 | `video` | `worker-video` | 1 | `process_video`: ffmpeg probe + thumbnail |
-| `photo` | `worker-photo`, **off by default** | 2 | prepared for image thumbnails/previews, nothing is enqueued on it yet |
+| `photo` | `worker-photo` | 2 | `generate_library_cover` (see Library covers); image thumbnails/previews will follow (#521) |
 
 - **Code:** `app/worker.py` holds the `procrastinate.App` (`worker_app`), the queue names and the tasks. A task runs inside the Flask app context (`get_flask_app()`). Enqueue from a request with `process_video_task.configure(...).defer(...)` after `open_for_defer()`; import `worker` lazily inside the function, `worker.py` imports the services.
 - **Retries:** `process_video` runs at most `VIDEO_MAX_RUNS` (3) times with backoff (7 s, then 11 s). Errors are not swallowed in the service: the exception reaches the worker, which retries. After the last run the job stays in status `failed` (the dead letter, never deleted) and the video is marked `failed`.
@@ -444,6 +446,12 @@ Jobs are enqueued by the backend and run by separate worker pods. Queue and resu
 - **Entrypoint:** `python3 /entrypoint.py worker --queue <default|video|photo> [--concurrency N]` waits for the database and runs the worker; `python3 /entrypoint.py worker-health` exits 0 when the database and the queue schema answer (the pods' liveness probe).
 - **Local dev:** `podman-compose up` starts `worker-default` and `worker-video`; inspect jobs with `podman exec -it lumios-worker-video /usr/bin/python3 -m procrastinate --app=worker.worker_app shell` (`list_jobs`, `retry <id>`).
 - **Schema and upgrades:** the queue tables are created by an Alembic revision that calls `migrations/procrastinate_schema.py::ensure_schema(bind, "<procrastinate migration version>")`. The helper records the applied version in `procrastinate_schema_version` and replays the library's SQL migrations up to that version. `procrastinate[psycopg]` is pinned exactly in `pyproject.toml`; **a bump needs a new Alembic revision** calling `ensure_schema` with the new highest version in `procrastinate/sql/migrations/` (the `pre` and `post` scripts of a version run together in the migrate Job, which is fine while no new pod runs; a later upgrade that ships `pre`/`post` scripts may need the two-step procedure of the Procrastinate docs for rolling workers). `procrastinate_*` tables are excluded from Alembic autogenerate (`include_object`).
+
+### Library covers
+
+`services/covers.py` builds the small cover shown on the photographer's library list. The `generate_library_cover(library_id)` job (queue `photo`) reads only `previews/` objects (watermarked, never originals) of the newest non-deleted images (`created_at DESC, id DESC`): 4 or more usable previews give a 640×400 JPEG as 2×2 grid (centre-cropped cells), 1–3 give the newest one full size. A missing or undecodable preview is skipped; a library without a usable image gets `cover_key = NULL` (the SPA shows the icon placeholder) and the old object is deleted. Each run writes a fresh key `covers/cover-<8 hex>.jpg`, commits `libraries.cover_key`, then deletes the previous object, so a cached URL never shows a half-written file. `cover_url` (presigned) is returned by `GET /api/v1/libraries` and `GET /api/v1/public/libraries/<uuid>`; the key itself is never exposed.
+
+The job is enqueued by `enqueue_library_cover()` (best effort, never fails the request, call it after the commit) after an image upload (photographer or customer), an image delete and `POST .../watermark/apply` (when at least one preview was rewritten). `lock` and `queueing_lock` are `library-cover-<id>` and `schedule_in` is 30 s, so a burst of changes gives one job. Retries and the `/admin/workers` error line work like the video job (3 runs, `COVER_MAX_RUNS`); the admin target is the library id. `flask purge-deleted-accounts` deletes the cover object.
 
 ### Backups on the admin pages
 
@@ -625,6 +633,7 @@ tests/
 ├── test_auth.py
 ├── test_auth_google.py
 ├── test_commands.py
+├── test_covers.py            # services/covers.py: layout, previews only, empty/deleted, failures, cover_url
 ├── test_entrypoint.py
 ├── test_feedback.py
 ├── test_health.py
@@ -738,7 +747,7 @@ lumios-api.niecke-it.de   → backend Service
 
 ## What NOT to do
 
-- Do not add Celery or a second queue system — background jobs run on the Procrastinate workers; image thumbnail generation stays inline with Pillow until the `photo` pipeline is enabled
+- Do not add Celery or a second queue system — background jobs run on the Procrastinate workers; image thumbnail generation stays inline with Pillow (the `photo` pipeline only runs library covers so far)
 - Do not use Cloud SQL or Memorystore — Postgres and Redis run in the k3s cluster on the Hetzner node
 - Do not add a cloud load balancer — Traefik is the ingress, cert-manager handles certificates, Cloudflare may proxy in front
 - Do not serve original photos to customers — only preview and thumbnail URLs
