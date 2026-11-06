@@ -23,6 +23,7 @@ interface PublicLibraryPage {
     download_enabled: boolean;
     public_upload_enabled: boolean;
     video_uploads_enabled: boolean;
+    cover_url?: string | null;
   };
   images: PublicImage[];
   total: number;

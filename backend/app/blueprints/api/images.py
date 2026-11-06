@@ -5,6 +5,7 @@ from services.audit import write_audit_log
 from sqlalchemy import select, func, literal, union_all
 from datetime import datetime, timezone
 from services import storage
+from services.covers import enqueue_library_cover
 from services.quota import check_upload_allowed
 from services.redis_client import cache_delete, cache_delete_pattern
 from services.images import (
@@ -231,4 +232,5 @@ def delete_image(library_id: int, image_id: int):
     cache_delete_pattern(f"public:library:{library.uuid}:*")
     invalidate_watermark_previews(library.id)
     cache_delete(f"user:storage:{user_id}")
+    enqueue_library_cover(library.id)
     return "", 204

@@ -112,6 +112,7 @@ function LibraryCard({ lib, onRenamed, onDeleted }: LibraryCardProps) {
   const { t, i18n } = useTranslation();
   const [renaming, setRenaming] = useState(false);
   const [editName, setEditName] = useState(lib.name);
+  const [coverFailed, setCoverFailed] = useState(false);
 
   const rename = useMutation({
     mutationFn: (name: string) => librariesApi.rename(lib.id, name),
@@ -141,7 +142,17 @@ function LibraryCard({ lib, onRenamed, onDeleted }: LibraryCardProps) {
   return (
     <div className="library-card">
       <Link to="/library/$libraryUuid" params={{ libraryUuid: lib.uuid }} className="library-card__media">
-        <span className="material-icons">photo_library</span>
+        {lib.cover_url && !coverFailed ? (
+          <img
+            className="library-card__cover"
+            src={lib.cover_url}
+            alt=""
+            loading="lazy"
+            onError={() => setCoverFailed(true)}
+          />
+        ) : (
+          <span className="material-icons">photo_library</span>
+        )}
       </Link>
 
       {renaming ? (

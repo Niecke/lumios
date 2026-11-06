@@ -1352,6 +1352,34 @@ class TestAdminWorkers:
         assert "UTC" in row
         assert "Probing & thumbnail" in row
 
+    def test_workers_shows_library_id_as_cover_job_target(self, client, admin_user):
+        from sqlalchemy import text
+
+        job_id = db.session.execute(
+            text(
+                "INSERT INTO procrastinate_jobs (queue_name, task_name, args, attempts) "
+                "VALUES ('photo', 'generate_library_cover', CAST(:a AS jsonb), 0) RETURNING id"
+            ),
+            {"a": json.dumps({"library_id": 4711})},
+        ).scalar_one()
+        for status in ("doing", "failed"):
+            db.session.execute(
+                text(
+                    "UPDATE procrastinate_jobs SET status = CAST(:s AS procrastinate_job_status), "
+                    "attempts = 3 WHERE id = :id"
+                ),
+                {"s": status, "id": job_id},
+            )
+        db.session.commit()
+        login_admin(client, admin_user)
+
+        html = html_text(client.get("/admin/workers"))
+
+        row = html.split('id="failed-jobs-table"')[1].split("</tr>", 2)[1]
+        assert f"<td>{job_id}</td>" in row
+        assert "4711" in row
+        assert "generate_library_cover" in row
+
     def test_workers_renders_failed_jobs(self, client, admin_user):
         from models import WorkerJobError
 

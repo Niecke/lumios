@@ -234,6 +234,28 @@ class TestGcsDeletion:
             img.storage_path("thumbs"),
         }
 
+    def test_deletes_library_cover(self, app):
+        user = _soft_deleted_user("cover@test.com", deleted_days_ago=31)
+        lib = _make_library(user)
+        lib.cover_key = f"photos/{user.id}/{lib.id}/covers/cover-abcd1234.jpg"
+        db.session.commit()
+
+        with patch("services.storage.delete_object") as mock_del:
+            app.test_cli_runner().invoke(args=["purge-deleted-accounts"])
+
+        assert lib.cover_key in {c.args[0] for c in mock_del.call_args_list}
+
+    def test_cover_delete_failure_does_not_abort_purge(self, app):
+        user = _soft_deleted_user("coverfail@test.com", deleted_days_ago=31)
+        lib = _make_library(user)
+        lib.cover_key = f"photos/{user.id}/{lib.id}/covers/cover-abcd1234.jpg"
+        db.session.commit()
+
+        with patch("services.storage.delete_object", side_effect=Exception("S3 error")):
+            app.test_cli_runner().invoke(args=["purge-deleted-accounts"])
+
+        assert db.session.execute(select(Library).where(Library.user_id == user.id)).first() is None
+
     def test_gcs_failure_does_not_abort_db_deletion(self, app):
         user = _soft_deleted_user("gcsfail@test.com", deleted_days_ago=31)
         lib = _make_library(user)

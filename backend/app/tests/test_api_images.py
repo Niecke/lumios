@@ -23,7 +23,7 @@ from PIL import Image as PilImage, ImageOps, PngImagePlugin
 
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from models import db, User, Role, Library, Image, Video, VideoProcessingStatus
 from services.token import create_token
@@ -237,6 +237,15 @@ def upload(client, library_id, token, data, filename, content_type):
         headers=auth_header(token),
         content_type="multipart/form-data",
     )
+
+
+def _cover_jobs():
+    return db.session.execute(
+        text(
+            "SELECT queue_name, queueing_lock FROM procrastinate_jobs "
+            "WHERE task_name = 'generate_library_cover'"
+        )
+    ).mappings().all()
 
 
 # ---------------------------------------------------------------------------
@@ -487,6 +496,58 @@ class TestUploadValidImages:
         assert calls[0][0][1].endswith(".webp")
         assert calls[1][0][1].endswith(".webp")
         assert calls[2][0][1].endswith(".webp")
+
+
+class TestCoverJobTrigger:
+    """Uploads and deletes queue a (debounced) library cover job."""
+
+    @patch("services.images.storage")
+    def test_upload_enqueues_cover_job(self, _storage, client, photographer, library):
+        res = upload(
+            client, library.id, make_token(photographer),
+            make_jpeg_bytes(), "photo.jpg", "image/jpeg",
+        )
+        assert res.status_code == 201
+        (job,) = _cover_jobs()
+        assert job["queue_name"] == "photo"
+        assert job["queueing_lock"] == f"library-cover-{library.id}"
+
+    @patch("services.images.storage")
+    def test_uploads_in_window_give_one_job(self, _storage, client, photographer, library):
+        for _ in range(2):
+            res = upload(
+                client, library.id, make_token(photographer),
+                make_jpeg_bytes(), "photo.jpg", "image/jpeg",
+            )
+            assert res.status_code == 201
+        assert len(_cover_jobs()) == 1
+
+    @patch("services.images.storage")
+    def test_upload_succeeds_when_enqueue_fails(self, _storage, client, photographer, library):
+        with patch("worker.open_for_defer", side_effect=RuntimeError("queue down")):
+            res = upload(
+                client, library.id, make_token(photographer),
+                make_jpeg_bytes(), "photo.jpg", "image/jpeg",
+            )
+        assert res.status_code == 201
+        assert _cover_jobs() == []
+
+    def test_delete_enqueues_cover_job(self, client, photographer, library):
+        image = Image(
+            library_id=library.id,
+            s3_key="d.jpg",
+            original_filename="d.jpg",
+            content_type="image/jpeg",
+            size=10,
+        )
+        db.session.add(image)
+        db.session.commit()
+        res = client.delete(
+            f"/api/v1/libraries/{library.id}/images/{image.id}",
+            headers=auth_header(make_token(photographer)),
+        )
+        assert res.status_code == 204
+        assert len(_cover_jobs()) == 1
 
 
 class TestWatermarkPreviewInvalidation:
