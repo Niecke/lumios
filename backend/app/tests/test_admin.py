@@ -1657,6 +1657,7 @@ class TestAdminWorkers:
         _add_job(status="todo", video_uuid="c")
         _beat("default", 1)
         _beat("video", 1)
+        _beat("photo", 1)
         login_admin(client, admin_user)
 
         html = html_text(client.get("/"))
@@ -1690,6 +1691,7 @@ class TestAdminWorkers:
         db.session.commit()
         _beat("default", 1)
         _beat("video", 1)
+        _beat("photo", 1)
 
         status = get_workers_status()
 
@@ -1697,7 +1699,7 @@ class TestAdminWorkers:
         assert status["verdict"] == "warning"
         assert status["summary"] == "A job has been waiting for a long time"
 
-    def test_verdict_ignores_idle_photo_queue_without_pod(self, app):
+    def test_verdict_requires_pod_for_idle_photo_queue(self, app):
         from services.workers import get_workers_status
 
         _beat("default", 1)
@@ -1706,7 +1708,8 @@ class TestAdminWorkers:
         status = get_workers_status()
 
         assert status["pipelines"]["photo"]["alive"] == 0
-        assert status["verdict"] == "ok"
+        assert status["verdict"] == "error"
+        assert status["summary"] == "No worker is alive for photo"
 
     def test_verdict_requires_pod_for_photo_queue_with_work(self, app):
         from services.workers import get_workers_status

@@ -191,7 +191,7 @@ class TestSources:
         img, _, _ = _uploaded(st)
         assert _is(_centre(img, 320, 200), COLOURS[1])
 
-    def test_all_previews_missing_gives_placeholder(self, st, library):
+    def test_all_previews_missing_keeps_existing_cover(self, st, library):
         _add_images(library, 3)
         library.cover_key = "photos/1/1/covers/cover-old.jpg"
         db.session.commit()
@@ -200,7 +200,8 @@ class TestSources:
         generate_library_cover(library.id)
 
         st.upload_fileobj.assert_not_called()
-        assert db.session.get(Library, library.id).cover_key is None
+        st.delete_object.assert_not_called()
+        assert db.session.get(Library, library.id).cover_key == "photos/1/1/covers/cover-old.jpg"
 
     def test_undecodable_preview_is_skipped(self, st, library):
         _add_images(library, 2)
@@ -279,6 +280,28 @@ class TestRegeneration:
 
         assert db.session.get(Library, library.id).cover_key == "photos/1/1/covers/cover-old.jpg"
         st.delete_object.assert_not_called()
+
+    def test_commit_failure_deletes_new_cover(self, st, library):
+        _add_images(library, 2)
+
+        with patch("services.covers.db.session.commit", side_effect=RuntimeError("db down")):
+            with pytest.raises(RuntimeError):
+                generate_library_cover(library.id)
+
+        (call,) = st.upload_fileobj.call_args_list
+        st.delete_object.assert_called_once_with(call.args[1])
+
+    def test_large_preview_is_shrunk_while_loading(self, st, library):
+        from services.covers import _load_preview
+
+        _add_images(library, 1)
+        st.get_object_bytes.side_effect = lambda key: _jpeg("red", size=(4000, 3000))
+        image = db.session.execute(db.select(Image)).scalars().first()
+
+        img = _load_preview(image, library.user_id)
+
+        assert img.size == (COVER_WIDTH, COVER_HEIGHT)
+        img.close()
 
     def test_deleted_library_is_a_no_op(self, st, library):
         _add_images(library, 2)

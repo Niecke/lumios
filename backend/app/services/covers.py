@@ -82,7 +82,14 @@ def _load_preview(image: Image, user_id: int) -> PilImage.Image | None:
         raise
     try:
         with PilImage.open(io.BytesIO(data)) as src:
-            return src.convert("RGB")
+            # Shrink while decoding (JPEG draft mode) and right after, so a
+            # full-resolution preview is never held in memory beyond one decode.
+            src.draft("RGB", (COVER_WIDTH, COVER_HEIGHT))
+            rgb = src.convert("RGB")
+        try:
+            return ImageOps.fit(rgb, (COVER_WIDTH, COVER_HEIGHT))
+        finally:
+            rgb.close()
     except (UnidentifiedImageError, OSError):
         logger.info("Cover: preview of image %s cannot be decoded, skipped", image.id)
         return None
@@ -98,7 +105,7 @@ def _compose(images: list[PilImage.Image]) -> io.BytesIO:
             cover.paste(cell, pos)
             cell.close()
     else:
-        cover = ImageOps.fit(images[0], (COVER_WIDTH, COVER_HEIGHT))
+        cover = images[0].copy()
     buf = io.BytesIO()
     cover.save(buf, format="JPEG", quality=COVER_JPEG_QUALITY)
     cover.close()
@@ -147,6 +154,15 @@ def generate_library_cover(library_id: int) -> None:
 
         old_key = library.cover_key
         if not usable:
+            if candidates:
+                # Previews may be briefly invisible (partial watermark apply); keep
+                # the current cover and let the next change rebuild it.
+                logger.warning(
+                    "Cover: no usable preview among %s candidates of library %s, cover kept",
+                    len(candidates),
+                    library.id,
+                )
+                return
             if old_key:
                 library.cover_key = None
                 db.session.commit()
@@ -164,6 +180,11 @@ def generate_library_cover(library_id: int) -> None:
     )
     storage.upload_fileobj(buf, new_key, "image/jpeg")
     library.cover_key = new_key
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        _delete_old_cover(new_key, None)
+        raise
     _delete_old_cover(old_key, new_key)
     cache_delete_pattern(f"public:library:{library.uuid}:*")

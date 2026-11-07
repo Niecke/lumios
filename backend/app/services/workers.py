@@ -12,8 +12,8 @@ HEARTBEAT_ALIVE_SECONDS = 30
 # Queued longer than this without being picked up is worth a warning
 QUEUE_STALE_SECONDS = 600
 
-# Pipelines whose workers must run; "photo" is off by default and only matters with work waiting
-REQUIRED_QUEUES = ("default", "video")
+# Pipelines whose workers must run even when nothing is queued
+REQUIRED_QUEUES = ("default", "video", "photo")
 
 # Finished jobs carry recipient addresses in their arguments: the list and the pruning job
 # must agree on the retention
