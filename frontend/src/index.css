@@ -1607,12 +1607,35 @@ body {
 .upload-widget__progress {
   height: 4px;
   background: rgba(0, 0, 0, 0.1);
+  overflow: hidden;
 }
 
 .upload-widget__progress-bar {
   height: 100%;
   background: var(--clr-primary);
   transition: width 0.2s;
+}
+
+.upload-widget__progress--indeterminate .upload-widget__progress-bar {
+  width: 30%;
+  animation: upload-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes upload-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .upload-widget__progress--indeterminate .upload-widget__progress-bar {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+  }
 }
 
 .upload-widget__list {
