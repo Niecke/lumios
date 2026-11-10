@@ -1,7 +1,8 @@
 // main.tsx — app entry point
 //
 // Sets up the two global providers:
-//   - QueryClientProvider: TanStack Query for server state (API calls, caching)
+//   - QueryClientProvider: TanStack Query for server state (API calls, caching;
+//                          global defaults live in queryDefaults.ts)
 //   - RouterProvider:      TanStack Router for file-based routing (src/routes/)
 //
 // Routes are auto-generated into routeTree.gen.ts by the Vite plugin.
@@ -23,8 +24,9 @@ import { uploadVideo, pollVideoStatus } from "./api/videos";
 import { createUploadStore } from "./uploads/uploadStore";
 import { onSessionCleared } from "./api/auth";
 import { UploadProvider } from "./uploads/UploadContext";
+import { QUERY_DEFAULT_OPTIONS } from "./queryDefaults";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({ defaultOptions: QUERY_DEFAULT_OPTIONS });
 // App-level upload queue: lives outside React so uploads survive page changes.
 const uploadStore = createUploadStore({
   uploadImage: (id, file) => imagesApi.upload(id, file),
