@@ -17,6 +17,8 @@ from unittest.mock import patch
 import pytest
 from PIL import Image as PilImage
 
+from sqlalchemy import text
+
 from models import db, User, Role, Library, Image, SubscriptionType
 from services.token import create_token
 
@@ -60,6 +62,15 @@ def upload_logo(client, library_id, token, data, content_type="image/png"):
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+def _cover_jobs():
+    return db.session.execute(
+        text(
+            "SELECT queue_name, queueing_lock FROM procrastinate_jobs "
+            "WHERE task_name = 'generate_library_cover'"
+        )
+    ).mappings().all()
 
 
 @pytest.fixture
@@ -655,6 +666,43 @@ class TestApplyWatermark:
         data = res.get_json()
         assert data["updated"] == 1
         assert data["failed"] == 0
+
+    @patch("services.images.storage")
+    @patch("blueprints.api.libraries.storage")
+    def test_apply_enqueues_cover_job(
+        self, mock_lib_storage, mock_img_storage, client, photographer, library
+    ):
+        db.session.add(
+            Image(
+                library_id=library.id,
+                s3_key="img1.jpg",
+                original_filename="photo1.jpg",
+                content_type="image/jpeg",
+                size=1000,
+                width=8,
+                height=6,
+            )
+        )
+        db.session.commit()
+        mock_lib_storage.get_object_bytes.return_value = make_jpeg_bytes()
+        res = client.post(
+            f"/api/v1/libraries/{library.id}/watermark/apply",
+            headers=auth_header(make_token(photographer)),
+        )
+        assert res.get_json()["updated"] == 1
+        (job,) = _cover_jobs()
+        assert job["queue_name"] == "photo"
+        assert job["queueing_lock"] == f"library-cover-{library.id}"
+
+    def test_apply_without_updated_images_enqueues_nothing(
+        self, client, photographer, library
+    ):
+        res = client.post(
+            f"/api/v1/libraries/{library.id}/watermark/apply",
+            headers=auth_header(make_token(photographer)),
+        )
+        assert res.get_json()["updated"] == 0
+        assert _cover_jobs() == []
 
     def test_requires_auth(self, client, library):
         res = client.post(

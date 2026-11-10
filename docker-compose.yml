@@ -154,6 +154,19 @@ services:
       - ./backend/app:/app:Z
     restart: unless-stopped
 
+  worker-photo:
+    build: backend/.
+    container_name: lumios-worker-photo
+    env_file: .env
+    command: ["worker", "--queue", "photo", "--concurrency", "2"]
+    environment:
+      RUN_MIGRATIONS: "false"
+    depends_on:
+      - backend
+    volumes:
+      - ./backend/app:/app:Z
+    restart: unless-stopped
+
   frontend:
     build:
       context: frontend/.

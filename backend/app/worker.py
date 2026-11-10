@@ -6,7 +6,7 @@ worker --queue <name>), so heavy work cannot starve light work:
 
     default  short jobs (mail, ...)
     video    ffmpeg probing and thumbnail extraction, one job at a time
-    photo    quick image thumbnails/previews; prepared, not used yet
+    photo    quick image jobs: library covers (thumbnails/previews follow)
 """
 
 import asyncio
@@ -42,6 +42,10 @@ QUEUES = (QUEUE_DEFAULT, QUEUE_VIDEO, QUEUE_PHOTO)
 VIDEO_MAX_RUNS = 3
 # Procrastinate counts retries in job.attempts (0 on the first run)
 VIDEO_RETRY = RetryStrategy(max_attempts=VIDEO_MAX_RUNS - 1, wait=5, exponential_wait=2)
+
+# Total runs of a library cover job, the first one included
+COVER_MAX_RUNS = 3
+COVER_RETRY = RetryStrategy(max_attempts=COVER_MAX_RUNS - 1, wait=5, exponential_wait=2)
 
 # Total runs of a mail job, the first one included
 MAIL_MAX_RUNS = 3
@@ -255,6 +259,41 @@ def process_video_task(context, video_uuid: str) -> None:
                     video.processing_status = VideoProcessingStatus.failed
                     db.session.commit()
                 logger.error("Video job %s exhausted its retries", video_uuid)
+            raise
+        finally:
+            db.session.remove()
+
+
+@worker_app.task(
+    queue=QUEUE_PHOTO,
+    name="generate_library_cover",
+    retry=COVER_RETRY,
+    pass_context=True,
+)
+def generate_library_cover_task(context, library_id: int) -> None:
+    """Build the cover image of a library from its watermarked previews.
+
+    Errors propagate so Procrastinate retries with backoff; after the last run
+    the library keeps its old cover (or the placeholder).
+    """
+    from models import db
+    from services.covers import generate_library_cover
+
+    with get_flask_app().app_context():
+        try:
+            generate_library_cover(library_id)
+            clear_job_error(context.job.id)
+        except Exception as exc:
+            db.session.rollback()
+            record_job_error(
+                context.job.id, QUEUE_PHOTO, "generate_library_cover", summarize_error(exc)
+            )
+            logger.error(
+                "Cover job for library %s failed in run %d: %s",
+                library_id,
+                context.job.attempts + 1,
+                type(exc).__name__,
+            )
             raise
         finally:
             db.session.remove()
