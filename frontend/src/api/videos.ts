@@ -1,6 +1,7 @@
 // videos.ts — API client for authenticated video upload (Architecture B)
 
 import { tokenStore } from "./auth";
+import type { Image } from "./images";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = tokenStore.get();
@@ -84,6 +85,9 @@ export async function pollVideoStatus(
 }
 
 export const videosApi = {
+  get: (libraryId: number, uuid: string) =>
+    apiFetch<Image>(`/api/v1/libraries/${libraryId}/videos/${uuid}`),
+
   delete: (libraryId: number, videoId: number) =>
     apiFetch<void>(`/api/v1/libraries/${libraryId}/videos/${videoId}`, {
       method: "DELETE",
