@@ -26,6 +26,8 @@ from models import (
     Role,
     roles_users,
     AgbUpdate,
+    AuditLog,
+    AuditLogType,
 )
 from sqlalchemy import select
 
@@ -404,3 +406,167 @@ class TestFailureReportedToSentry:
         assert result.exit_code == 1
         sentry.capture_exception.assert_called_once_with(boom)
         sentry.flush.assert_called_once_with(timeout=2.0)
+
+
+# ---------------------------------------------------------------------------
+# create-admin-user / set-admin-password
+# ---------------------------------------------------------------------------
+
+
+def _invoke(app, args, stdin=""):
+    return app.test_cli_runner().invoke(args=args, input=stdin)
+
+
+def _reload(user_id):
+    db.session.expire_all()
+    return db.session.get(User, user_id)
+
+
+def _admin_with_role(email="admin"):
+    role = db.session.execute(select(Role).where(Role.name == "admin")).scalar_one_or_none()
+    if role is None:
+        role = Role(name="admin", description="Administrator")
+        db.session.add(role)
+    user = User(email=email, active=True)
+    user.set_password("OldPassword1!")
+    user.roles.append(role)
+    db.session.add(user)
+    db.session.commit()
+    return user
+
+
+def _password_from(output: str) -> str:
+    return next(
+        line.split(": ", 1)[1] for line in output.splitlines() if line.startswith("Password: ")
+    )
+
+
+class TestCreateAdminUser:
+    def test_creates_admin_with_working_random_password(self, app):
+        result = _invoke(app, ["create-admin-user", "--email", "new@test.com"])
+        assert result.exit_code == 0
+        password = _password_from(result.output)
+        user = db.session.execute(select(User).where(User.email == "new@test.com")).scalar_one()
+        assert user.active and user.account_type == "local"
+        assert [r.name for r in user.roles] == ["admin"]
+        assert user.verify_password(password)
+
+    def test_each_password_differs_and_verifies(self, app):
+        first = _password_from(_invoke(app, ["create-admin-user", "--email", "a@test.com"]).output)
+        second = _password_from(_invoke(app, ["create-admin-user", "--email", "b@test.com"]).output)
+        assert first != second
+        a = db.session.execute(select(User).where(User.email == "a@test.com")).scalar_one()
+        b = db.session.execute(select(User).where(User.email == "b@test.com")).scalar_one()
+        assert a.verify_password(first) and b.verify_password(second)
+        assert not a.verify_password(second)
+
+    def test_existing_email_rejected_and_unchanged(self, app):
+        user = _admin_with_role("dup@test.com")
+        old_hash = user.auth_string
+        result = _invoke(app, ["create-admin-user", "--email", "dup@test.com"])
+        assert result.exit_code != 0
+        assert "Password:" not in result.output
+        assert _reload(user.id).auth_string == old_hash
+
+    def test_existing_non_admin_email_rejected(self, app):
+        user = _active_user("plain@test.com")
+        result = _invoke(app, ["create-admin-user", "--email", "plain@test.com"])
+        assert result.exit_code != 0
+        assert _reload(user.id).roles == []
+
+    def test_email_required(self, app):
+        assert _invoke(app, ["create-admin-user"]).exit_code == 2
+
+
+class TestSetAdminPassword:
+    def test_resets_password_of_default_admin(self, app):
+        user = _admin_with_role("admin")
+        result = _invoke(app, ["set-admin-password"], "NewPassword1!\n")
+        assert result.exit_code == 0
+        user = _reload(user.id)
+        assert user.verify_password("NewPassword1!")
+        assert not user.verify_password("OldPassword1!")
+        assert "NewPassword1!" not in result.output
+
+    def test_second_run_replaces_first(self, app):
+        user = _admin_with_role("admin")
+        _invoke(app, ["set-admin-password"], "FirstPass123\n")
+        _invoke(app, ["set-admin-password"], "SecondPass123\n")
+        user = _reload(user.id)
+        assert user.verify_password("SecondPass123")
+        assert not user.verify_password("FirstPass123")
+
+    def test_custom_email(self, app):
+        user = _admin_with_role("boss@test.com")
+        result = _invoke(app, ["set-admin-password", "--email", "boss@test.com"], "NewPassword1!\n")
+        assert result.exit_code == 0
+        assert _reload(user.id).verify_password("NewPassword1!")
+
+    def test_admin_without_auth_string_gets_password(self, app):
+        user = _admin_with_role("admin")
+        user.auth_string = None
+        db.session.commit()
+        assert _invoke(app, ["set-admin-password"], "NewPassword1!\n").exit_code == 0
+        assert _reload(user.id).verify_password("NewPassword1!")
+
+    def test_short_password_rejected(self, app):
+        user = _admin_with_role("admin")
+        old_hash = user.auth_string
+        result = _invoke(app, ["set-admin-password"], "short\n")
+        assert result.exit_code != 0
+        assert "short" not in result.output
+        assert _reload(user.id).auth_string == old_hash
+
+    def test_empty_stdin_rejected(self, app):
+        user = _admin_with_role("admin")
+        old_hash = user.auth_string
+        assert _invoke(app, ["set-admin-password"], "").exit_code != 0
+        assert _reload(user.id).auth_string == old_hash
+
+    def test_unknown_email_rejected(self, app):
+        result = _invoke(app, ["set-admin-password", "--email", "nobody@test.com"], "NewPassword1!\n")
+        assert result.exit_code != 0
+        assert db.session.execute(select(User).where(User.email == "nobody@test.com")).first() is None
+
+    def test_user_without_admin_role_rejected(self, app):
+        user = _active_user("plain@test.com")
+        old_hash = user.auth_string
+        result = _invoke(app, ["set-admin-password", "--email", "plain@test.com"], "NewPassword1!\n")
+        assert result.exit_code != 0
+        assert _reload(user.id).auth_string == old_hash
+
+    def test_soft_deleted_admin_rejected(self, app):
+        user = _admin_with_role("admin")
+        user.deleted_at = datetime.now(timezone.utc)
+        db.session.commit()
+        old_hash = user.auth_string
+        assert _invoke(app, ["set-admin-password"], "NewPassword1!\n").exit_code != 0
+        assert _reload(user.id).auth_string == old_hash
+
+    def test_audit_log_written_without_request_context(self, app):
+        user = _admin_with_role("admin")
+        _invoke(app, ["set-admin-password"], "NewPassword1!\n")
+        entry = db.session.execute(
+            select(AuditLog).where(AuditLog.audit_type == AuditLogType.password_set_by_admin)
+        ).scalar_one()
+        assert entry.creator_id == user.id
+        assert entry.related_object_type == "user"
+        assert entry.related_object_id == str(user.id)
+
+    def test_tty_uses_hidden_prompt(self, app):
+        user = _admin_with_role("admin")
+        # CliRunner swaps sys.stdin while invoking, so replace the module's view of sys
+        with patch("commands.sys") as fake_sys, patch(
+            "commands.click.prompt", return_value="PromptPass123"
+        ) as prompt:
+            fake_sys.stdin.isatty.return_value = True
+            result = _invoke(app, ["set-admin-password"])
+        assert result.exit_code == 0
+        kwargs = prompt.call_args.kwargs
+        assert kwargs["hide_input"] is True and kwargs["confirmation_prompt"] is True
+        assert _reload(user.id).verify_password("PromptPass123")
+
+    def test_no_password_option(self, app):
+        _admin_with_role("admin")
+        result = _invoke(app, ["set-admin-password", "--password", "NewPassword1!"])
+        assert result.exit_code == 2

@@ -65,7 +65,7 @@ lumios/
 │   │   ├── static/
 │   │   ├── templates/
 │   │   ├── tests/
-│   │   ├── commands.py       # CLI commands: purge_deleted_accounts, purge_audit_logs, apply_agb_acceptance, seed_test_data
+│   │   ├── commands.py       # CLI commands: purge_deleted_accounts, purge_audit_logs, apply_agb_acceptance, seed_test_data, create_admin_user, set_admin_password
 │   │   ├── config.py         # All env vars loaded here — fail-fast on missing
 │   │   ├── current_user.py   # Thread-local current user helper
 │   │   ├── log.py            # Structured JSON logging
@@ -148,6 +148,8 @@ python -m procrastinate --app=worker.worker_app shell         # inspect/retry jo
 flask purge-deleted-accounts             # Hard-delete accounts soft-deleted > 1 year
 flask purge-audit-logs                   # Purge audit logs older than 90 days
 flask apply-agb-acceptance               # Apply AGB acceptance after effective date
+flask create-admin-user --email <email>  # New admin with a random password, printed once (fails if the email exists)
+flask set-admin-password [--email admin] # Set/reset an existing admin's password: hidden prompt on a TTY, else one line of stdin; never an argument
 flask seed-test-data                     # Seed demo data (only runs when DEBUG=true; also run by entrypoint if SEED_TEST_DATA=true)
 
 # Docker image (CI pattern)
