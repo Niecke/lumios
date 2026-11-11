@@ -1,16 +1,18 @@
 # Deploying Lumios
 
-Merges to `main` reach staging, release tags reach production, both through
-Flux. Nothing pushes: the cluster pulls, so no GitHub workflow holds cluster
-credentials and the k3s API stays unpublished.
+Merges to `main` reach staging (the private Talos cluster), release tags reach
+production (the k3s node), both through Flux. Nothing pushes: the clusters pull,
+so no GitHub workflow holds cluster credentials and the k3s API stays
+unpublished.
 
 ```
 merge to main
   ├─ promote.yml           retags the tested image digest, commits sha-<short>
   │                        into deploy/flux/staging/helmrelease.yaml
   └─ source-controller     fetches the commit
-       ├─ kustomize-ctrl   applies deploy/flux/ — so the committed tag
-       │                   actually reaches the HelmRelease objects
+       ├─ kustomize-ctrl   k3s: applies deploy/flux/ (production);
+       │                   Talos: applies deploy/flux/staging-talos/ — so the
+       │                   committed tag reaches the HelmRelease objects
        └─ helm-controller  re-renders charts/lumios, upgrades staging
 
 merge the release-please pull request → tag vX.Y.Z
@@ -21,14 +23,14 @@ merge the release-please pull request → tag vX.Y.Z
                            helmrelease.yaml, chart in ocirepository.yaml
 ```
 
-Production and staging share the one k3s node, one HelmRelease each. The private
-Talos cluster takes over staging (see "Talos staging (private)"):
+Production runs on the k3s node; the staging runs on the private Talos cluster
+(see "Staging (Talos, private)"):
 
 | | Namespace | Hosts (`.niecke-it.de`) | Chart from | Image tag written by |
 |---|---|---|---|---|
-| `deploy/flux/staging/` | `lumios-staging` | `lumios-staging`, `lumios-app-staging`, `lumios-api-staging` | `charts/lumios` on `main` | `promote.yml`, every merge |
+| `deploy/flux/staging/` | `lumios-staging` | `lumios-staging`, `lumios-app-staging`, `lumios-api-staging` | `charts/lumios` on `main` | `promote.yml`, every merge. Values and image tags of the staging, included by `staging-talos/`; **not applied on k3s** |
 | `deploy/flux/prod/` | `lumios` | `lumios`, `lumios-app`, `lumios-api` | `oci://ghcr.io/niecke/lumios/charts/lumios`, pinned to the release | `release.yml`, every `vX.Y.Z` tag |
-| `deploy/flux/staging-talos/` | `lumios-staging` on the Talos cluster | same as `staging/` | `charts/lumios` on `main` | the same as `staging/`, via `promote.yml` |
+| `deploy/flux/staging-talos/` | `lumios-staging` on the Talos cluster | same as `staging/` | `charts/lumios` on `main` | the same as `staging/`, via `promote.yml`; this is the staging |
 
 `deploy/flux/base/` holds the shared GitRepository and the Flux Kustomization.
 The entry point stays `deploy/flux/kustomization.yaml`, the path that
@@ -55,7 +57,7 @@ keeps running the previous release.
 | `backup-database`, `backup-photos` | one CronJob each, **off in staging** | The `backup` image (`backup/`): a daily `pg_dump` and a mirror of the object storage, both shipped to GCS and reported to healthchecks.io. See "Backup and disaster recovery". |
 | Ingress | one per host, plus Traefik Middlewares | cert-manager issues one certificate per host. |
 
-Staging redeploys on two kinds of commit on `main`:
+Staging (on the Talos cluster) redeploys on two kinds of commit on `main`:
 
 - a chart change under `charts/lumios/` — picked up because the staging
   HelmRelease sets `reconcileStrategy: Revision`
@@ -103,8 +105,8 @@ flux install --components=source-controller,helm-controller,kustomize-controller
 kubectl create namespace lumios
 ```
 
-DNS: records for the three production hosts (and the three staging hosts)
-pointing at the node. Cloudflare may proxy them; Let's Encrypt's http-01
+DNS: records for the three production hosts pointing at the node. The staging
+hosts point at the private Talos load balancer, see "Staging (Talos, private)". Cloudflare may proxy them; Let's Encrypt's http-01
 challenge still reaches the node through the proxy.
 
 ### The credentials Secret
@@ -197,50 +199,19 @@ until the first promotion after this lands.
 
 ## Staging setup
 
-Flux creates the `lumios-staging` namespace and the `lumios-staging`
-PriorityClass itself. Three things it cannot create, by hand, before or right
-after the first merge — the HelmRelease reports not-ready until they exist:
+The staging runs on the private Talos cluster only, see "Staging (Talos,
+private)" for bootstrap and Secrets. It has its cleanup CronJobs switched off,
+runs at a negative priority so the kubelet evicts it before production, and is
+sized small. It runs the same images as production; the frontend's Google
+client id, landing-page links and app URL are set per environment at runtime
+(`/config.js`, written from the container's environment). It uses the bucket
+`lumios-staging`, with a key that cannot reach the production bucket.
 
-1. **Object storage.** A bucket `lumios-staging`, with a key that cannot reach
-   the production bucket.
-2. **The credentials Secret**, same shape as production's, all values new:
+## Staging (Talos, private)
 
-   ```bash
-   kubectl -n lumios-staging create secret generic lumios-values \
-     --from-file=values.yaml=/tmp/values.yaml
-   ```
-
-3. **Basic auth** for the landing page and the frontend. htpasswd lines under
-   the key `users`:
-
-   ```bash
-   # htpasswd is in httpd-tools (Fedora) / apache2-utils (Debian)
-   PW="$(openssl rand -base64 18)"; echo "staging password: $PW"
-   kubectl -n lumios-staging create secret generic lumios-staging-basic-auth \
-     --from-literal=users="$(htpasswd -nbB staging "$PW" | head -1)" \
-     --dry-run=client -o yaml | kubectl apply -f -
-   unset PW
-   ```
-
-   The Secret holds only the bcrypt hash, so put the printed password in the
-   password manager. Until it exists, Traefik cannot load the middleware and
-   drops those routes. The API is deliberately not behind it — neither the API
-   host nor `/api/` on the frontend host, which the SPA calls: the API
-   authenticates with its own JWT in the same `Authorization` header, which
-   basic auth would reject, and the landing page calls it cross-origin.
-
-Staging has its cleanup CronJobs switched off, runs at a negative priority so
-the kubelet evicts it before production, and is sized small. It runs the same
-images as production; the frontend's Google client id, landing-page links and
-app URL are set per environment at runtime (`/config.js`, written from the
-container's environment).
-
-## Talos staging (private)
-
-The private Talos cluster takes over the **existing** staging; there is no
-second staging. It uses the same hosts (`lumios-staging`, `lumios-app-staging`,
-`lumios-api-staging` `.niecke-it.de`) and the same bucket `lumios-staging`. The
-database starts empty and the old Postgres volume is discarded.
+The staging runs on the private Talos cluster; there is no second staging. It
+uses the hosts `lumios-staging`, `lumios-app-staging` and `lumios-api-staging`
+(`.niecke-it.de`) and the bucket `lumios-staging`.
 
 `deploy/flux/staging-talos/` holds the entry point: the `lumios` namespace for
 the Flux source, a GitRepository, the Kustomization `lumios-staging-talos`, and
@@ -261,18 +232,12 @@ kubectl apply -k deploy/flux/staging-talos/
 ```
 
 After that Flux keeps it in sync with `main`. `deploy/flux/kustomization.yaml`
-does not list `staging-talos`, so the k3s cluster never applies it (CI checks).
+lists only `base` and `prod`, so the k3s cluster never applies `staging` or
+`staging-talos` (CI checks that `staging-talos` is not listed).
 
-**Cutover order:**
-
-1. The Talos staging is deployed (bootstrap above, Secrets below).
-2. The DNS records are repointed to the private Talos load balancer, in
-   Niecke/infrastructure.
-3. A follow-up PR drops `staging` from `deploy/flux/kustomization.yaml`. Its
-   prune uninstalls the k3s staging.
-
-Until step 2 the k3s staging serves the hosts. Both clusters run their own
-database, so DNS alone decides which one gets traffic.
+History: the staging moved from k3s to Talos in #602/#616; the DNS records were
+repointed (Niecke/infrastructure#172, 2026-11-11) and `staging` was dropped from
+`deploy/flux/kustomization.yaml` in #625, whose prune removed the k3s staging.
 
 **Hosts.** They come only from `ingress.hosts`. `PUBLIC_BASE_URL`,
 `FRONTEND_URL` and `LANDINGPAGE_URL` are derived from them in
@@ -282,8 +247,15 @@ the bucket CORS rule (see "CORS on the bucket") and the Google OAuth origins and
 redirect URIs need no change.
 
 **Secrets by hand**, in `lumios-staging` (Niecke/infrastructure runbook §10):
-`lumios-values`, with the existing staging bucket credentials, same command as
-"Staging setup" step 2. `lumios-staging-basic-auth` is **not** needed on Talos.
+`lumios-values`, the credentials Secret in the same shape as production's, all
+values specific to the staging (bucket `lumios-staging`):
+
+```bash
+kubectl -n lumios-staging create secret generic lumios-values \
+  --from-file=values.yaml=/tmp/values.yaml
+```
+
+There is no Basic Auth Secret: `ingress.basicAuth.secretName` is empty on Talos.
 
 **Keep it private.** The staging is reachable only through the VPN, so Basic
 Auth is off. With a public DNS target the landing page and the frontend would
@@ -433,7 +405,7 @@ cat > cors.json <<'EOF2'
   }]
 }
 EOF2
-# Staging bucket lumios-staging: use https://lumios-app-staging.niecke-it.de
+# Staging bucket lumios-staging (Talos kubeconfig for any kubectl): use https://lumios-app-staging.niecke-it.de
 aws s3api put-bucket-cors --bucket lumios \
   --endpoint-url https://<region>.your-objectstorage.com \
   --cors-configuration file://cors.json
@@ -485,7 +457,7 @@ The frontend CSP allows `*.ingest.sentry.io` and `*.ingest.de.sentry.io`.
 **Alert.** In Sentry, Alerts → Create Alert → Issues, condition "A new issue is
 created", action "Send a notification" by email. Do it per project.
 
-**Verify on staging.** Backend, a one-off event from inside the running pod
+**Verify on staging** (Talos kubeconfig). Backend, a one-off event from inside the running pod
 (the scrubber is not applied here, the event carries no request data):
 
 ```bash

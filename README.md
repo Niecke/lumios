@@ -68,7 +68,7 @@ files by hand.
 ## Deployment
 
 Merges to `main` deploy to staging and release tags deploy to production through
-Flux GitOps on k3s. See [`deploy/README.md`](deploy/README.md) for the full flow.
+Flux GitOps: production on k3s, staging on the private Talos cluster. See [`deploy/README.md`](deploy/README.md) for the full flow.
 Infrastructure is managed in the separate
 [Niecke/infrastructure](https://github.com/Niecke/infrastructure) repository.
 
