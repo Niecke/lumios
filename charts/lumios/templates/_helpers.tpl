@@ -127,3 +127,63 @@ they are not repeated here.
 - name: MAX_VIDEO_FILE_SIZE
   value: {{ .Values.backend.maxVideoFileSize | int64 | quote }}
 {{- end -}}
+
+{{/*
+Spec of the migration Jobs (install Job and upgrade hook Job), shared so they
+cannot drift apart. Arguments: dict "root" <root context> "secret" <name of the
+credentials Secret> "component" <component label>.
+*/}}
+{{- define "lumios.migrateJobSpec" -}}
+{{- $root := .root -}}
+{{- $secret := .secret -}}
+{{- $component := .component -}}
+# Worst case: the entrypoint waits up to 30 x 5 s = 150 s for PostgreSQL,
+# then runs `flask db upgrade` once. A failed upgrade is not retried, so
+# backoffLimit is 0, and a hung one (lock wait) is killed after 300 s. The
+# HelmReleases set timeout: 10m, above this deadline, so Helm never gives up
+# and starts a rollback while the Job still runs.
+backoffLimit: 0
+activeDeadlineSeconds: 300
+template:
+  metadata:
+    labels:
+      {{- include "lumios.selectorLabels" $root | nindent 6 }}
+      app.kubernetes.io/component: {{ $component }}
+  spec:
+    restartPolicy: Never
+    {{- with $root.Values.priorityClassName }}
+    priorityClassName: {{ . | quote }}
+    {{- end }}
+    securityContext:
+      # UID 65532, created by useradd in backend/Dockerfile.
+      runAsNonRoot: true
+      runAsUser: 65532
+      runAsGroup: 65532
+      seccompProfile:
+        type: RuntimeDefault
+    containers:
+      - name: migrate
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        image: {{ include "lumios.image" (list "backend" $root.Values.backend.image) | quote }}
+        imagePullPolicy: {{ $root.Values.backend.image.pullPolicy }}
+        # The command is the interpreter itself, no shell wrapper.
+        command: ["/usr/bin/python3", "/entrypoint.py", "migrate"]
+        envFrom:
+          - secretRef:
+              name: {{ $secret }}
+        env:
+          {{- include "lumios.backendEnv" $root | nindent 10 }}
+        resources:
+          {{- toYaml $root.Values.migration.resources | nindent 10 }}
+        volumeMounts:
+          # create_app() writes filesystem sessions here: there is no REDIS_URL.
+          - name: tmp
+            mountPath: /tmp
+    volumes:
+      - name: tmp
+        emptyDir: {}
+{{- end }}
