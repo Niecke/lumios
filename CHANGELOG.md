@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.6.0](https://github.com/Niecke/lumios/compare/v0.5.0...v0.6.0) (2026-11-11)
+
+
+### Features
+
+* **deploy:** add Flux entry point deploy/flux/staging-talos for the private Talos staging ([#616](https://github.com/Niecke/lumios/issues/616)) ([2545dd0](https://github.com/Niecke/lumios/commit/2545dd03c251bf1f9640191d2c5d0b40a0dd783c))
+* **frontend:** app-wide upload widget that survives page changes ([#579](https://github.com/Niecke/lumios/issues/579)) ([56135f4](https://github.com/Niecke/lumios/commit/56135f48f3f40359f146f09c6bdff0702f2df44e))
+* generate library covers on the photo worker and show them in the library list ([#594](https://github.com/Niecke/lumios/issues/594)) ([a9156ca](https://github.com/Niecke/lumios/commit/a9156caca2ca6d9a89225dcd7fefa9db33ee2ef6))
+* **mail:** send transactional mails in the user's language (de/en) ([#595](https://github.com/Niecke/lumios/issues/595)) ([f303d3e](https://github.com/Niecke/lumios/commit/f303d3ee1dc45412f4d96790001e53cedbf62fd5))
+
+
+### Bug Fixes
+
+* **deploy:** raise staging worker-default memory limit to 384Mi, concurrency 1 ([#632](https://github.com/Niecke/lumios/issues/632)) ([655c506](https://github.com/Niecke/lumios/commit/655c50633c099a7fba0a12a0a40de2d23be1bf38))
+* **deps:** update dependency authlib to v1.9.5 ([#598](https://github.com/Niecke/lumios/issues/598)) ([a88f297](https://github.com/Niecke/lumios/commit/a88f297c34d59d2ee22753454fbd2f613f63ece2))
+* **deps:** update dependency boto3 to v1.43.123 ([#577](https://github.com/Niecke/lumios/issues/577)) ([8076dcd](https://github.com/Niecke/lumios/commit/8076dcd5e0f5ff4090a048f1e33903152e30c6eb))
+* **deps:** update dependency boto3 to v1.43.126 ([#611](https://github.com/Niecke/lumios/issues/611)) ([79c1fc8](https://github.com/Niecke/lumios/commit/79c1fc8c8a67d5f92f13a4b3b3f1f73295b4cc08))
+* **deps:** update dependency certifi to v2026.10.18 [security] ([#606](https://github.com/Niecke/lumios/issues/606)) ([a44b719](https://github.com/Niecke/lumios/commit/a44b719a103e3d0b437ee7939fd048fa27eca34d))
+* **deps:** update dependency i18next to v27 ([#628](https://github.com/Niecke/lumios/issues/628)) ([c043ccc](https://github.com/Niecke/lumios/commit/c043cccad3f05a3fa98f4677acc31499e5a46076))
+* **deps:** update dependency imageio-ffmpeg to v0.8.1 ([#619](https://github.com/Niecke/lumios/issues/619)) ([426eee0](https://github.com/Niecke/lumios/commit/426eee04ac68ad6f678185e0d2e61833237af1f9))
+* **deps:** update dependency joserfc to v1.7.6 [security] ([#603](https://github.com/Niecke/lumios/issues/603)) ([6522f72](https://github.com/Niecke/lumios/commit/6522f721211ff81bc49003929e31dec1aa741f86))
+* **deps:** update dependency mako to v1.4.2 [security] ([#604](https://github.com/Niecke/lumios/issues/604)) ([9aed8d0](https://github.com/Niecke/lumios/commit/9aed8d0465126bcfc8b1f3049195e92996666385))
+* **deps:** update dependency psycopg to v3.3.8 ([#599](https://github.com/Niecke/lumios/issues/599)) ([5e1649c](https://github.com/Niecke/lumios/commit/5e1649c9831a792913e1ee7301916cabd0c9a752))
+* **deps:** update dependency sentry-sdk to v2.74.0 ([#620](https://github.com/Niecke/lumios/issues/620)) ([16fd702](https://github.com/Niecke/lumios/commit/16fd702884046731862e53e545e0209cc696bc84))
+* **deps:** update dependency urllib3 to v2.8.0 [security] ([#607](https://github.com/Niecke/lumios/issues/607)) ([c1a77ac](https://github.com/Niecke/lumios/commit/c1a77ac21bb7fbb03033522213d187b9992487b5))
+* **deps:** update dependency werkzeug to v3.1.9 [security] ([#605](https://github.com/Niecke/lumios/issues/605)) ([c706805](https://github.com/Niecke/lumios/commit/c7068059dbac37b916cbcc07fd9cf928e0eb04d7))
+* **frontend:** append new uploads to the end of the gallery instead of refetching the list per file ([#631](https://github.com/Niecke/lumios/issues/631)) ([5cc9f19](https://github.com/Niecke/lumios/commit/5cc9f19bc08f6b53b9b48b571b6a9739d191c8cd))
+* keep upload queue on 401, guard onFileDone, hold early drops, indeterminate image bar ([#593](https://github.com/Niecke/lumios/issues/593)) ([7d1ea43](https://github.com/Niecke/lumios/commit/7d1ea43bb50d5949cd203ee99cb11c94e9e3dd02))
+
+
+### Performance Improvements
+
+* **frontend:** set a 30 s default staleTime on the QueryClient ([#592](https://github.com/Niecke/lumios/issues/592)) ([75fea89](https://github.com/Niecke/lumios/commit/75fea893583716b356a92a80968f29fb38670b87))
+
 ## [0.5.0](https://github.com/Niecke/lumios/compare/v0.4.0...v0.5.0) (2026-11-02)
 
 
