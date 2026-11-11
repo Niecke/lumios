@@ -32,7 +32,7 @@ dependencies = [
     "opentelemetry-instrumentation-flask==0.66b2",
     "opentelemetry-exporter-otlp-proto-grpc==1.45.2",
     "opentelemetry-instrumentation-sqlalchemy==0.66b2",
-    "sentry-sdk[flask]==2.73.0",
+    "sentry-sdk[flask]==2.74.0",
 ]
 
 [dependency-groups]
