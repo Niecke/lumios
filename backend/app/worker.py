@@ -331,27 +331,40 @@ def _mail_task(name: str):
 
 
 @_mail_task("send_registration_email")
-def send_registration_email_task(context, user_email: str) -> None:
+def send_registration_email_task(context, user_email: str, lang: str = "de") -> None:
     from services.mail import send_registration_email
 
     _run_mail_job(
-        context, "send_registration_email", send_registration_email, user_email=user_email
+        context,
+        "send_registration_email",
+        send_registration_email,
+        user_email=user_email,
+        lang=lang,
     )
 
 
 @_mail_task("send_activation_email")
-def send_activation_email_task(context, user_id: int) -> None:
+def send_activation_email_task(context, user_id: int, lang: str | None = None) -> None:
     from services.mail import send_activation_email
 
-    _run_mail_job(context, "send_activation_email", send_activation_email, user_id=user_id)
+    _run_mail_job(
+        context, "send_activation_email", send_activation_email, user_id=user_id, lang=lang
+    )
 
 
 @_mail_task("resend_activation")
-def resend_activation_task(context, email: str, ip: str) -> None:
+def resend_activation_task(
+    context, email: str, ip: str, lang: str | None = None
+) -> None:
     from services.mail import process_resend_activation
 
     _run_mail_job(
-        context, "resend_activation", process_resend_activation, email=email, ip=ip
+        context,
+        "resend_activation",
+        process_resend_activation,
+        email=email,
+        ip=ip,
+        lang=lang,
     )
 
 
@@ -369,7 +382,9 @@ def send_admin_new_account_email_task(context, user_email: str, account_type: st
 
 
 @_mail_task("send_account_cancellation_email")
-def send_account_cancellation_email_task(context, user_email: str) -> None:
+def send_account_cancellation_email_task(
+    context, user_email: str, lang: str = "de"
+) -> None:
     from services.mail import send_account_cancellation_email
 
     _run_mail_job(
@@ -377,12 +392,18 @@ def send_account_cancellation_email_task(context, user_email: str) -> None:
         "send_account_cancellation_email",
         send_account_cancellation_email,
         user_email=user_email,
+        lang=lang,
     )
 
 
 @_mail_task("send_agb_change_email")
 def send_agb_change_email_task(
-    context, user_email: str, agb_version: str, summary: str
+    context,
+    user_email: str,
+    agb_version: str,
+    summary: str,
+    effective_date: str | None = None,
+    lang: str = "de",
 ) -> None:
     from services.mail import send_agb_change_email
 
@@ -393,6 +414,8 @@ def send_agb_change_email_task(
         user_email=user_email,
         agb_version=agb_version,
         summary=summary,
+        effective_date=effective_date,
+        lang=lang,
     )
 
 
@@ -403,6 +426,7 @@ def send_gallery_finished_email_task(
     library_name: str,
     library_uuid: str,
     liked_count: int,
+    lang: str = "de",
 ) -> None:
     from services.mail import send_gallery_finished_email
 
@@ -414,6 +438,7 @@ def send_gallery_finished_email_task(
         library_name=library_name,
         library_uuid=library_uuid,
         liked_count=liked_count,
+        lang=lang,
     )
 
 

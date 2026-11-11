@@ -54,6 +54,7 @@ lumios/
 │   │   │   ├── covers.py     # Library cover: enqueue, generate from previews, presigned cover_url
 │   │   │   ├── images.py     # Pillow processing: watermarked preview + thumbnail
 │   │   │   ├── mail.py       # Brevo email sending
+│   │   │   ├── mail_texts.py # Per-language text catalogue of the user-facing mails (de/en)
 │   │   │   ├── redis_client.py # Shared Redis client
 │   │   │   ├── storage.py    # S3-compatible storage operations
 │   │   │   ├── token.py      # JWT token generation/validation
@@ -447,6 +448,16 @@ Jobs are enqueued by the backend and run by separate worker pods. Queue and resu
 - **Local dev:** `podman-compose up` starts `worker-default`, `worker-video` and `worker-photo`; inspect jobs with `podman exec -it lumios-worker-video /usr/bin/python3 -m procrastinate --app=worker.worker_app shell` (`list_jobs`, `retry <id>`).
 - **Schema and upgrades:** the queue tables are created by an Alembic revision that calls `migrations/procrastinate_schema.py::ensure_schema(bind, "<procrastinate migration version>")`. The helper records the applied version in `procrastinate_schema_version` and replays the library's SQL migrations up to that version. `procrastinate[psycopg]` is pinned exactly in `pyproject.toml`; **a bump needs a new Alembic revision** calling `ensure_schema` with the new highest version in `procrastinate/sql/migrations/` (the `pre` and `post` scripts of a version run together in the migrate Job, which is fine while no new pod runs; a later upgrade that ships `pre`/`post` scripts may need the two-step procedure of the Procrastinate docs for rolling workers). `procrastinate_*` tables are excluded from Alembic autogenerate (`include_object`).
 
+### Mail languages
+
+The user-facing mails (registration, activation, gallery finished, account cancellation, AGB change) are sent in the recipient's language, subject included. German is the default; the admin and support mails to the operator (`send_admin_new_account_email`, `send_new_support_ticket_email`) stay German.
+
+- **Resolution order:** `User.language` → the UI language of a resend-activation request (`language` in the body, validated against `SUPPORTED_LANGUAGES`, only a fallback for an account without a stored language) → `de`. `NULL`, an unknown value or a non-string means `de` (`normalize_lang`).
+- **Catalogue:** `services/mail_texts.py` holds data only. `MAILS[lang][mail][field]` are `str.format` templates (`subject`, `heading`, `body`, optionally `button`, `body_after` and mail specific fields), `FORMATS[lang]` holds the date pattern, month names and thousands separator. `services/mail.py` keeps the layout (`_html`, `_btn`) and renders from it. Helpers: `text`, `format_date`, `format_int`, `plural` (`<base>_one` for 1, else `<base>_other`; a language with more plural forms needs code in `plural()`).
+- **Job arguments:** the language travels as a plain `lang` (`"de"`/`"en"`) argument, never anything else personal; the AGB job also carries `effective_date` (ISO date). Every new task parameter needs a default so jobs queued by an older version still run (and send German). The activation job holds only `user_id` (+ `lang` for the resend fallback).
+- **Add a mail:** add the entry under *every* language in `MAILS`; write a `send_*` taking `lang` that renders it; write a `notify_*` that passes `lang=normalize_lang(...)`; add the worker task with `lang="de"` as default; call `notify_*` with the recipient's `user.language`.
+- **Add a language (e.g. `fr`):** add `FORMATS["fr"]` and `MAILS["fr"]` (copy `en`) and extend `SUPPORTED_LANGUAGES` in `blueprints/api/auth.py`. `tests/test_mail_texts.py` fails when a language lacks a mail or field, has an empty text, uses other placeholders than German or differs from `SUPPORTED_LANGUAGES`.
+
 ### Library covers
 
 `services/covers.py` builds the small cover shown on the photographer's library list. The `generate_library_cover(library_id)` job (queue `photo`) reads only `previews/` objects (watermarked, never originals) of the newest non-deleted images (`created_at DESC, id DESC`): 4 or more usable previews give a 640×400 JPEG as 2×2 grid (centre-cropped cells), 1–3 give the newest one full size. Each preview is shrunk to 640×400 while it is decoded, so memory stays small on the 256Mi pod. A missing or undecodable preview is skipped; a library without any image gets `cover_key = NULL` (the SPA shows the icon placeholder) and the old object is deleted, while a library whose candidates are all unusable keeps its current cover (warning logged). Each run writes a fresh key `covers/cover-<8 hex>.jpg`, commits `libraries.cover_key`, then deletes the previous object, so a cached URL never shows a half-written file. `cover_url` (presigned) is returned by `GET /api/v1/libraries` and `GET /api/v1/public/libraries/<uuid>`; the key itself is never exposed.
@@ -469,7 +480,7 @@ The SPA is available in German (default) and English with `i18next` + `react-i18
 - **Backend errors:** the API keeps returning English strings. Map new ones in `frontend/src/api/errors.ts` (`EXACT` table → `errors.*` key) and show them with `getApiErrorMessage(err, t)`; unknown messages are shown as sent. An error kept in component state stays untranslated (`DisplayError`, shown with `displayErrorMessage`), so a language switch on the page updates it.
 - **Checks (`npm test`):** `tests/i18n.test.ts` fails when `de.json` and `en.json` differ in keys, a value is empty, a `t("…")` key used in `src/` is missing, or a component has a hard-coded text / `title` / `placeholder` / `aria-label` / `alt`. In `npm run dev` a key missing in German shows the English text prefixed with `[EN] `.
 - **Add a language (e.g. `fr`):** copy `en.json` to `locales/fr.json` and translate it; register it in `i18n/index.ts` (import, `resources`, `SUPPORTED_LOCALES`); allow it in `SUPPORTED_LANGUAGES` in `blueprints/api/auth.py` (and the `user.language` length if needed; `tests/i18n.test.ts` fails when the two lists differ); add `language.fr` to all locale files.
-- German wording: Library → *Galerie*, photo → *Foto*, watermark → *Wasserzeichen*, selection → *Auswahl*, share link → *Freigabe-Link*, formal address (*Sie*). Transactional mails (`services/mail.py`) are German only.
+- German wording: Library → *Galerie*, photo → *Foto*, watermark → *Wasserzeichen*, selection → *Auswahl*, share link → *Freigabe-Link*, formal address (*Sie*). Transactional mails follow the user's language too, see *Mail languages*.
 
 ---
 
@@ -639,6 +650,7 @@ tests/
 ├── test_health.py
 ├── test_login_protection.py
 ├── test_mail.py
+├── test_mail_texts.py        # mail catalogue parity (every mail/field in every language, same placeholders)
 ├── test_migrations.py
 ├── test_models.py
 ├── test_procrastinate_schema.py

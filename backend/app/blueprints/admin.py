@@ -255,7 +255,7 @@ def user_create():
         current_app.logger.info(
             "User created: %s (%s)", email, account_type, extra={"log_type": "audit"}
         )
-        notify_registration(email)
+        notify_registration(email, user.language)
         flash(f'User "{email}" created successfully!', "success")
         return redirect(url_for("admin.users_view"))
 
@@ -478,6 +478,7 @@ def user_delete(id):
         return redirect(url_for("admin.users_view"))
 
     deleted_email = user.email
+    deleted_language = user.language
     deleted_id = user.id
     user.deleted_at = datetime.now(timezone.utc)
     user.active = False
@@ -492,7 +493,7 @@ def user_delete(id):
     current_app.logger.info(
         "User soft-deleted: %s", deleted_email, extra={"log_type": "audit"}
     )
-    notify_account_cancellation(deleted_email)
+    notify_account_cancellation(deleted_email, deleted_language)
     flash(f'User "{deleted_email}" deleted!', "success")
     return redirect(url_for("admin.users_view"))
 
@@ -925,7 +926,13 @@ def notify_agb():
         )
 
         for user in users:
-            notify_agb_change(user.email, agb_version, summary)
+            notify_agb_change(
+                user.email,
+                agb_version,
+                summary,
+                effective_at.date().isoformat(),
+                user.language,
+            )
 
         agb_update = AgbUpdate(
             version=agb_version,

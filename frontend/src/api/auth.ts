@@ -246,7 +246,7 @@ export const authApi = {
   resendActivation: (target: { email: string } | { token: string }) =>
     apiFetch<{ ok: boolean }>("/api/v1/auth/resend-activation", {
       method: "POST",
-      body: JSON.stringify(target),
+      body: JSON.stringify({ ...target, language: currentLocale() }),
     }),
 
   // Exchange a Google ID token for a lumios JWT.
