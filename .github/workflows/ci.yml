@@ -194,10 +194,10 @@ jobs:
           # The Talos staging takes over the existing staging: same hosts and
           # bucket, only the issuer, storage class and size differ. No Basic
           # Auth there (private load balancer), k3s staging keeps it.
-          [ "$(yq -e 'select(.kind == "Ingress") | .metadata.annotations["cert-manager.io/cluster-issuer"]' "$RUNNER_TEMP/staging-talos.yaml" | sort -u)" = letsencrypt-dns01 ]
-          [ "$(yq -e 'select(.kind == "Ingress") | .spec.rules[].host' "$RUNNER_TEMP/staging-talos.yaml" | sort -u | tr '\n' ' ')" = "lumios-api-staging.niecke-it.de lumios-app-staging.niecke-it.de lumios-staging.niecke-it.de " ]
-          [ "$(yq -e 'select(.kind == "StatefulSet") | .spec.volumeClaimTemplates[0].spec.storageClassName' "$RUNNER_TEMP/staging-talos.yaml")" = hcloud-volumes ]
-          [ "$(yq -e 'select(.kind == "StatefulSet") | .spec.volumeClaimTemplates[0].spec.resources.requests.storage' "$RUNNER_TEMP/staging-talos.yaml")" = 10Gi ]
+          [ "$(yq 'select(.kind == "Ingress") | .metadata.annotations["cert-manager.io/cluster-issuer"]' "$RUNNER_TEMP/staging-talos.yaml" | sort -u)" = letsencrypt-dns01 ]
+          [ "$(yq 'select(.kind == "Ingress") | .spec.rules[].host' "$RUNNER_TEMP/staging-talos.yaml" | sort -u | tr '\n' ' ')" = "lumios-api-staging.niecke-it.de lumios-app-staging.niecke-it.de lumios-staging.niecke-it.de " ]
+          [ "$(yq 'select(.kind == "StatefulSet") | .spec.volumeClaimTemplates[0].spec.storageClassName' "$RUNNER_TEMP/staging-talos.yaml")" = hcloud-volumes ]
+          [ "$(yq 'select(.kind == "StatefulSet") | .spec.volumeClaimTemplates[0].spec.resources.requests.storage' "$RUNNER_TEMP/staging-talos.yaml")" = 10Gi ]
           [ "$(grep -c 'basic-auth' "$RUNNER_TEMP/staging-talos.yaml")" -eq 0 ]
           [ "$(grep -c 'basic-auth' "$RUNNER_TEMP/staging.yaml")" -gt 0 ]
 
