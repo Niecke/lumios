@@ -1,0 +1,7 @@
+# On the Talos cluster this namespace holds only the Flux source and sync
+# (gitrepository.yaml, sync.yaml). The app itself runs in lumios-staging, and
+# production never runs on this cluster.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lumios

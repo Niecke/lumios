@@ -1,0 +1,21 @@
+# Entry point of the private Talos staging, bootstrapped by hand:
+#
+#   kubectl apply -k deploy/flux/staging-talos/
+#
+# After that, lumios-staging-talos (sync.yaml) keeps it in sync with main. Do not
+# add ../base or ../ to the resources: both bring in prod/. This directory is
+# not listed in deploy/flux/kustomization.yaml, so the k3s cluster never applies
+# it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - gitrepository.yaml
+  - sync.yaml
+  - ../staging
+patches:
+  - path: helmrelease-patch.yaml
+    target:
+      kind: HelmRelease
+      name: lumios
+      namespace: lumios-staging
