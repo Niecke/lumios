@@ -15,9 +15,12 @@ import logging
 import re
 import socket
 import threading
+import time
 
 from datetime import datetime, timedelta, timezone
 
+from services.schema import schema_status
+from services.worker_probe import ProbeState, start_probe_server  # noqa: F401  (entrypoint.py uses worker.start_probe_server)
 from procrastinate import App, PsycopgConnector, RetryStrategy
 from procrastinate.jobs import Status
 from sqlalchemy import delete
@@ -82,6 +85,8 @@ worker_app = App(
 # Error text shown on the admin Workers page: one short line, no URLs, paths or keys
 ERROR_MAX_LENGTH = 200
 
+# Port of the probe server (/live, /ready); only the kubelet reaches it
+WORKER_PROBE_PORT = 8081
 HEARTBEAT_INTERVAL_SECONDS = 10
 # Rows of pods that are gone for good (new pod names on every rollout) are dropped after this
 HEARTBEAT_PRUNE_SECONDS = 24 * 3600
@@ -568,13 +573,67 @@ async def clean_old_jobs(timestamp: int) -> None:
     await clean_old_jobs_now()
 
 
-def check_worker_health() -> int:
-    """0 when the queue database answers and the Procrastinate schema is there."""
+def check_schema_once(state: ProbeState):
+    """One schema check against the database; updates the probe state.
+
+    Returns the SchemaStatus, or None when the database does not answer (the
+    state then keeps its last value and /live ages towards 503).
+    """
+    from models import db
+
     try:
-        with worker_app.open():
-            if not worker_app.check_connection():
-                return 1
-        return 0
+        with get_flask_app().app_context(), db.engine.connect() as connection:
+            status = schema_status(connection)
     except Exception:
-        logger.exception("Worker health check failed")
-        return 1
+        logger.exception("Schema check failed")
+        return None
+    state.mark_db_ok()
+    state.set_ready(status.ready)
+    return status
+
+
+def wait_for_schema(
+    state: ProbeState, poll_seconds: float = 5, log_every_seconds: float = 60
+) -> None:
+    """Block until the database has every revision this code knows.
+
+    The migration Job creates the schema while the pod is already running, so
+    the worker waits (not ready, not restarted) instead of exiting. The missing
+    revisions are logged the first time, then at most every ``log_every_seconds``.
+    """
+    last_logged = None
+    while True:
+        status = check_schema_once(state)
+        if status is not None and status.ready:
+            logger.info("Database schema ready: %s", status.describe())
+            return
+        now = time.monotonic()
+        if status is not None and (
+            last_logged is None or now - last_logged >= log_every_seconds
+        ):
+            logger.warning("Waiting for the database schema: %s", status.describe())
+            last_logged = now
+        time.sleep(poll_seconds)
+
+
+def start_schema_monitor(
+    state: ProbeState, interval_seconds: float = 30
+) -> tuple[threading.Event, threading.Thread]:
+    """Re-check the schema in the background until the returned event is set."""
+    stop = threading.Event()
+
+    def loop() -> None:
+        was_ready = True
+        while not stop.wait(interval_seconds):
+            status = check_schema_once(state)
+            if status is None or status.ready == was_ready:
+                continue
+            was_ready = status.ready
+            if status.ready:
+                logger.info("Database schema ready: %s", status.describe())
+            else:
+                logger.error("Database schema not ready: %s", status.describe())
+
+    thread = threading.Thread(target=loop, name="worker-schema-monitor", daemon=True)
+    thread.start()
+    return stop, thread
