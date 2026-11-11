@@ -46,8 +46,8 @@ keeps running the previous release.
 | Workload | Kind | Notes |
 |---|---|---|
 | `backend` | Deployment + Service `:8080` | Runs `entrypoint.py` with `RUN_MIGRATIONS=false`: waits for the database, starts Gunicorn, never migrates. 2 replicas in production, 1 in staging. |
-| `migrate` | Helm hook Job (`post-install,pre-upgrade`) | The backend image, `entrypoint.py migrate`: runs `flask db upgrade` once per release, waiting up to 2.5 minutes for PostgreSQL first. A failed upgrade is not retried; the Job has `backoffLimit: 0` and a 300 s deadline, and the HelmReleases set `timeout: 10m`. Has its own hook Secret. A failed Job fails the release, and `remediateLastFailure` rolls it back. |
-| `worker-default`, `worker-video` | one Deployment each | The backend image, `entrypoint.py worker --queue <name> --concurrency <n>`: background jobs from the Procrastinate queue in PostgreSQL. `default` (4 jobs at once, small) runs short jobs and the stalled-job recovery; `video` (one job at a time, 512Mi limit, `lumios-video` priority class in production) runs the ffmpeg thumbnail extraction. Liveness is `entrypoint.py worker-health` (database and queue schema reachable). Values: `workers.<name>` in `charts/lumios/values.yaml`. |
+| `migrate-install` / `migrate` | `migrate-install`: regular Job, rendered on a first install only; `migrate`: Helm `pre-upgrade` hook Job | The backend image, `entrypoint.py migrate`: runs `flask db upgrade` once per release, waiting up to 2.5 minutes for PostgreSQL first. A failed upgrade is not retried; the Job has `backoffLimit: 0` and a 300 s deadline, and the HelmReleases set `timeout: 10m`. The install Job runs while Helm waits (a `post-install` hook would deadlock: the backend and workers are only ready once the schema exists) and reads the backend Secret; the hook has its own hook Secret. A failed Job fails the release, and `remediateLastFailure` rolls it back. |
+| `worker-default`, `worker-video` | one Deployment each | The backend image, `entrypoint.py worker --queue <name> --concurrency <n>`: background jobs from the Procrastinate queue in PostgreSQL. `default` (4 jobs at once, small) runs short jobs and the stalled-job recovery; `video` (one job at a time, 512Mi limit, `lumios-video` priority class in production) runs the ffmpeg thumbnail extraction. Probes are HTTP on port 8081, served by a thread in the worker (no exec probe): `/live` (database answered recently, schema irrelevant) for startup and liveness, `/ready` (schema at or past the code's head) for readiness. Values: `workers.<name>` in `charts/lumios/values.yaml`. |
 | `worker-photo` | Deployment, on (`workers.photo.enabled: true`) | The `photo` queue (2 jobs at once): library cover generation. Image thumbnails and previews will follow. |
 | `frontend` | Deployment + Service `:8080` | nginx; proxies `/api/` to the backend Service inside the cluster. |
 | `landingpage` | Deployment + Service `:8080` | nginx; `APP_URL` and `BACKEND_URL` are substituted at start. |
@@ -296,7 +296,7 @@ flux -n lumios reconcile helmrelease lumios --with-source
 To freeze the cluster where it stands: `flux -n lumios suspend helmrelease lumios`.
 
 > [!WARNING]
-> Migrations run in the `migrate` hook Job before an upgrade touches the backend,
+> Migrations run in the `migrate` hook Job before an upgrade touches the backend (on a first install in the `migrate-install` Job),
 > and do not roll back with the image.
 > Every Alembic migration has to work with release N−1: add and backfill in one
 > release, stop writing the old column in the next, drop it in a third.

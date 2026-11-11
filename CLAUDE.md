@@ -37,7 +37,7 @@ lumios/
 │   │   ├── blueprints/
 │   │   │   ├── admin.py      # /admin — Jinja2 UI, admin role required
 │   │   │   ├── auth.py       # /auth — Google OAuth, login, logout (session-based)
-│   │   │   ├── health.py     # /health endpoint for monitoring
+│   │   │   ├── health.py     # /health (monitoring) and /health/ready (readiness: DB + Redis + schema)
 │   │   │   └── api/          # JSON API (JWT-authenticated)
 │   │   │       ├── __init__.py       # Parent blueprint, url_prefix=/api/v1
 │   │   │       ├── auth.py           # /api/v1/auth — JWT login, register, OAuth
@@ -55,9 +55,11 @@ lumios/
 │   │   │   ├── images.py     # Pillow processing: watermarked preview + thumbnail
 │   │   │   ├── mail.py       # Brevo email sending
 │   │   │   ├── redis_client.py # Shared Redis client
+│   │   │   ├── schema.py     # Is the DB schema at/past this code's Alembic head? (readiness checks)
 │   │   │   ├── storage.py    # S3-compatible storage operations
 │   │   │   ├── token.py      # JWT token generation/validation
 │   │   │   ├── videos.py     # Video validation, ffmpeg probe + thumbnail extraction
+│   │   │   ├── worker_probe.py # Worker pods' /live + /ready HTTP server (stdlib)
 │   │   │   ├── workers.py    # Queue/worker state for the admin Workers page, retry + discard of failed jobs
 │   │   │   └── zip_stream.py # Streaming ZIP download of a library
 │   │   ├── migrations/       # Alembic migration files; procrastinate_schema.py applies the job-queue schema
@@ -72,11 +74,11 @@ lumios/
 │   │   ├── models.py         # SQLAlchemy models
 │   │   ├── password_handler.py # Argon2id config
 │   │   ├── security.py       # @login_required, @require_role, @require_api_auth, @require_api_role
-│   │   ├── worker.py         # Procrastinate app, queues (default/video/photo), tasks, health check
+│   │   ├── worker.py         # Procrastinate app, queues (default/video/photo), tasks, schema wait + probe state
 │   │   ├── tracing.py        # @traced decorator for OpenTelemetry spans
 │   │   └── gunicorn_logging.conf
 │   ├── Dockerfile            # Multi-stage: builder + python-slim runtime
-│   ├── entrypoint.py         # Waits for DB, runs flask db upgrade (unless RUN_MIGRATIONS=false), starts Gunicorn; `migrate` arg = migrate only; `worker --queue <name>` / `worker-health` for the job workers
+│   ├── entrypoint.py         # Waits for DB, runs flask db upgrade (unless RUN_MIGRATIONS=false), starts Gunicorn; `migrate` arg = migrate only; `worker --queue <name>` for the job workers (waits for the schema, serves `/live` + `/ready` on :8081)
 │   ├── pyproject.toml        # Dependencies (managed via uv)
 │   └── uv.lock               # Locked dependency versions
 ├── frontend/                 # React SPA (TanStack Router file-based routing)
@@ -140,7 +142,6 @@ uv lock --upgrade-package <package>  # bump a pinned version
 
 # Background worker (see Background Worker); the Helm chart runs these in the worker pods
 python3 /entrypoint.py worker --queue video --concurrency 1   # run a pipeline's worker
-python3 /entrypoint.py worker-health                          # exit 0 when database + queue schema answer
 python -m procrastinate --app=worker.worker_app shell         # inspect/retry jobs (from app/)
 
 # CLI commands (registered in main.py)
@@ -214,7 +215,7 @@ Defined and validated in `backend/app/config.py`. The app **refuses to start** i
 | `CURRENT_AGB_VERSION` | `1.0` | Current Terms of Service version |
 | `LANDINGPAGE_URL` | `https://lumios.niecke-it.de` | Landing page origin (CORS allowlist) |
 | `MAX_CONTENT_LENGTH` | `20MB` | Max upload size |
-| `RUN_MIGRATIONS` | `true` | Read by `entrypoint.py`: run `flask db upgrade` before starting Gunicorn. The Helm chart sets `false` on the backend Deployment; the `migrate` hook Job runs `entrypoint.py migrate` instead |
+| `RUN_MIGRATIONS` | `true` | Read by `entrypoint.py`: run `flask db upgrade` before starting Gunicorn. The Helm chart sets `false` on the backend Deployment; the migrate Job (regular Job on a first install, `pre-upgrade` hook on upgrades) runs `entrypoint.py migrate` instead |
 
 ### Secondary configuration
 
@@ -443,7 +444,7 @@ Jobs are enqueued by the backend and run by separate worker pods. Queue and resu
 - **Timeout:** every ffmpeg call is bounded by `VIDEO_JOB_TIMEOUT_SECONDS`; the pod gets `terminationGracePeriodSeconds` to finish a running job.
 - **Dead workers:** a job left in `doing` by a killed worker is retried by `recover_stalled_jobs` with the task's retry policy, and ends `failed` once that is used up. Keep `worker-default` enabled.
 - **Admin page:** `/admin/workers` (`services/workers.py`) shows per pipeline the queued/running/failed/finished-24h counts, the oldest queued age and the pods' heartbeats, plus running jobs, a **Finished jobs** list (successful jobs, newest first, capped at 100 and limited to the last 30 days; filter by `?pipeline=` and `?task=`; target shown like the other lists, a job that succeeded after retries is marked `retried`; backed by the partial index `idx_procrastinate_jobs_succeeded`) and failed jobs with **Retry** (library `retry_job_by_id`, video back to `processing`) and **Discard** (deletes the failed job; its events cascade). Both are audit logged. The current video step comes from Redis (`worker:video-step:<uuid>`); without `REDIS_URL` it is kept in the worker process only, so the web app shows no step then. A retry counts as one more attempt, so a retried video job runs once more and is not retried again by the policy.
-- **Entrypoint:** `python3 /entrypoint.py worker --queue <default|video|photo> [--concurrency N]` waits for the database and runs the worker; `python3 /entrypoint.py worker-health` exits 0 when the database and the queue schema answer (the pods' liveness probe).
+- **Entrypoint:** `python3 /entrypoint.py worker --queue <default|video|photo> [--concurrency N]` waits for the database and runs the worker; the worker also starts a stdlib HTTP server (port 8081, `services/worker_probe.py`, only for the kubelet): `/live` is 200 while the database answered within the last 5 min (schema irrelevant: a missing schema never restarts the pod), `/ready` is 200 once the schema is at or past the code's head (re-checked every 30 s). It answers from the start, also while `wait_for_schema` blocks the Procrastinate loop (it logs the missing revisions, then at most every 60 s). The chart's startup/liveness probes use `/live`, readiness `/ready`; there is no exec probe.
 - **Local dev:** `podman-compose up` starts `worker-default`, `worker-video` and `worker-photo`; inspect jobs with `podman exec -it lumios-worker-video /usr/bin/python3 -m procrastinate --app=worker.worker_app shell` (`list_jobs`, `retry <id>`).
 - **Schema and upgrades:** the queue tables are created by an Alembic revision that calls `migrations/procrastinate_schema.py::ensure_schema(bind, "<procrastinate migration version>")`. The helper records the applied version in `procrastinate_schema_version` and replays the library's SQL migrations up to that version. `procrastinate[psycopg]` is pinned exactly in `pyproject.toml`; **a bump needs a new Alembic revision** calling `ensure_schema` with the new highest version in `procrastinate/sql/migrations/` (the `pre` and `post` scripts of a version run together in the migrate Job, which is fine while no new pod runs; a later upgrade that ships `pre`/`post` scripts may need the two-step procedure of the Procrastinate docs for rolling workers). `procrastinate_*` tables are excluded from Alembic autogenerate (`include_object`).
 
@@ -489,6 +490,7 @@ URL: https://lumios-app.niecke-it.de/library/<uuid>
 
 ```
 GET  /health                                        # DB ping, returns {status, database, git_hash}
+GET  /health/ready                                  # Readiness: DB + Redis + schema at/past the code's head; 503 {status: schema_not_ready} (no revision ids)
 GET  /version                                       # Public build identity {commit, version, built_at}
 
 # Auth (template-based, session)

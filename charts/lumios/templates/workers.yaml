@@ -4,9 +4,14 @@ Same image and credentials Secret as the backend, a different command. Jobs live
 in PostgreSQL, so a worker restart loses nothing: a job it was running is picked
 up again by the recovery task of the default worker (backend/app/worker.py).
 
-Distroless: no shell, so the command is the interpreter itself. The probes ask
-the database and the queue schema, not the worker loop: a worker that cannot
-reach PostgreSQL is restarted, one that is merely busy is left alone.
+Distroless: no shell, so the command is the interpreter itself. The probes are
+HTTP, served by a tiny stdlib thread inside the worker process (port 8081, only
+for the kubelet; no Service): an exec probe would start a second Python that
+imports the app inside the pod's memory limit. /live asks whether the database
+answered recently, not the worker loop: a worker that cannot reach PostgreSQL is
+restarted, one that is merely busy is left alone. /ready also needs the schema
+at or past the code's head, so a worker is not ready (and Helm's wait does not
+finish) until the migration has run.
 */ -}}
 {{- $pw := required "postgres.password is required — generate one with `openssl rand -base64 24`" .Values.postgres.password }}
 {{- $secretKey := required "backend.secretKey is required — generate one with `openssl rand -hex 32`" .Values.backend.secretKey }}
@@ -68,23 +73,37 @@ spec:
                 name: {{ include "lumios.fullname" $ }}-backend
           env:
             {{- include "lumios.backendEnv" $ | nindent 12 }}
-            # Migrations belong to the migrate hook Job.
+            # Migrations belong to the migrate Job (install) and hook (upgrade).
             - name: RUN_MIGRATIONS
               value: "false"
-          # Until the schema exists (first install: the post-install Job is
-          # still running) the worker exits and Kubernetes restarts it; the
-          # startup probe gives it time before liveness takes over.
+          ports:
+            - name: probe
+              containerPort: 8081
+          # Until the schema exists (first install: the migrate Job is still
+          # running) the worker waits, not ready but alive: /live does not look
+          # at the schema, so a missing schema never restarts the pod and the
+          # log names the missing revisions. The startup probe gives the pod
+          # time before liveness takes over.
           startupProbe:
-            exec:
-              command: ["/usr/bin/python3", "/entrypoint.py", "worker-health"]
+            httpGet:
+              path: /live
+              port: probe
             periodSeconds: 10
-            timeoutSeconds: 15
+            timeoutSeconds: 5
             failureThreshold: 30
           livenessProbe:
-            exec:
-              command: ["/usr/bin/python3", "/entrypoint.py", "worker-health"]
-            periodSeconds: 60
-            timeoutSeconds: 15
+            httpGet:
+              path: /live
+              port: probe
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: probe
+            periodSeconds: 10
+            timeoutSeconds: 5
             failureThreshold: 3
           resources:
             {{- toYaml $worker.resources | nindent 12 }}

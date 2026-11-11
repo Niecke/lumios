@@ -2,18 +2,33 @@
 Schema migration, run once per release instead of in every backend pod.
 
 entrypoint.py used to run `flask db upgrade` on each start, which races itself
-as soon as a rolling update overlaps two pods. As a hook it runs exactly once,
-and an upgrade does not touch the backend Deployment until it has succeeded; a
-failed Job fails the release and remediateLastFailure rolls it back while the
-old pods keep serving.
+as soon as a rolling update overlaps two pods. One Job per release cannot race.
 
-post-install, not pre-install: on a first install PostgreSQL is part of this
-same release, so a pre-install hook would run before any database exists. The
-Job retries the migration itself (see `entrypoint.py migrate`) because Helm
-starts it as soon as the StatefulSet exists, not when PostgreSQL accepts
-connections. The backend Deployment starts on the empty schema meanwhile: its
-readiness probe only pings the database, so Helm's wait does not deadlock on
-the hook.
+Health depends on the schema: the backend is ready (/health/ready) and the
+workers are ready (/ready of their probe server) only once the database holds
+every revision their code knows. That is why a first install cannot use a
+post-install hook. Helm runs a post-install hook only after --wait found every
+resource ready (Flux waits by default), and the pods are not ready before the
+hook has created the schema: it waits forever. Installs and upgrades differ:
+
+- Install: a regular Job (`<release>-migrate-install`), rendered only while
+  .Release.IsInstall. It is applied with the other resources, so it runs while
+  Helm waits, and the wait is a real gate: a failed migration leaves the pods
+  not ready and the install fails. It reads the regular backend Secret, which
+  is applied together with it. Flux drift detection is off for it: a finished
+  Job has immutable fields and Kubernetes adds others, nothing to correct. The
+  next upgrade no longer renders it, and Helm deletes it. Its name differs from
+  the hook Job's, so that delete never touches the hook.
+- Upgrade: a pre-upgrade hook. It runs once before any new pod is created, a
+  failed Job fails the release, and remediateLastFailure rolls it back while the
+  old pods keep serving. The old pods stay ready on the migrated schema (the
+  check is "at or past the head", not equality). A regular Job could not give
+  this ordering: Helm would roll the new pods out next to it.
+
+Not pre-install: on a first install PostgreSQL is part of this same release, so
+a pre-install hook would run before any database exists. Both Jobs retry the
+connection themselves (see `entrypoint.py migrate`) because they start as soon
+as the StatefulSet exists, not when PostgreSQL accepts connections.
 
 The hook carries its own Secret rather than reading the backend's. A
 pre-upgrade hook runs before the release's regular manifests are applied, so on
@@ -33,7 +48,7 @@ metadata:
     {{- include "lumios.labels" . | nindent 4 }}
     app.kubernetes.io/component: migrate
   annotations:
-    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook: pre-upgrade
     helm.sh/hook-weight: "-10"
     helm.sh/hook-delete-policy: before-hook-creation
 type: Opaque
@@ -50,56 +65,22 @@ metadata:
     {{- include "lumios.labels" . | nindent 4 }}
     app.kubernetes.io/component: migrate
   annotations:
-    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook: pre-upgrade
     helm.sh/hook-weight: "-5"
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
-  # Worst case: the entrypoint waits up to 30 x 5 s = 150 s for PostgreSQL,
-  # then runs `flask db upgrade` once. A failed upgrade is not retried, so
-  # backoffLimit is 0, and a hung one (lock wait) is killed after 300 s. The
-  # HelmReleases set timeout: 10m, above this deadline, so Helm never gives up
-  # and starts a rollback while the Job still runs.
-  backoffLimit: 0
-  activeDeadlineSeconds: 300
-  template:
-    metadata:
-      labels:
-        {{- include "lumios.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: migrate
-    spec:
-      restartPolicy: Never
-      {{- with .Values.priorityClassName }}
-      priorityClassName: {{ . | quote }}
-      {{- end }}
-      securityContext:
-        # UID 65532, created by useradd in backend/Dockerfile.
-        runAsNonRoot: true
-        runAsUser: 65532
-        runAsGroup: 65532
-        seccompProfile:
-          type: RuntimeDefault
-      containers:
-        - name: migrate
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
-          image: {{ include "lumios.image" (list "backend" .Values.backend.image) | quote }}
-          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
-          # The command is the interpreter itself, no shell wrapper.
-          command: ["/usr/bin/python3", "/entrypoint.py", "migrate"]
-          envFrom:
-            - secretRef:
-                name: {{ include "lumios.fullname" . }}-migrate
-          env:
-            {{- include "lumios.backendEnv" . | nindent 12 }}
-          resources:
-            {{- toYaml .Values.migration.resources | nindent 12 }}
-          volumeMounts:
-            # create_app() writes filesystem sessions here: there is no REDIS_URL.
-            - name: tmp
-              mountPath: /tmp
-      volumes:
-        - name: tmp
-          emptyDir: {}
+  {{- include "lumios.migrateJobSpec" (dict "root" . "secret" (printf "%s-migrate" (include "lumios.fullname" .)) "component" "migrate") | nindent 2 }}
+{{- if .Release.IsInstall }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "lumios.fullname" . }}-migrate-install
+  labels:
+    {{- include "lumios.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate-install
+  annotations:
+    helm.toolkit.fluxcd.io/driftDetection: disabled
+spec:
+  {{- include "lumios.migrateJobSpec" (dict "root" . "secret" (printf "%s-backend" (include "lumios.fullname" .)) "component" "migrate-install") | nindent 2 }}
+{{- end }}
