@@ -103,6 +103,8 @@ jobs:
       - name: Lint and render
         run: |
           set -euo pipefail
+          # A failed `[ ... ]` prints nothing: name the line that stopped the job.
+          trap 'echo "::error::helm-lint stopped at line $LINENO: $BASH_COMMAND" >&2' ERR
           # Preinstalled on ubuntu-latest, not pinned by us: fail loudly if gone.
           yq --version
           # Same for kubectl, which renders the Talos entry point below.
@@ -163,7 +165,7 @@ jobs:
           # Not `| grep -q`: it exits early and yq dies of SIGPIPE under pipefail.
           [ "$(yq 'select(.kind == "OCIRepository" or (.kind == "HelmRelease" and .metadata.namespace == "lumios")) | .kind' "$RUNNER_TEMP/staging-talos-flux.yaml" | wc -l)" -eq 0 ]
           # The k3s cluster never applies the Talos entry point.
-          [ "$(yq '.resources | contains(["staging-talos"])' deploy/flux/kustomization.yaml)" = false ]
+          [ "$(yq '.resources[]' deploy/flux/kustomization.yaml | grep -cx 'staging-talos' || true)" -eq 0 ]
           for env in staging prod staging-talos; do
             if [ "$env" = staging-talos ]; then
               yq 'select(.kind == "HelmRelease") | .spec.values' "$RUNNER_TEMP/staging-talos-flux.yaml" > "$RUNNER_TEMP/$env-values.yaml"
