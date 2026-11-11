@@ -17,10 +17,11 @@ initSentry();
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, type InfiniteData } from "@tanstack/react-query";
 import { routeTree } from "./routeTree.gen";
-import { imagesApi } from "./api/images";
-import { uploadVideo, pollVideoStatus } from "./api/videos";
+import { imagesApi, type ImagePage } from "./api/images";
+import { uploadVideo, pollVideoStatus, videosApi } from "./api/videos";
+import { appendUploaded } from "./uploads/appendMedia";
 import { createUploadStore } from "./uploads/uploadStore";
 import { onLogout } from "./api/auth";
 import { UploadProvider } from "./uploads/UploadContext";
@@ -32,8 +33,16 @@ const uploadStore = createUploadStore({
   uploadImage: (id, file) => imagesApi.upload(id, file),
   uploadVideo,
   pollVideoStatus,
-  onFileDone: (id) => {
-    queryClient.resetQueries({ queryKey: ["images", id] });
+  fetchVideo: (id, uuid) => videosApi.get(id, uuid),
+  // Append the finished file locally; no refetch, so the visible grid stays put.
+  onFileDone: (id, item) => {
+    if (item) {
+      queryClient.setQueryData<InfiniteData<ImagePage, number>>(["images", id], (d) =>
+        appendUploaded(d, item)
+      );
+    } else {
+      queryClient.invalidateQueries({ queryKey: ["images", id], refetchType: "none" });
+    }
   },
   onDrained: () => {
     queryClient.invalidateQueries({ queryKey: ["libraries"] });

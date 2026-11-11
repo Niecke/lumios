@@ -13,6 +13,7 @@ import { formatBytes } from "../i18n";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { librariesApi } from "../api/libraries";
 import { imagesApi, type Image } from "../api/images";
+import { dedupeMedia } from "../uploads/appendMedia";
 import { publicApi, type PublicImage } from "../api/public";
 import { videosApi } from "../api/videos";
 import { isVideoFile, uploadStatusIcon, type UploadItem } from "../uploads/uploadStore.ts";
@@ -968,7 +969,7 @@ function AuthenticatedLibraryView({ libraryUuid, user }: { libraryUuid: string; 
     }
   }
 
-  const allImages = data?.pages.flatMap((p) => p.images) ?? [];
+  const allImages = useMemo(() => dedupeMedia(data?.pages.flatMap((p) => p.images) ?? []), [data]);
   const hasImages = allImages.length > 0;
   const likedCount = useMemo(
     () => allImages.filter((img) => img.customer_state === "liked").length,
@@ -1256,7 +1257,6 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
         setPublicQueue((q) =>
           q.map((i) => (i.id === item.id ? { ...i, status: "done" } : i))
         );
-        queryClient.invalidateQueries({ queryKey: ["public-library", libraryUuid] });
       } catch (err) {
         const message: DisplayError = err instanceof Error ? { error: err } : { key: "watermark.uploadFailed" };
         setPublicQueue((q) =>
@@ -1266,6 +1266,8 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
         );
       }
     }
+    // One refresh for the whole batch instead of one per file (no grid jump meanwhile).
+    queryClient.invalidateQueries({ queryKey: ["public-library", libraryUuid] });
   }
 
   function xhrPutPublic(

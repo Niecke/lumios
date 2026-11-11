@@ -1,6 +1,7 @@
 // App-level upload queue. Framework-free so it survives page changes and can be
 // tested with the plain node test runner; React reads it via useSyncExternalStore.
 import type { DisplayError } from "../api/errors.ts";
+import type { Image } from "../api/images.ts";
 
 export type UploadStatus = "pending" | "uploading" | "processing" | "done" | "error";
 
@@ -67,14 +68,17 @@ export function summarize(items: readonly QueuedUpload[]): UploadSummary {
 }
 
 export interface UploadDeps {
-  uploadImage(libraryId: number, file: File): Promise<unknown>;
+  uploadImage(libraryId: number, file: File): Promise<Image>;
   uploadVideo(
     libraryId: number,
     file: File,
     onProgress: (pct: number) => void
   ): Promise<{ uuid: string; processing_status: string }>;
   pollVideoStatus(libraryId: number, uuid: string): Promise<unknown>;
-  onFileDone(libraryId: number): void;
+  /** Full list item of a finished video (best effort). */
+  fetchVideo(libraryId: number, uuid: string): Promise<Image>;
+  /** Called once per finished file; `item` is undefined when it could not be obtained. */
+  onFileDone(libraryId: number, item?: Image): void;
   onDrained?(): void;
 }
 
@@ -114,6 +118,7 @@ export function createUploadStore(deps: UploadDeps): UploadStore {
   async function runItem(item: QueuedUpload) {
     const gen = generation;
     const isVideo = isVideoFile(item.file);
+    let created: Image | undefined;
     patch(item.id, isVideo ? { status: "uploading", progress: 0 } : { status: "uploading" }, gen);
     try {
       if (isVideo) {
@@ -124,8 +129,13 @@ export function createUploadStore(deps: UploadDeps): UploadStore {
         if (status.processing_status !== "ready" && status.processing_status !== "failed") {
           await deps.pollVideoStatus(item.libraryId, status.uuid);
         }
+        try {
+          created = await deps.fetchVideo(item.libraryId, status.uuid);
+        } catch (err) {
+          console.error("fetchVideo failed", err);
+        }
       } else {
-        await deps.uploadImage(item.libraryId, item.file);
+        created = await deps.uploadImage(item.libraryId, item.file);
       }
     } catch (err) {
       const error: DisplayError =
@@ -136,7 +146,7 @@ export function createUploadStore(deps: UploadDeps): UploadStore {
     if (gen !== generation) return;
     patch(item.id, { status: "done" }, gen);
     try {
-      deps.onFileDone(item.libraryId);
+      deps.onFileDone(item.libraryId, created);
     } catch (err) {
       console.error("onFileDone failed", err);
     }

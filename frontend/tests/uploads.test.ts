@@ -1,6 +1,7 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import type { Image } from "../src/api/images.ts";
 import {
   AUTO_HIDE_MS,
   bindBeforeUnload,
@@ -35,6 +36,22 @@ function deferred<T = void>() {
   });
   return { promise, resolve, reject };
 }
+const mkImage = (name: string): Image => ({
+  id: 1,
+  uuid: name,
+  filename: name,
+  content_type: "image/jpeg",
+  size: 1,
+  width: null,
+  height: null,
+  media_type: "photo",
+  customer_state: "none",
+  is_external: false,
+  created_at: "2026-01-01T00:00:00",
+  original_url: null,
+  preview_url: null,
+  thumb_url: null,
+});
 const tick = () => new Promise((r) => setImmediate(r));
 const img = (n: string) => new File(["x"], n, { type: "image/jpeg" });
 const vid = (n: string) => new File(["x"], n, { type: "video/mp4" });
@@ -42,20 +59,26 @@ const vid = (n: string) => new File(["x"], n, { type: "video/mp4" });
 function setup(over: Partial<UploadDeps> = {}) {
   const calls: string[] = [];
   const done: number[] = [];
+  const items: (Image | undefined)[] = [];
   let drained = 0;
   const deps: UploadDeps = {
     uploadImage: async (_id, f) => {
       calls.push(f.name);
+      return mkImage(f.name);
     },
     uploadVideo: async () => ({ uuid: "u1", processing_status: "processing" }),
     pollVideoStatus: async () => {},
-    onFileDone: (id) => done.push(id),
+    fetchVideo: async (_id, uuid) => ({ ...mkImage(uuid), media_type: "video" }),
+    onFileDone: (id, item) => {
+      done.push(id);
+      items.push(item);
+    },
     onDrained: () => {
       drained++;
     },
     ...over,
   };
-  return { store: createUploadStore(deps), calls, done, drained: () => drained };
+  return { store: createUploadStore(deps), calls, done, items, drained: () => drained };
 }
 
 const statuses = (items: QueuedUpload[]) => items.map((i) => i.status);
@@ -369,4 +392,29 @@ test("widget markup and root wiring", () => {
   const main = readFileSync(new URL("../src/main.tsx", import.meta.url), "utf8");
   assert.ok(main.includes("onLogout(() => uploadStore.reset())"));
   assert.ok(!main.includes("onSessionCleared"));
+});
+
+test("onFileDone gets the created image, the fetched video, and undefined when the fetch fails", async () => {
+  const log = mock.method(console, "error", () => {});
+  try {
+    const ok = setup();
+    ok.store.addFiles(1, "L", [img("a.jpg"), vid("v.mp4")]);
+    await tick();
+    assert.deepEqual(ok.items.map((i) => [i?.media_type, i?.uuid]), [["photo", "a.jpg"], ["video", "u1"]]);
+
+    const bad = setup({ fetchVideo: async () => { throw new Error("nope"); } });
+    bad.store.addFiles(1, "L", [vid("v.mp4")]);
+    await tick();
+    assert.deepEqual(bad.items, [undefined]);
+    assert.equal(bad.store.getSnapshot()[0].status, "done");
+  } finally {
+    log.mock.restore();
+  }
+});
+
+test("onFileDone is not called for failed files", async () => {
+  const { store, done } = setup({ uploadImage: async () => { throw new Error("x"); } });
+  store.addFiles(1, "L", [img("a.jpg")]);
+  await tick();
+  assert.equal(done.length, 0);
 });

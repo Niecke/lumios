@@ -22,7 +22,7 @@ export interface Image {
   thumb_url: string | null;
 }
 
-interface ImagePage {
+export interface ImagePage {
   images: Image[];
   total: number;
   page: number;
