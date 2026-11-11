@@ -21,12 +21,14 @@ merge the release-please pull request → tag vX.Y.Z
                            helmrelease.yaml, chart in ocirepository.yaml
 ```
 
-Two environments on the one k3s node, one HelmRelease each:
+Production and staging share the one k3s node, one HelmRelease each. The private
+Talos cluster takes over staging (see "Talos staging (private)"):
 
 | | Namespace | Hosts (`.niecke-it.de`) | Chart from | Image tag written by |
 |---|---|---|---|---|
 | `deploy/flux/staging/` | `lumios-staging` | `lumios-staging`, `lumios-app-staging`, `lumios-api-staging` | `charts/lumios` on `main` | `promote.yml`, every merge |
 | `deploy/flux/prod/` | `lumios` | `lumios`, `lumios-app`, `lumios-api` | `oci://ghcr.io/niecke/lumios/charts/lumios`, pinned to the release | `release.yml`, every `vX.Y.Z` tag |
+| `deploy/flux/staging-talos/` | `lumios-staging` on the Talos cluster | same as `staging/` | `charts/lumios` on `main` | the same as `staging/`, via `promote.yml` |
 
 `deploy/flux/base/` holds the shared GitRepository and the Flux Kustomization.
 The entry point stays `deploy/flux/kustomization.yaml`, the path that
@@ -232,6 +234,60 @@ the kubelet evicts it before production, and is sized small. It runs the same
 images as production; the frontend's Google client id, landing-page links and
 app URL are set per environment at runtime (`/config.js`, written from the
 container's environment).
+
+## Talos staging (private)
+
+The private Talos cluster takes over the **existing** staging; there is no
+second staging. It uses the same hosts (`lumios-staging`, `lumios-app-staging`,
+`lumios-api-staging` `.niecke-it.de`) and the same bucket `lumios-staging`. The
+database starts empty and the old Postgres volume is discarded.
+
+`deploy/flux/staging-talos/` holds the entry point: the `lumios` namespace for
+the Flux source, a GitRepository, the Kustomization `lumios-staging-talos`, and
+`../staging` as a resource. `helmrelease-patch.yaml` overrides only what Talos
+needs: `ingress.tls.clusterIssuer: letsencrypt-dns01`,
+`postgres.storage.storageClass: hcloud-volumes`, `postgres.storage.size: 10Gi`
+and an empty `ingress.basicAuth.secretName`. Everything else, the image tags
+included, comes from `staging/helmrelease.yaml`, so `promote.yml` reaches both
+clusters. It does not use `../base`, whose `sync.yaml` would apply `prod/`.
+
+> **Never** run `kubectl apply -k deploy/flux/` on the Talos cluster: that
+> deploys production.
+
+Bootstrap, once, with the Talos kubeconfig:
+
+```bash
+kubectl apply -k deploy/flux/staging-talos/
+```
+
+After that Flux keeps it in sync with `main`. `deploy/flux/kustomization.yaml`
+does not list `staging-talos`, so the k3s cluster never applies it (CI checks).
+
+**Cutover order:**
+
+1. The Talos staging is deployed (bootstrap above, Secrets below).
+2. The DNS records are repointed to the private Talos load balancer, in
+   Niecke/infrastructure.
+3. A follow-up PR drops `staging` from `deploy/flux/kustomization.yaml`. Its
+   prune uninstalls the k3s staging.
+
+Until step 2 the k3s staging serves the hosts. Both clusters run their own
+database, so DNS alone decides which one gets traffic.
+
+**Hosts.** They come only from `ingress.hosts`. `PUBLIC_BASE_URL`,
+`FRONTEND_URL` and `LANDINGPAGE_URL` are derived from them in
+`charts/lumios/templates/_helpers.tpl`, and the frontend's `/config.js` URLs in
+`charts/lumios/templates/frontend.yaml`. Because hosts and bucket are unchanged,
+the bucket CORS rule (see "CORS on the bucket") and the Google OAuth origins and
+redirect URIs need no change.
+
+**Secrets by hand**, in `lumios-staging` (Niecke/infrastructure runbook §10):
+`lumios-values`, with the existing staging bucket credentials, same command as
+"Staging setup" step 2. `lumios-staging-basic-auth` is **not** needed on Talos.
+
+**Keep it private.** The staging is reachable only through the VPN, so Basic
+Auth is off. With a public DNS target the landing page and the frontend would
+be open: keep the records on the private load balancer.
 
 ## Releasing
 

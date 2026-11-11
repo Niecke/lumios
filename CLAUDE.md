@@ -92,7 +92,7 @@ lumios/
 │   └── package.json
 ├── landingpage/              # Static landing page (nginx container)
 ├── charts/lumios/            # Helm chart (published as OCI chart on release)
-├── deploy/                   # Flux GitOps manifests for k3s staging/prod (see deploy/README.md)
+├── deploy/                   # Flux GitOps manifests for k3s staging/prod and the private Talos staging (see deploy/README.md)
 ├── e2e/                      # Playwright end-to-end tests (run by e2e-tests.yml)
 ├── cloudflare-waf-rules.md   # Cloudflare WAF rule documentation
 ├── .github/workflows/        # CI/CD pipelines

@@ -1,0 +1,28 @@
+# Applies deploy/flux/staging-talos/ from git, including itself. Counterpart of
+# ../base/sync.yaml, which applies deploy/flux/ on the k3s node and must never
+# run on this cluster.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: lumios-staging-talos
+  namespace: lumios
+spec:
+  interval: 5m
+  path: ./deploy/flux/staging-talos
+  sourceRef:
+    kind: GitRepository
+    name: lumios
+  # Objects removed from git are removed from the cluster. Pruning lumios-staging
+  # uninstalls the app and deletes its namespace, the database PVC included.
+  prune: true
+  wait: false
+
+  # Self-managing: this Kustomization applies the GitRepository it reads from and
+  # the HelmRelease it deploys. Hand-patching the GitRepository's branch does not
+  # stick, because the next reconcile restores whatever git says. Change the
+  # branch in git, or suspend this first:
+  #
+  #   flux -n lumios suspend kustomization lumios-staging-talos
+  #
+  # cluster-admin is what `flux install` grants kustomize-controller; no
+  # serviceAccountName override is needed for a single-tenant cluster.
