@@ -4,7 +4,7 @@
 # postgres.image) rather than a plain Alpine, because pg_dump refuses to dump a
 # server newer than itself — the major version here has to track the one the
 # StatefulSet runs.
-FROM docker.io/library/postgres:18.6-alpine@sha256:123b17998ccaf47e53b502e8c6a1e79afd8f579c6f3eec83c563da026f957395
+FROM docker.io/library/postgres:18.6-alpine@sha256:9ba53c7d41ea093baf5c1ba635ba5434c4f979880527d49bb7d9237d3193085b
 
 # rclone from the official image, the same way the backend Dockerfile takes uv
 # from the astral image. Pinned by digest. The binary is statically linked and
