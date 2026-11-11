@@ -92,7 +92,7 @@ lumios/
 │   └── package.json
 ├── landingpage/              # Static landing page (nginx container)
 ├── charts/lumios/            # Helm chart (published as OCI chart on release)
-├── deploy/                   # Flux GitOps manifests for k3s staging/prod and the private Talos staging (see deploy/README.md)
+├── deploy/                   # Flux GitOps manifests for k3s production and the private Talos staging (see deploy/README.md)
 ├── e2e/                      # Playwright end-to-end tests (run by e2e-tests.yml)
 ├── cloudflare-waf-rules.md   # Cloudflare WAF rule documentation
 ├── .github/workflows/        # CI/CD pipelines
@@ -674,7 +674,7 @@ Some workflow triggers below still list `dev` (and `release/**`); those entries 
 
 ### GitHub Actions workflows
 
-Container images live in **GHCR** (`ghcr.io/niecke/lumios/{backend,frontend,landingpage}`) and are pushed with `GITHUB_TOKEN`. Workflows never deploy directly: Flux on the k3s node pulls the new tags (see `deploy/README.md`).
+Container images live in **GHCR** (`ghcr.io/niecke/lumios/{backend,frontend,landingpage}`) and are pushed with `GITHUB_TOKEN`. Workflows never deploy directly: Flux on the k3s node (production) and on the Talos cluster (staging) pulls the new tags (see `deploy/README.md`).
 
 | Workflow | Trigger | Actions |
 |---|---|---|
@@ -711,7 +711,7 @@ def inject_config():
 
 ## Infrastructure
 
-Staging and production run on one Hetzner node (CAX21, k3s) with Hetzner object storage. The node, volume and DNS are managed in the separate `Niecke/infrastructure` repository; this repo holds no Terraform. Deployment is Flux GitOps with the Helm chart in `charts/lumios/`, see `deploy/README.md`.
+Production runs on one Hetzner node (CAX21, k3s); the staging runs on the private Talos cluster (VPN only, no Basic Auth). Both use Hetzner object storage. The node, volume and DNS are managed in the separate `Niecke/infrastructure` repository; this repo holds no Terraform. Deployment is Flux GitOps with the Helm chart in `charts/lumios/`, see `deploy/README.md`.
 
 ---
 
