@@ -88,13 +88,13 @@ spec:
     # Smaller than production; priorityClassName falls back to lumios-staging.
     workers:
       default:
-        concurrency: 2
+        concurrency: 1
         resources:
           requests:
             cpu: 10m
-            memory: 96Mi
+            memory: 128Mi
           limits:
-            memory: 192Mi
+            memory: 384Mi
       video:
         resources:
           requests:
