@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: docker.io/library/postgres:18.6-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+    image: docker.io/library/postgres:18.6-alpine@sha256:9ba53c7d41ea093baf5c1ba635ba5434c4f979880527d49bb7d9237d3193085b
     container_name: lumios-postgres
     env_file: .env
     environment:
@@ -20,7 +20,7 @@ services:
 
   postgres-test:
     profiles: ["test"]
-    image: docker.io/library/postgres:18.6-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+    image: docker.io/library/postgres:18.6-alpine@sha256:9ba53c7d41ea093baf5c1ba635ba5434c4f979880527d49bb7d9237d3193085b
     container_name: lumios-postgres-test
     command: ["-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
     environment:
@@ -38,7 +38,7 @@ services:
       retries: 5
 
   redis:
-    image: docker.io/library/redis:8.10.3-alpine@sha256:21090af93f8324db2f0f0f4f38a7c60369d47d917e000c3423d89d2ae2883537
+    image: docker.io/library/redis:8.10.3-alpine@sha256:71885d8cc6e42f2bc0aa2eb853bfc4be200b5108a46ac50e117ae1df0531fb80
     container_name: lumios-redis
     restart: unless-stopped
     healthcheck:
@@ -72,7 +72,7 @@ services:
     restart: unless-stopped
 
   s3-init:
-    image: docker.io/rclone/rclone:1.75.2@sha256:2687085f718d3c628f7fdfb77c52a1d344332aed543110bb88088f2c70d43eb5
+    image: docker.io/rclone/rclone:1.76.0@sha256:7cbeec24a44f206067597c0368be4de90ae19a64d5113c7d1938bd737a81e466
     container_name: lumios-s3-init
     depends_on:
       s3:
@@ -87,7 +87,7 @@ services:
     restart: "no"
 
   jaeger:
-    image: docker.io/jaegertracing/jaeger:2.22.0@sha256:836b967b5abcf1f7758066aa6b348619267a2f1459f72d472840570f9bd88a17
+    image: docker.io/jaegertracing/jaeger:2.23.0@sha256:3823829974ccfc2485d2e48b165579091f32295022ae80ca49704e2f4834116e
     container_name: lumios-jaeger
     ports:
       - "16686:16686"   # Jaeger UI
@@ -146,6 +146,19 @@ services:
     container_name: lumios-worker-video
     env_file: .env
     command: ["worker", "--queue", "video", "--concurrency", "1"]
+    environment:
+      RUN_MIGRATIONS: "false"
+    depends_on:
+      - backend
+    volumes:
+      - ./backend/app:/app:Z
+    restart: unless-stopped
+
+  worker-photo:
+    build: backend/.
+    container_name: lumios-worker-photo
+    env_file: .env
+    command: ["worker", "--queue", "photo", "--concurrency", "2"]
     environment:
       RUN_MIGRATIONS: "false"
     depends_on:

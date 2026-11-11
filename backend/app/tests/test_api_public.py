@@ -22,7 +22,7 @@ from datetime import datetime as _datetime
 
 import pytest
 from unittest.mock import patch
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from models import (
     db,
@@ -44,6 +44,15 @@ BASE = "/api/v1/public"
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+def _cover_jobs():
+    return db.session.execute(
+        text(
+            "SELECT queue_name, queueing_lock FROM procrastinate_jobs "
+            "WHERE task_name = 'generate_library_cover'"
+        )
+    ).mappings().all()
 
 
 @pytest.fixture
@@ -127,6 +136,27 @@ class TestGetPublicLibrary:
     def test_private_library_returns_404(self, client, private_library):
         res = client.get(f"{BASE}/libraries/{private_library.uuid}")
         assert res.status_code == 404
+
+    def test_cover_url_is_null_without_cover(self, client, public_library):
+        res = client.get(f"{BASE}/libraries/{public_library.uuid}")
+        assert res.get_json()["library"]["cover_url"] is None
+
+    def test_cover_url_is_presigned_when_cover_exists(self, client, public_library):
+        public_library.cover_key = "photos/1/1/covers/cover-abcd1234.jpg"
+        db.session.commit()
+        with patch("services.covers.storage") as st:
+            st.get_presigned_url.return_value = "http://signed/cover"
+            res = client.get(f"{BASE}/libraries/{public_library.uuid}")
+        assert res.get_json()["library"]["cover_url"] == "http://signed/cover"
+
+    def test_private_library_cover_is_not_reachable(self, client, private_library):
+        private_library.cover_key = "photos/1/1/covers/cover-abcd1234.jpg"
+        db.session.commit()
+        with patch("services.covers.storage") as st:
+            res = client.get(f"{BASE}/libraries/{private_library.uuid}")
+        assert res.status_code == 404
+        assert "cover" not in res.get_data(as_text=True)
+        st.get_presigned_url.assert_not_called()
 
     def test_nonexistent_library_returns_404(self, client):
         res = client.get(f"{BASE}/libraries/00000000-0000-0000-0000-000000000000")
@@ -380,6 +410,14 @@ class TestPublicUpload:
         assert res.status_code == 201
         mock_invalidate.assert_called_once_with(upload_library.id)
     
+    def test_upload_enqueues_cover_job(self, client, upload_library):
+        with _patch("services.images.storage"):
+            res = self._post_jpeg(client, upload_library.uuid)
+        assert res.status_code == 201
+        (job,) = _cover_jobs()
+        assert job["queue_name"] == "photo"
+        assert job["queueing_lock"] == f"library-cover-{upload_library.id}"
+
     def test_upload_enabled_accepts_webp(self, client, upload_library):
         from PIL import Image as _PilImage
 

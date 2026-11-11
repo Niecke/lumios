@@ -16,6 +16,7 @@ export interface Library {
   watermark_gcs_key: string | null;
   watermark_scale: number | null;
   watermark_position: string | null;
+  cover_url: string | null;
 }
 
 interface LibraryPage {

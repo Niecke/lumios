@@ -27,6 +27,7 @@ from services.quota import check_upload_allowed
 from services.zip_stream import stream_zip
 from services.mail import notify_gallery_finished, add_to_brevo_waitlist
 from config import MAX_USERS, BREVO_WAITLIST_LIST_ID, VIDEO_UPLOADS_ENABLED
+from services.covers import cover_url
 from services.redis_client import get_redis, cache_get, cache_set, cache_delete_pattern
 from services.images import validate_upload, process_and_store_image
 from services.videos import (
@@ -250,6 +251,7 @@ def get_public_library(library_uuid: str):
             "download_enabled": library.download_enabled,
             "public_upload_enabled": library.public_upload_enabled,
             "video_uploads_enabled": VIDEO_UPLOADS_ENABLED,
+            "cover_url": cover_url(library),
         },
         "images": media_dicts,
         "total": total,

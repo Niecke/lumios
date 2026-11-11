@@ -10,7 +10,7 @@ from PIL import Image as PilImage
 from sqlalchemy import select, text
 
 import worker
-from models import db, Library, User, Video, VideoProcessingStatus
+from models import db, Image, Library, User, Video, VideoProcessingStatus
 from services.videos import finalize_video_upload, process_video
 
 
@@ -771,6 +771,138 @@ class TestMailExecution:
         assert _target({"ticket_id": 9, "subject": "x"}) == "9"
         assert _target({"email": "a@test.com", "ip": "1.2.3.4"}) == "a@test.com"
         assert _target({"summary": "x"}) is None
+
+
+@pytest.fixture
+def cover_library():
+    user = User(email="cover@test.com", active=True)
+    db.session.add(user)
+    db.session.commit()
+    lib = Library(user_id=user.id, name="Cover Lib")
+    db.session.add(lib)
+    db.session.commit()
+    db.session.add(
+        Image(
+            library_id=lib.id,
+            s3_key="a.jpg",
+            original_filename="a.jpg",
+            content_type="image/jpeg",
+            size=10,
+        )
+    )
+    db.session.commit()
+    return lib
+
+
+def _cover_jobs():
+    return [j for j in _jobs() if j["task_name"] == "generate_library_cover"]
+
+
+def _preview_jpeg() -> bytes:
+    buf = io.BytesIO()
+    PilImage.new("RGB", (200, 100), "green").save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+class TestCoverJob:
+    def test_enqueue_is_debounced_on_photo_queue(self, app, cover_library):
+        from services.covers import enqueue_library_cover
+
+        assert enqueue_library_cover(cover_library.id) is True
+        assert enqueue_library_cover(cover_library.id) is True
+
+        (job,) = _cover_jobs()
+        assert job["queue_name"] == "photo"
+        assert job["status"] == "todo"
+        assert job["args"] == {"library_id": cover_library.id}
+        assert job["lock"] == f"library-cover-{cover_library.id}"
+        assert job["queueing_lock"] == f"library-cover-{cover_library.id}"
+        wait = (job["scheduled_at"] - datetime.now(timezone.utc)).total_seconds()
+        assert 20 < wait <= 30
+
+    def test_enqueue_failure_returns_false(self, app, cover_library):
+        from services.covers import enqueue_library_cover
+
+        with patch("worker.open_for_defer", side_effect=RuntimeError("down")):
+            assert enqueue_library_cover(cover_library.id) is False
+
+    def test_task_is_registered_on_photo_with_retry_policy(self):
+        task = worker.worker_app.tasks["generate_library_cover"]
+        assert task.queue == "photo"
+        assert task.retry_strategy.max_attempts == worker.COVER_MAX_RUNS - 1
+
+    def test_photo_worker_runs_job_and_sets_cover(self, app, cover_library):
+        lib_id = cover_library.id
+        from services.covers import enqueue_library_cover
+
+        enqueue_library_cover(lib_id)
+        _make_due()
+        with patch("services.covers.storage") as st:
+            st.get_object_bytes.return_value = _preview_jpeg()
+            _run_worker("photo")
+
+        assert _cover_jobs()[0]["status"] == "succeeded"
+        lib = db.session.get(Library, lib_id)
+        assert lib.cover_key.startswith(f"photos/{lib.user_id}/{lib.id}/covers/cover-")
+        st.upload_fileobj.assert_called_once()
+
+    def test_default_worker_does_not_pick_up_cover_job(self, app, cover_library):
+        lib_id = cover_library.id
+        from services.covers import enqueue_library_cover
+
+        enqueue_library_cover(lib_id)
+        _make_due()
+        _run_worker("default")
+
+        assert _cover_jobs()[0]["status"] == "todo"
+
+    def test_failure_is_retried_records_error_ends_failed_and_success_clears_it(
+        self, app, cover_library
+    ):
+        lib_id = cover_library.id
+        from models import WorkerJobError
+        from services.covers import enqueue_library_cover
+
+        enqueue_library_cover(lib_id)
+        _make_due()
+        with patch("services.covers.storage") as st:
+            st.get_object_bytes.return_value = _preview_jpeg()
+            st.upload_fileobj.side_effect = OSError("storage down")
+            _run_worker("photo")
+
+            (job,) = _cover_jobs()
+            assert job["status"] == "todo" and job["attempts"] == 1
+            assert (job["scheduled_at"] - datetime.now(timezone.utc)).total_seconds() > 3
+            row = db.session.get(WorkerJobError, job["id"])
+            assert row.task_name == "generate_library_cover"
+            assert row.queue_name == "photo"
+            assert row.error_message == "OSError: storage down"
+
+            for _ in range(worker.COVER_MAX_RUNS - 1):
+                _make_due()
+                _run_worker("photo")
+
+        (job,) = _cover_jobs()
+        assert job["status"] == "failed"
+        assert job["attempts"] == worker.COVER_MAX_RUNS
+        assert db.session.get(Library, lib_id).cover_key is None
+        assert db.session.get(WorkerJobError, job["id"]) is not None
+
+        # a later success (admin retry) clears the error row
+        db.session.execute(
+            text(
+                "UPDATE procrastinate_jobs SET status = 'todo', attempts = 0, "
+                "scheduled_at = now() WHERE id = :id"
+            ),
+            {"id": job["id"]},
+        )
+        db.session.commit()
+        with patch("services.covers.storage") as st:
+            st.get_object_bytes.return_value = _preview_jpeg()
+            _run_worker("photo")
+        assert _cover_jobs()[0]["status"] == "succeeded"
+        assert db.session.get(WorkerJobError, job["id"]) is None
+        assert db.session.get(Library, lib_id).cover_key is not None
 
 
 class TestCloseWorkerApp:

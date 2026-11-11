@@ -196,7 +196,8 @@
     "share": "Share",
     "addMedia": "Add photos",
     "mediaCount": "{{total}} of {{max}} media items",
-    "loadFailed": "Failed to load photos. Please refresh."
+    "loadFailed": "Failed to load photos. Please refresh.",
+    "uploadNotQueued": "The gallery could not be loaded, so the files were not uploaded."
   },
   "settings": {
     "title": "Library Settings",

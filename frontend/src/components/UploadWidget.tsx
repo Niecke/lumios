@@ -67,21 +67,33 @@ export function UploadWidget() {
           </span>
         </button>
         {state === "running" && current?.status === "uploading" && (
-          <div
-            className="upload-widget__progress"
-            role="progressbar"
-            aria-valuenow={current.progress ?? 0}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label={t("uploads.currentProgress", {
-              name: current.file.name,
-            })}
-          >
+          current.progress === undefined ? (
             <div
-              className="upload-widget__progress-bar"
-              style={{ width: `${current.progress ?? 0}%` }}
-            />
-          </div>
+              className="upload-widget__progress upload-widget__progress--indeterminate"
+              role="progressbar"
+              aria-label={t("uploads.currentProgress", {
+                name: current.file.name,
+              })}
+            >
+              <div className="upload-widget__progress-bar" />
+            </div>
+          ) : (
+            <div
+              className="upload-widget__progress"
+              role="progressbar"
+              aria-valuenow={current.progress}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={t("uploads.currentProgress", {
+                name: current.file.name,
+              })}
+            >
+              <div
+                className="upload-widget__progress-bar"
+                style={{ width: `${current.progress}%` }}
+              />
+            </div>
+          )
         )}
         {open && (
           <ul id="upload-widget-list" className="upload-widget__list">

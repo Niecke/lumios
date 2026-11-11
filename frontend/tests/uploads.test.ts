@@ -11,6 +11,21 @@ import {
   type UploadDeps,
 } from "../src/uploads/uploadStore.ts";
 
+// api/auth.ts reads the storages at call time; stub them like tests/auth.test.ts.
+const localData = new Map<string, string>();
+(globalThis as any).localStorage = {
+  getItem: (k: string) => localData.get(k) ?? null,
+  setItem: (k: string, v: string) => void localData.set(k, v),
+  removeItem: (k: string) => void localData.delete(k),
+};
+const sessionData = new Map<string, string>();
+(globalThis as any).sessionStorage = {
+  getItem: (k: string) => sessionData.get(k) ?? null,
+  setItem: (k: string, v: string) => void sessionData.set(k, v),
+  removeItem: (k: string) => void sessionData.delete(k),
+};
+const { authApi, onLogout, tokenStore } = await import("../src/api/auth.ts");
+
 function deferred<T = void>() {
   let resolve!: (v: T) => void;
   let reject!: (e: unknown) => void;
@@ -276,10 +291,82 @@ test("reset clears items and abandons running uploads", async () => {
   assert.equal(store.getSnapshot()[0].status, "done");
 });
 
+test("a throwing onFileDone leaves the item done and the queue running", async () => {
+  const { store, drained } = setup({
+    onFileDone: () => {
+      throw new Error("boom");
+    },
+  });
+  const log = mock.method(console, "error", () => {});
+  try {
+    store.addFiles(1, "L", [img("a.jpg"), img("b.jpg")]);
+    await tick();
+  } finally {
+    log.mock.restore();
+  }
+  assert.deepEqual(statuses(store.getSnapshot()), ["done", "done"]);
+  assert.ok(store.getSnapshot().every((i) => i.error === undefined));
+  assert.equal(drained(), 1);
+});
+
+test("a rejected token keeps the queue; logout clears it", async () => {
+  const { store } = setup({
+    uploadImage: async () => {
+      throw new Error("Token expired");
+    },
+  });
+  const off = onLogout(() => store.reset());
+  try {
+    store.addFiles(1, "L", [img("a.jpg")]);
+    await tick();
+    tokenStore.set("stale");
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: "Token expired" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+    await assert.rejects(authApi.me());
+    assert.equal(tokenStore.get(), null);
+    const items = store.getSnapshot();
+    assert.equal(items.length, 1);
+    assert.equal(items[0].status, "error");
+    assert.equal(items[0].error?.error?.message, "Token expired");
+    await authApi.logout();
+    assert.equal(store.getSnapshot().length, 0);
+  } finally {
+    off();
+  }
+});
+
+test("images have no progress value, videos start at 0", async () => {
+  const gate = deferred();
+  const vgate = deferred<{ uuid: string; processing_status: string }>();
+  const { store } = setup({
+    uploadImage: () => gate.promise,
+    uploadVideo: () => vgate.promise,
+  });
+  store.addFiles(1, "L", [img("a.jpg")]);
+  await tick();
+  assert.equal(store.getSnapshot()[0].status, "uploading");
+  assert.equal(store.getSnapshot()[0].progress, undefined);
+  gate.resolve();
+  await tick();
+  store.addFiles(1, "L", [vid("v.mp4")]);
+  await tick();
+  assert.equal(store.getSnapshot()[1].status, "uploading");
+  assert.equal(store.getSnapshot()[1].progress, 0);
+  vgate.resolve({ uuid: "u", processing_status: "ready" });
+  await tick();
+});
+
 test("widget markup and root wiring", () => {
   const widget = readFileSync(new URL("../src/components/UploadWidget.tsx", import.meta.url), "utf8");
   assert.ok(widget.includes("aria-expanded"));
   assert.ok(widget.includes('aria-live="polite"'));
   const root = readFileSync(new URL("../src/routes/__root.tsx", import.meta.url), "utf8");
   assert.ok(root.includes("<UploadWidget"));
+  assert.ok(widget.includes("upload-widget__progress--indeterminate"));
+  const main = readFileSync(new URL("../src/main.tsx", import.meta.url), "utf8");
+  assert.ok(main.includes("onLogout(() => uploadStore.reset())"));
+  assert.ok(!main.includes("onSessionCleared"));
 });

@@ -363,4 +363,15 @@ def _purge_library(library: Library) -> None:
                 )
         db.session.delete(image)
 
+    if library.cover_key:
+        try:
+            storage.delete_object(library.cover_key)
+        except Exception as exc:
+            current_app.logger.warning(
+                "purge-deleted-accounts: object storage delete failed for key %s: %s",
+                library.cover_key,
+                exc,
+                extra={"log_type": "cleanup"},
+            )
+
     db.session.delete(library)

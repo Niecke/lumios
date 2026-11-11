@@ -166,6 +166,7 @@ class Library(db.Model):
     )
     last_viewed_at = db.Column(db.DateTime, nullable=True)
     watermark_gcs_key = db.Column(db.String(512), nullable=True)
+    cover_key = db.Column(db.String(512), nullable=True)
     watermark_scale = db.Column(db.Float, nullable=True)
     watermark_position = db.Column(db.String(32), nullable=True)
 

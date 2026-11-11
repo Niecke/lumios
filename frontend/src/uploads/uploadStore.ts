@@ -113,9 +113,10 @@ export function createUploadStore(deps: UploadDeps): UploadStore {
 
   async function runItem(item: QueuedUpload) {
     const gen = generation;
-    patch(item.id, { status: "uploading", progress: 0 }, gen);
+    const isVideo = isVideoFile(item.file);
+    patch(item.id, isVideo ? { status: "uploading", progress: 0 } : { status: "uploading" }, gen);
     try {
-      if (isVideoFile(item.file)) {
+      if (isVideo) {
         const status = await deps.uploadVideo(item.libraryId, item.file, (pct) =>
           patch(item.id, { progress: pct }, gen)
         );
@@ -126,13 +127,18 @@ export function createUploadStore(deps: UploadDeps): UploadStore {
       } else {
         await deps.uploadImage(item.libraryId, item.file);
       }
-      if (gen !== generation) return;
-      patch(item.id, { status: "done" }, gen);
-      deps.onFileDone(item.libraryId);
     } catch (err) {
       const error: DisplayError =
         err instanceof Error ? { error: err } : { key: "watermark.uploadFailed" };
       patch(item.id, { status: "error", error }, gen);
+      return;
+    }
+    if (gen !== generation) return;
+    patch(item.id, { status: "done" }, gen);
+    try {
+      deps.onFileDone(item.libraryId);
+    } catch (err) {
+      console.error("onFileDone failed", err);
     }
   }
 

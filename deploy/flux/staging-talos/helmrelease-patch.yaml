@@ -1,0 +1,32 @@
+# What differs on the Talos cluster from ../staging/helmrelease.yaml, and nothing
+# else. Hosts, bucket, image tags, resources and valuesFrom all come from there:
+# never set an image tag here, or promote.yml's promotions would stop reaching
+# this cluster.
+#
+# A HelmRelease is a CRD, so kustomize applies this as a JSON merge patch: maps
+# merge key by key, lists replace. Put only maps in here, or a list such as
+# valuesFrom would be overwritten.
+#
+# Not named helmrelease.yaml on purpose: promote.yml and the helm-lint job read
+# deploy/flux/<env>/helmrelease.yaml, and this is not a full release.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: lumios
+  namespace: lumios-staging
+spec:
+  values:
+    ingress:
+      tls:
+        # ClusterIssuer with DNS-01 (Niecke/infrastructure), the Talos ingress
+        # is private and cannot answer HTTP-01.
+        clusterIssuer: letsencrypt-dns01
+      # Reachable only through the VPN (private Traefik), so Basic Auth is
+      # redundant. An empty name makes the chart skip the Middleware.
+      basicAuth:
+        secretName: ""
+    postgres:
+      storage:
+        # hcloud-volumes (Hetzner CSI); 10 GB is the Hetzner volume minimum.
+        storageClass: hcloud-volumes
+        size: 10Gi

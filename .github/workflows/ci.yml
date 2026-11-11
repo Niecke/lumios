@@ -103,8 +103,12 @@ jobs:
       - name: Lint and render
         run: |
           set -euo pipefail
+          # A failed `[ ... ]` prints nothing: name the line that stopped the job.
+          trap 'echo "::error::helm-lint stopped at line $LINENO: $BASH_COMMAND" >&2' ERR
           # Preinstalled on ubuntu-latest, not pinned by us: fail loudly if gone.
           yq --version
+          # Same for kubectl, which renders the Talos entry point below.
+          kubectl version --client
           args=(
             --set backend.image.tag=ci
             --set frontend.image.tag=ci
@@ -151,8 +155,23 @@ jobs:
           # The environments' own values, so a Flux edit that breaks the chart
           # fails here and not on the cluster. Staging turns the backups off,
           # production keeps them.
-          for env in staging prod; do
-            yq '.spec.values' "deploy/flux/$env/helmrelease.yaml" > "$RUNNER_TEMP/$env-values.yaml"
+          #
+          # staging-talos has no helmrelease.yaml of its own: its values are the
+          # staging ones with deploy/flux/staging-talos/helmrelease-patch.yaml
+          # applied, so they come from the kustomize render of the entry point.
+          kubectl kustomize deploy/flux/staging-talos > "$RUNNER_TEMP/staging-talos-flux.yaml"
+          # The Talos entry point must not pull in production: no OCIRepository
+          # and no HelmRelease in the lumios namespace.
+          # Not `| grep -q`: it exits early and yq dies of SIGPIPE under pipefail.
+          [ "$(yq 'select(.kind == "OCIRepository" or (.kind == "HelmRelease" and .metadata.namespace == "lumios")) | .kind' "$RUNNER_TEMP/staging-talos-flux.yaml" | wc -l)" -eq 0 ]
+          # The k3s cluster never applies the Talos entry point.
+          [ "$(yq '.resources[]' deploy/flux/kustomization.yaml | grep -cx 'staging-talos' || true)" -eq 0 ]
+          for env in staging prod staging-talos; do
+            if [ "$env" = staging-talos ]; then
+              yq 'select(.kind == "HelmRelease") | .spec.values' "$RUNNER_TEMP/staging-talos-flux.yaml" > "$RUNNER_TEMP/$env-values.yaml"
+            else
+              yq '.spec.values' "deploy/flux/$env/helmrelease.yaml" > "$RUNNER_TEMP/$env-values.yaml"
+            fi
             # backup.image.tag is not in the prod values until the release that
             # ships the image: release.yml adds it.
             helm template lumios charts/lumios -f "$RUNNER_TEMP/$env-values.yaml" \
@@ -170,6 +189,18 @@ jobs:
               --set backend.jwtSecret=ci-jwt-secret-ci-jwt-secret-ci-jwt-secret > "$RUNNER_TEMP/$env.yaml"
           done
           [ "$(grep -c 'component: backup-' "$RUNNER_TEMP/staging.yaml")" -eq 0 ]
+          [ "$(grep -c 'component: backup-' "$RUNNER_TEMP/staging-talos.yaml")" -eq 0 ]
+
+          # The Talos staging takes over the existing staging: same hosts and
+          # bucket, only the issuer, storage class and size differ. No Basic
+          # Auth there (private load balancer), k3s staging keeps it.
+          # -N: yq prints a `---` line between the results of different documents.
+          [ "$(yq -N 'select(.kind == "Ingress") | .metadata.annotations["cert-manager.io/cluster-issuer"]' "$RUNNER_TEMP/staging-talos.yaml" | sort -u)" = letsencrypt-dns01 ]
+          [ "$(yq -N 'select(.kind == "Ingress") | .spec.rules[].host' "$RUNNER_TEMP/staging-talos.yaml" | sort -u | tr '\n' ' ')" = "lumios-api-staging.niecke-it.de lumios-app-staging.niecke-it.de lumios-staging.niecke-it.de " ]
+          [ "$(yq -N 'select(.kind == "StatefulSet") | .spec.volumeClaimTemplates[0].spec.storageClassName' "$RUNNER_TEMP/staging-talos.yaml")" = hcloud-volumes ]
+          [ "$(yq -N 'select(.kind == "StatefulSet") | .spec.volumeClaimTemplates[0].spec.resources.requests.storage' "$RUNNER_TEMP/staging-talos.yaml")" = 10Gi ]
+          [ "$(grep -c 'basic-auth' "$RUNNER_TEMP/staging-talos.yaml")" -eq 0 ]
+          [ "$(grep -c 'basic-auth' "$RUNNER_TEMP/staging.yaml")" -gt 0 ]
 
           # Video uploads: off with the default size unless an environment turns
           # them on; the workers get the same variables as the backend.
@@ -182,6 +213,8 @@ jobs:
           [ "$(video_env default worker-video VIDEO_UPLOADS_ENABLED)" = false ]
           [ "$(video_env staging backend VIDEO_UPLOADS_ENABLED)" = true ]
           [ "$(video_env prod backend VIDEO_UPLOADS_ENABLED)" = true ]
+          [ "$(video_env staging-talos backend S3_BUCKET)" = lumios-staging ]
+          [ "$(video_env staging-talos backend PUBLIC_BASE_URL)" = https://lumios-api-staging.niecke-it.de ]
           [ "$(grep -c 'kind: CronJob' "$RUNNER_TEMP/prod.yaml")" -eq 4 ]
 
   # The sha under test. For a pull_request event github.sha is the ephemeral
@@ -248,7 +281,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ${{ env.REGISTRY_HOST }}
           username: ${{ github.actor }}
@@ -289,7 +322,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ${{ env.REGISTRY_HOST }}
           username: ${{ github.actor }}
@@ -329,7 +362,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ${{ env.REGISTRY_HOST }}
           username: ${{ github.actor }}
@@ -367,7 +400,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ${{ env.REGISTRY_HOST }}
           username: ${{ github.actor }}
