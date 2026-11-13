@@ -11,7 +11,7 @@ RUN npm run build
 
 
 # ---- Stage 2: Runtime ----
-FROM docker.io/nginx/nginx-unprivileged:1.31.8-alpine@sha256:26277f4923331a5ecda9096c0e378de65a30a5037129a8036c3ef5d9feee833d
+FROM docker.io/nginx/nginx-unprivileged:1.31.8-alpine@sha256:0ec17b0dac55776357d46d882bed7f3d504b0e4a0bc7379c7dbb74bd12b9d4da
 
 ARG GIT_SHA=dev
 ARG BUILD_TIMESTAMP=unknown
