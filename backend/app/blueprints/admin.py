@@ -893,7 +893,7 @@ def notify_agb():
 
         if not agb_version or not summary or not effective_date_str:
             flash(
-                "Bitte Version, Zusammenfassung und Inkrafttreten-Datum angeben.",
+                "Please enter the version, summary and effective date.",
                 "error",
             )
             updates = (
@@ -914,7 +914,7 @@ def notify_agb():
                 tzinfo=timezone.utc
             )
         except ValueError:
-            flash("Ungültiges Datum. Format: YYYY-MM-DD.", "error")
+            flash("Invalid date. Format: YYYY-MM-DD.", "error")
             return redirect(url_for("admin.notify_agb"))
 
         users = (
@@ -950,8 +950,8 @@ def notify_agb():
             extra={"log_type": "audit"},
         )
         flash(
-            f"AGB-Benachrichtigung an {len(users)} Nutzer gesendet. "
-            f"Inkrafttreten: {effective_at.date()}.",
+            f"Terms of Service notice sent to {len(users)} users. "
+            f"Effective date: {effective_at.date()}.",
             "success",
         )
         return redirect(url_for("admin.notify_agb"))
