@@ -15,6 +15,7 @@ import hashlib
 import secrets
 from datetime import date, datetime, timezone
 from functools import partial
+from html import escape as _escape
 
 import requests
 import sentry_sdk
@@ -195,7 +196,7 @@ def send_registration_email(user_email: str, lang: str = DEFAULT_LANG) -> None:
     html = _html(
         f"""
         <h2>{t("heading")}</h2>
-        <p>{t("body", user_email=user_email)}</p>
+        <p>{t("body", user_email=_escape(user_email))}</p>
         {_btn(f"{FRONTEND_URL}/login", t("button"))}
         <p>{t("body_after")}</p>
     """
@@ -218,11 +219,11 @@ def send_gallery_finished_email(
         "count": format_int(liked_count, lang),
         "photos": plural(lang, "gallery_finished", "photos", liked_count),
     }
-    gallery_url = f"{FRONTEND_URL}/libraries/{library_uuid}"
+    gallery_url = f"{FRONTEND_URL}/library/{library_uuid}"
     html = _html(
         f"""
         <h2>{t("heading")}</h2>
-        <p>{t("body", **values)}</p>
+        <p>{t("body", **{**values, "library_name": _escape(library_name)})}</p>
         {_btn(gallery_url, t("button"))}
     """
     )
@@ -236,7 +237,7 @@ def send_account_cancellation_email(user_email: str, lang: str = DEFAULT_LANG) -
     html = _html(
         f"""
         <h2>{t("heading")}</h2>
-        <p>{t("body", user_email=user_email)}</p>
+        <p>{t("body", user_email=_escape(user_email))}</p>
         <p>{t("body_after")}</p>
     """
     )
@@ -270,8 +271,8 @@ def send_agb_change_email(
     html = _html(
         f"""
         <h2>{t("heading")}</h2>
-        <p>{t("body", agb_version=agb_version)}</p>
-        <p>{t("summary", summary=summary)}</p>
+        <p>{t("body", agb_version=_escape(agb_version))}</p>
+        <p>{t("summary", summary=_escape(summary))}</p>
         <p>{t("button_intro")}</p>
         {_btn(f"{FRONTEND_URL}/agb", t("button"))}
         <p>{t("body_after")}</p>{effective}
@@ -305,7 +306,7 @@ def send_activation_email(user_id: int, lang: str | None = None) -> None:
     html = _html(
         f"""
         <h2>{t("heading")}</h2>
-        <p>{t("body", user_email=user.email)}</p>
+        <p>{t("body", user_email=_escape(user.email))}</p>
         {_btn(activation_link, t("button"))}
         <p>{t("body_after")}</p>
     """
@@ -411,8 +412,8 @@ def send_admin_new_account_email(user_email: str, account_type: str) -> None:
         f"""
         <h2>Neues Konto registriert</h2>
         <p>Ein neues Konto wurde registriert:</p>
-        <p><strong>E-Mail:</strong> {user_email}<br>
-           <strong>Anmeldemethode:</strong> {account_type}</p>
+        <p><strong>E-Mail:</strong> {_escape(user_email)}<br>
+           <strong>Anmeldemethode:</strong> {_escape(account_type)}</p>
         <p>Das Konto wartet auf Aktivierung.</p>
     """
     )
@@ -432,8 +433,8 @@ def send_new_support_ticket_email(ticket_id: int, subject: str, user_email: str)
     html = _html(
         f"""
         <h2>[Lumios Support] Neues Ticket #{ticket_id}</h2>
-        <p><strong>Von:</strong> {user_email}<br>
-           <strong>Betreff:</strong> {subject}</p>
+        <p><strong>Von:</strong> {_escape(user_email)}<br>
+           <strong>Betreff:</strong> {_escape(subject)}</p>
         {_btn(admin_url, "Ticket öffnen")}
     """
     )
