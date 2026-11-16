@@ -500,6 +500,37 @@ kubectl -n lumios logs job/purge-now
 kubectl -n lumios delete job purge-now
 ```
 
+### Setting or resetting a password, creating an admin user
+
+The seeded `admin` login (the text `admin`, not an email address) gets a random
+password from the first migration that nobody sees, unless
+`INIT_ADMIN_PASSWORD` was set. After the first bootstrap, set its password with
+one command in the backend pod; no database access is needed:
+
+```bash
+kubectl -n lumios exec -it deploy/lumios-backend -- /usr/bin/python3 -m flask set-admin-password
+```
+
+It asks twice for the new password (hidden input, at least
+`MIN_PASSWORD_LENGTH` characters) and writes a `password_set_by_admin` audit log
+entry. The same command resets the password later. Use `--email <login>` for
+another existing, non-deleted user with the admin role.
+
+Without a terminal the command reads one line from stdin. Pipe it from a file
+or a secret manager, never `echo`, which leaves the password in the shell
+history: `kubectl -n lumios exec -i deploy/lumios-backend -- /usr/bin/python3 -m flask set-admin-password < password.txt`.
+The password is never accepted as an argument.
+
+To create a new admin user (an active local account with the `admin` role and a
+random password):
+
+```bash
+kubectl -n lumios exec -it deploy/lumios-backend -- /usr/bin/python3 -m flask create-admin-user --email you@example.org
+```
+
+The generated password is printed once to the terminal; store it right away. It
+fails if the email already exists. Use `set-admin-password` to change it.
+
 ### Backup and disaster recovery
 
 All state is in two places: the Postgres volume under `/mnt/lumios/local-path`

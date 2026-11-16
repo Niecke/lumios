@@ -3,6 +3,10 @@ Flask CLI commands for background maintenance tasks.
 Run via: flask <command-name>
 """
 
+import secrets
+import string
+import sys
+
 import click
 import sentry_sdk
 from datetime import datetime, timezone, timedelta
@@ -22,10 +26,13 @@ from models import (
     roles_users,
     JobRun,
     AuditLog,
+    AuditLogType,
     AgbUpdate,
 )
 from sqlalchemy import update
 import services.storage as storage
+from config import MIN_PASSWORD_LENGTH
+from services.audit import write_audit_log
 
 ACCOUNT_RETENTION_DAYS = 30
 AUDIT_LOG_RETENTION_DAYS = 90
@@ -375,3 +382,119 @@ def _purge_library(library: Library) -> None:
             )
 
     db.session.delete(library)
+
+
+def _read_password() -> str:
+    """Read a new password without echo: hidden prompt on a TTY, one line from stdin otherwise.
+
+    The password is never taken from argv or the environment.
+    """
+    if sys.stdin.isatty():
+        return click.prompt("New password", hide_input=True, confirmation_prompt=True)
+    return sys.stdin.readline().rstrip("\r\n")
+
+
+@click.command("create-admin-user")
+@click.option("--email", required=True, help="Email address of the new admin user.")
+@with_appcontext
+def create_admin_user(email: str) -> None:
+    """Create an active local user with the admin role and a random password.
+
+    The password is printed once, to stdout. Fails if the email already exists.
+    """
+    email = email.strip()
+    if not email:
+        raise click.ClickException("Email must not be empty.")
+
+    try:
+        if db.session.execute(
+            select(User).where(User.email == email)
+        ).scalar_one_or_none():
+            raise click.ClickException(f"A user with the email {email} already exists.")
+
+        admin_role = db.session.execute(
+            select(Role).where(Role.name == "admin")
+        ).scalar_one_or_none()
+        if not admin_role:
+            admin_role = Role(name="admin", description="Administrator")
+            db.session.add(admin_role)
+            db.session.flush()
+
+        alphabet = string.ascii_letters + string.digits
+        password = "".join(secrets.choice(alphabet) for _ in range(20))
+
+        user = User(email=email, active=True)
+        user.set_password(password)
+        user.roles.append(admin_role)
+        db.session.add(user)
+        db.session.flush()
+        write_audit_log(
+            AuditLogType.user_created,
+            creator_id=user.id,
+            related_object_type="user",
+            related_object_id=str(user.id),
+        )
+        db.session.commit()
+    except click.ClickException:
+        db.session.rollback()
+        raise
+    except Exception as exc:
+        current_app.logger.exception("create-admin-user: failed")
+        sentry_sdk.capture_exception(exc)
+        sentry_sdk.flush(timeout=2.0)
+        db.session.rollback()
+        raise SystemExit(1) from exc
+
+    click.echo(f"Admin user {email} created.")
+    click.echo(f"Password: {password}")
+    click.echo("Store it now, it is not shown again.")
+
+
+@click.command("set-admin-password")
+@click.option(
+    "--email",
+    default="admin",
+    show_default=True,
+    help="Login of the existing admin user.",
+)
+@with_appcontext
+def set_admin_password(email: str) -> None:
+    """Set or reset the password of an existing admin user.
+
+    The password is read from a hidden prompt (TTY) or one line of stdin; there
+    is deliberately no option for it.
+    """
+    password = _read_password()
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise click.ClickException(
+            f"The password must have at least {MIN_PASSWORD_LENGTH} characters."
+        )
+
+    try:
+        user = db.session.execute(
+            select(User).where(User.email == email, User.deleted_at.is_(None))
+        ).scalar_one_or_none()
+        if user is None:
+            raise click.ClickException(f"No active account found for {email}.")
+        if not any(role.name == "admin" for role in user.roles):
+            raise click.ClickException(f"{email} does not have the admin role.")
+
+        user.set_password(password)
+        write_audit_log(
+            AuditLogType.password_set_by_admin,
+            creator_id=user.id,
+            related_object_type="user",
+            related_object_id=str(user.id),
+        )
+        db.session.commit()
+    except click.ClickException:
+        db.session.rollback()
+        raise
+    except Exception as exc:
+        current_app.logger.exception("set-admin-password: failed")
+        sentry_sdk.capture_exception(exc)
+        sentry_sdk.flush(timeout=2.0)
+        db.session.rollback()
+        raise SystemExit(1) from exc
+
+    click.echo(f"Password set for {email}.")

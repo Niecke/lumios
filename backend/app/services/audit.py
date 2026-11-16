@@ -1,10 +1,12 @@
 """Audit log helper — call write_audit_log() at each auditable event."""
 
-from flask import request
+from flask import has_request_context, request
 from models import db, AuditLog, AuditLogType
 
 
 def _get_ip() -> str:
+    if not has_request_context():
+        return ""  # CLI commands run without a request
     forwarded = request.headers.get("X-Forwarded-For", "")
     if forwarded:
         return forwarded.split(",")[0].strip()
