@@ -1,4 +1,4 @@
-FROM docker.io/nginx/nginx-unprivileged:1.31.8-alpine@sha256:26277f4923331a5ecda9096c0e378de65a30a5037129a8036c3ef5d9feee833d
+FROM docker.io/nginx/nginx-unprivileged:1.31.8-alpine@sha256:f90ef283a8a580912aa56315c3ed8f54cf50c2e89ed7e6fbf4c53368b55d712f
 
 USER root
 
