@@ -148,27 +148,45 @@ def test_start_fails_when_upgrade_fails(entrypoint, monkeypatch):
 @pytest.fixture
 def fake_worker(entrypoint, monkeypatch):
     """Stand-in for worker.py so no database or Procrastinate is needed."""
+    def start_probe_server(state, port):
+        order.append("probe_server")
+        servers.append(port)
+        return types.SimpleNamespace(shutdown=lambda: order.append("probe_shutdown"))
+
+    def start_schema_monitor(state):
+        order.append("monitor")
+        return threading.Event(), types.SimpleNamespace(join=lambda timeout=None: None)
+
     def start_heartbeat(queue):
+        order.append("heartbeat")
         stop = threading.Event()
         beats.append({"queue": queue, "stop": stop})
         return stop, types.SimpleNamespace(join=lambda timeout=None: None)
 
     module = types.SimpleNamespace(
         QUEUES=("default", "video", "photo"),
-        worker_app=types.SimpleNamespace(run_worker=lambda **kw: runs.append(kw)),
-        check_worker_health=lambda: health["code"],
+        worker_app=types.SimpleNamespace(
+            run_worker=lambda **kw: (order.append("run_worker"), runs.append(kw))
+        ),
+        ProbeState=lambda: types.SimpleNamespace(),
+        WORKER_PROBE_PORT=8081,
+        start_probe_server=start_probe_server,
+        wait_for_schema=lambda state: order.append("wait_for_schema"),
+        start_schema_monitor=start_schema_monitor,
         start_heartbeat=start_heartbeat,
         close_worker_app=lambda: closed.append(True),
     )
     runs = []
     closed = []
     beats = []
-    health = {"code": 0}
+    order = []
+    servers = []
     monkeypatch.setattr(entrypoint, "_import_worker", lambda: module)
     module.runs = runs
     module.beats = beats
     module.closed = closed
-    module.health = health
+    module.order = order
+    module.servers = servers
     return module
 
 
@@ -227,15 +245,24 @@ def test_worker_command_requires_queue(entrypoint, calls, fake_worker, monkeypat
     assert fake_worker.runs == []
 
 
-@pytest.mark.parametrize("code", [0, 1])
-def test_worker_health_command_exits_with_check_result(
-    entrypoint, calls, fake_worker, monkeypatch, code
+def test_worker_waits_for_schema_between_database_and_worker_loop(
+    entrypoint, calls, fake_worker, monkeypatch
 ):
-    fake_worker.health["code"] = code
-    monkeypatch.setattr(entrypoint.sys, "argv", ["entrypoint.py", "worker-health"])
+    monkeypatch.setattr(
+        entrypoint.sys, "argv", ["entrypoint.py", "worker", "--queue", "video"]
+    )
 
-    with pytest.raises(SystemExit) as exc:
+    with pytest.raises(SystemExit):
         entrypoint.main()
 
-    assert exc.value.code == code
-    assert calls["run"] == []
+    # the probe server is up before anything blocks, the loop starts last
+    assert fake_worker.servers == [8081]
+    assert fake_worker.order == [
+        "probe_server",
+        "wait_for_schema",
+        "monitor",
+        "heartbeat",
+        "run_worker",
+        "probe_shutdown",
+    ]
+    assert calls["run"][0] == ["db", "current"]

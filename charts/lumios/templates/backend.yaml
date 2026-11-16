@@ -114,20 +114,25 @@ spec:
             - name: RUN_MIGRATIONS
               value: "false"
           # entrypoint.py waits for the database and starts Gunicorn. It does
-          # not migrate (RUN_MIGRATIONS=false), so on a first install the pod
-          # becomes ready on the empty schema before the post-install Job has
-          # created it.
+          # not migrate (RUN_MIGRATIONS=false): the migrate Job does (see
+          # migrate-job.yaml), so on a first install the pod starts on the
+          # empty schema and stays not ready until the Job has created it.
           #
           # The probes claim https: Talisman redirects plain-HTTP requests, and
           # the kubelet reaches the pod directly, not through Traefik.
           #
-          # Readiness only touches /health. It runs a database ping and returns
-          # 503 when the database is unreachable — right for pulling the pod out
-          # of the Service, wrong for liveness, where it would restart the
-          # backend during a database outage and slow the recovery down.
+          # Readiness uses /health/ready: the database ping of /health plus a
+          # schema at or past this code's head (not equal to it, so old pods stay
+          # ready while an upgrade has already migrated). It returns 503 when the
+          # database is unreachable or the schema is missing — right for pulling
+          # the pod out of the Service and for failing Helm's wait, wrong for
+          # liveness, where it would restart the backend in a loop and hide the
+          # cause. Startup stays on /health and liveness on the socket, so a
+          # missing schema never restarts the pod; the log names the missing
+          # revisions.
           readinessProbe:
             httpGet:
-              path: /health
+              path: /health/ready
               port: http
               httpHeaders:
                 - name: X-Forwarded-Proto

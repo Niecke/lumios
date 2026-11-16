@@ -128,6 +128,48 @@ jobs:
           )
           helm lint charts/lumios "${args[@]}"
           helm template lumios charts/lumios "${args[@]}" > "$RUNNER_TEMP/default.yaml"
+          # An upgrade renders no install Job.
+          helm template lumios charts/lumios "${args[@]}" --is-upgrade > "$RUNNER_TEMP/upgrade.yaml"
+
+          # Migration and health ordering (see migrate-job.yaml). $1 is the
+          # render, $2 whether it is an install render.
+          # -N: yq prints a `---` line between the results of different documents.
+          assert_migration_and_probes() {
+            local f="$RUNNER_TEMP/$1.yaml" install_jobs
+            # The upgrade path stays a pre-upgrade hook, Job and Secret alike.
+            [ "$(yq -N 'select(.kind == "Job" and .metadata.name == "lumios-migrate") | .metadata.annotations["helm.sh/hook"]' "$f")" = pre-upgrade ]
+            [ "$(yq -N 'select(.kind == "Secret" and .metadata.name == "lumios-migrate") | .metadata.annotations["helm.sh/hook"]' "$f")" = pre-upgrade ]
+            [ "$(yq -N 'select(.kind == "Job" and .metadata.name == "lumios-migrate") | .spec.template.spec.containers[0].command[2]' "$f")" = migrate ]
+            [ "$(yq -N 'select(.kind == "Job" and .metadata.name == "lumios-migrate") | .spec.template.spec.containers[0].envFrom[0].secretRef.name' "$f")" = lumios-migrate ]
+            install_jobs=$(yq -N 'select(.kind == "Job" and .metadata.name == "lumios-migrate-install") | .metadata.name' "$f" | wc -l)
+            if [ "$2" = install ]; then
+              # First install: a regular Job (no hook) that runs while Helm waits.
+              [ "$install_jobs" -eq 1 ]
+              [ "$(yq -N 'select(.kind == "Job" and .metadata.name == "lumios-migrate-install") | .metadata.annotations["helm.sh/hook"] // "none"' "$f")" = none ]
+              [ "$(yq -N 'select(.kind == "Job" and .metadata.name == "lumios-migrate-install") | .spec.template.spec.containers[0].command[2]' "$f")" = migrate ]
+              [ "$(yq -N 'select(.kind == "Job" and .metadata.name == "lumios-migrate-install") | .spec.template.spec.containers[0].envFrom[0].secretRef.name' "$f")" = lumios-backend ]
+            else
+              [ "$install_jobs" -eq 0 ]
+            fi
+            # Backend: readiness needs the schema, startup/liveness do not.
+            probe() {
+              yq -N "select(.kind == \"Deployment\" and .metadata.labels[\"app.kubernetes.io/component\"] == \"$1\") | .spec.template.spec.containers[0].$2" "$f"
+            }
+            [ "$(probe backend readinessProbe.httpGet.path)" = /health/ready ]
+            [ "$(probe backend startupProbe.httpGet.path)" = /health ]
+            [ "$(probe backend livenessProbe.tcpSocket.port)" = http ]
+            # Workers: HTTP probes only (no exec), liveness never looks at the schema.
+            for w in worker-default worker-video worker-photo; do
+              [ "$(probe $w readinessProbe.httpGet.path)" = /ready ]
+              [ "$(probe $w startupProbe.httpGet.path)" = /live ]
+              [ "$(probe $w livenessProbe.httpGet.path)" = /live ]
+              for kind in readinessProbe startupProbe livenessProbe; do
+                [ "$(probe $w "$kind.exec // \"none\"")" = none ]
+              done
+            done
+          }
+          assert_migration_and_probes default install
+          assert_migration_and_probes upgrade upgrade
 
           # The nginx workloads must stay non-root with a read-only root fs.
           for comp in frontend landingpage; do
@@ -187,6 +229,9 @@ jobs:
               --set redis.password=ci-redis-password \
               --set backend.secretKey=ci-secret-key-ci-secret-key-ci-secret \
               --set backend.jwtSecret=ci-jwt-secret-ci-jwt-secret-ci-jwt-secret > "$RUNNER_TEMP/$env.yaml"
+          done
+          for env in staging prod staging-talos; do
+            assert_migration_and_probes "$env" install
           done
           [ "$(grep -c 'component: backup-' "$RUNNER_TEMP/staging.yaml")" -eq 0 ]
           [ "$(grep -c 'component: backup-' "$RUNNER_TEMP/staging-talos.yaml")" -eq 0 ]

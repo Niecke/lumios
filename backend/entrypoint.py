@@ -101,7 +101,13 @@ def run_worker(argv: list[str]) -> int:
         _log(f"Unknown queue {args.queue!r}, expected one of {worker.QUEUES}", level="error")
         return 2
 
+    # The probe server answers /live (200) and /ready (503) from the start, also
+    # while the pod waits for the database and the schema.
+    state = worker.ProbeState()
+    probe_server = worker.start_probe_server(state, worker.WORKER_PROBE_PORT)
     wait_for_db()
+    worker.wait_for_schema(state)
+    monitor_stop, monitor = worker.start_schema_monitor(state)
     _log(f"Starting worker for queue {args.queue} (concurrency {args.concurrency})...")
     stop_heartbeat, heartbeat = worker.start_heartbeat(args.queue)
     try:
@@ -109,15 +115,11 @@ def run_worker(argv: list[str]) -> int:
     finally:
         stop_heartbeat.set()
         heartbeat.join(timeout=5)
+        monitor_stop.set()
+        monitor.join(timeout=5)
+        probe_server.shutdown()
         worker.close_worker_app()
     return 0
-
-
-def worker_health() -> int:
-    code = _import_worker().check_worker_health()
-    if code != 0:
-        _log("Worker health check failed", level="error")
-    return code
 
 
 def main() -> None:
@@ -127,9 +129,6 @@ def main() -> None:
 
     if len(sys.argv) > 1 and sys.argv[1] == "worker":
         sys.exit(run_worker(sys.argv[2:]))
-
-    if len(sys.argv) > 1 and sys.argv[1] == "worker-health":
-        sys.exit(worker_health())
 
     _log("Starting Lumios Backend...")
 

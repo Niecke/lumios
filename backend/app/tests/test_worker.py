@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import threading
 from datetime import datetime, timezone
 from unittest.mock import patch
 
@@ -11,7 +12,9 @@ from sqlalchemy import select, text
 
 import worker
 from models import db, Image, Library, User, Video, VideoProcessingStatus
+from services.schema import SchemaStatus
 from services.videos import finalize_video_upload, process_video
+from services.worker_probe import ProbeState
 
 
 VIDEO_UUID = "11111111-1111-1111-1111-111111111111"
@@ -266,19 +269,92 @@ class TestPipelineIsolation:
         assert worker.QUEUES == ("default", "video", "photo")
 
 
-class TestHealthCheck:
-    def test_healthy_when_schema_is_there(self):
-        assert worker.check_worker_health() == 0
+class TestWaitForSchema:
+    def test_returns_at_once_when_the_schema_is_there(self):
+        state = ProbeState()
 
-    def test_unhealthy_when_queue_table_is_missing(self):
-        with patch.object(worker.worker_app, "check_connection", return_value=False):
-            assert worker.check_worker_health() == 1
+        with patch.object(worker.time, "sleep") as sleep:
+            worker.wait_for_schema(state)
 
-    def test_unhealthy_when_database_is_unreachable(self):
-        with patch.object(
-            worker.worker_app, "check_connection", side_effect=RuntimeError("down")
+        sleep.assert_not_called()
+        assert state.is_ready()
+
+    def test_waits_and_logs_the_missing_revision_until_ready(self, caplog, monkeypatch):
+        # Alembic's fileConfig (schema fixture) disables loggers that existed before it.
+        monkeypatch.setattr(worker.logger, "disabled", False)
+        state = ProbeState()
+        behind = SchemaStatus(False, (), ("headrev",), ("headrev",))
+        ready = SchemaStatus(True, ("headrev",), ("headrev",), ())
+        statuses = iter([behind, behind, ready])
+
+        with (
+            patch.object(worker, "schema_status", side_effect=lambda conn: next(statuses)),
+            patch.object(worker.time, "sleep") as sleep,
+            caplog.at_level("INFO"),
         ):
-            assert worker.check_worker_health() == 1
+            worker.wait_for_schema(state)
+
+        assert sleep.call_count == 2
+        assert state.is_ready()
+        # first time logged, the second poll is inside the 60 s window
+        waiting = [r for r in caplog.records if "Waiting for the database schema" in r.message]
+        assert len(waiting) == 1
+        assert "headrev" in waiting[0].message
+
+    def test_not_ready_while_the_schema_is_behind(self):
+        state = ProbeState()
+        behind = SchemaStatus(False, (), ("headrev",), ("headrev",))
+
+        with patch.object(worker, "schema_status", return_value=behind):
+            assert worker.check_schema_once(state) is behind
+
+        assert not state.is_ready()
+
+    def test_database_error_is_retried_not_raised(self):
+        state = ProbeState()
+        ready = SchemaStatus(True, ("headrev",), ("headrev",), ())
+        results = iter([RuntimeError("down"), ready])
+
+        def fake(conn):
+            result = next(results)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        with (
+            patch.object(worker, "schema_status", side_effect=fake),
+            patch.object(worker.time, "sleep") as sleep,
+        ):
+            worker.wait_for_schema(state)
+
+        assert sleep.call_count == 1
+        assert state.is_ready()
+
+    def test_unreachable_database_does_not_refresh_liveness(self):
+        state = ProbeState(live_max_age=0)
+
+        with patch.object(worker, "schema_status", side_effect=RuntimeError("down")):
+            assert worker.check_schema_once(state) is None
+
+        assert not state.is_live()
+
+
+class TestSchemaMonitor:
+    def test_flips_to_not_ready_when_the_schema_disappears(self):
+        state = ProbeState()
+        state.set_ready(True)
+        behind = SchemaStatus(False, (), ("headrev",), ("headrev",))
+
+        with patch.object(worker, "schema_status", return_value=behind):
+            stop, thread = worker.start_schema_monitor(state, interval_seconds=0.01)
+            for _ in range(200):
+                if not state.is_ready():
+                    break
+                threading.Event().wait(0.01)
+            stop.set()
+            thread.join(timeout=2)
+
+        assert not state.is_ready()
 
 
 def _recover():

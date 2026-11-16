@@ -215,7 +215,7 @@ ingress:
     secretName: ""
 
 # ---------------------------------------------------------------------------
-# Migration — the Helm hook Job that runs `flask db upgrade` once per release,
+# Migration — the Job (install) or pre-upgrade hook Job that runs `flask db upgrade` once per release,
 # on the backend image. The backend pods themselves never migrate.
 # ---------------------------------------------------------------------------
 migration:
