@@ -48,7 +48,7 @@ services:
       retries: 5
 
   s3:
-    image: docker.io/versity/versitygw:v1.10.0@sha256:2df780de109d16491cb99c25f4c0bc9085b286e77b5b47b56121b340094e70bb
+    image: docker.io/versity/versitygw:v1.11.0@sha256:5da5e2cd887eec7ae6ab1cd6f5099207c754964358ab6351da2a9d6b80507e4e
     container_name: lumios-s3
     entrypoint: ["/bin/sh", "-ec", "mkdir -p /data/buckets /data/versions && exec /usr/local/bin/docker-entrypoint.sh"]
     environment:
