@@ -26,7 +26,7 @@ dependencies = [
     "imageio-ffmpeg==0.8.1",
     # Pinned exactly: a bump needs a new Alembic revision calling
     # migrations/procrastinate_schema.ensure_schema (see CLAUDE.md, Background worker).
-    "procrastinate[psycopg]==3.10.0",
+    "procrastinate[psycopg]==3.11.0",
     "opentelemetry-api==1.45.2",
     "opentelemetry-sdk==1.45.2",
     "opentelemetry-instrumentation-flask==0.66b2",
