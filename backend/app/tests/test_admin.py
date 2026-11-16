@@ -661,7 +661,7 @@ class TestNotifyAgb:
             )
         assert response.status_code == 200
         html = html_text(response)
-        assert "Benachrichtigung" in html
+        assert "Terms of Service notice sent to" in html
 
         update = db.session.execute(
             select(AgbUpdate).where(AgbUpdate.version == "2.0")
@@ -678,7 +678,23 @@ class TestNotifyAgb:
             follow_redirects=True,
         )
         html = html_text(response)
-        assert "angeben" in html
+        assert "Please enter the version, summary and effective date." in html
+
+    def test_notify_agb_post_invalid_date_shows_error(self, client, admin_user):
+        login_admin(client, admin_user)
+        with patch("blueprints.admin.notify_agb_change") as mock_mail:
+            response = client.post(
+                "/admin/notify_agb",
+                data={
+                    "agb_version": "2.0",
+                    "summary": "Updated terms.",
+                    "effective_date": "2026-13-40",
+                },
+                follow_redirects=True,
+            )
+        assert "Invalid date. Format: YYYY-MM-DD." in html_text(response)
+        assert db.session.execute(select(func.count(AgbUpdate.id))).scalar_one() == 0
+        mock_mail.assert_not_called()
 
     def test_notify_agb_post_sends_emails_to_active_users(
         self, client, admin_user, regular_user

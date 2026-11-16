@@ -382,3 +382,85 @@ class TestActivationLanguage:
     def test_unknown_fallback_is_german(self, pending_user):
         _to, subject, _h = _captured(lambda: mail.send_activation_email(pending_user.id, "fr"))
         assert subject == "Lumios – Konto aktivieren"
+
+
+# ---------------------------------------------------------------------------
+# Escaping
+# ---------------------------------------------------------------------------
+
+_EVIL_NAME = "<b>A&B</b> \"x\" 'y'"
+
+
+@pytest.mark.parametrize("lang", ["de", "en"])
+def test_library_name_is_escaped_in_body(lang):
+    _to, _s, html = _captured(
+        lambda: mail.send_gallery_finished_email("p@test.com", _EVIL_NAME, "uu-1", 3, lang)
+    )
+    assert "&lt;b&gt;A&amp;B&lt;/b&gt;" in html
+    assert "&quot;x&quot;" in html
+    assert "&#x27;y&#x27;" in html
+    assert "<b>A&B" not in html
+
+
+def test_library_name_is_raw_in_subject():
+    _to, subject, _h = _captured(
+        lambda: mail.send_gallery_finished_email("p@test.com", _EVIL_NAME, "uu-1", 3, "en")
+    )
+    assert "<b>A&B</b>" in subject
+    assert "&lt;" not in subject
+
+
+def test_agb_summary_and_version_are_escaped():
+    _to, subject, html = _captured(
+        lambda: mail.send_agb_change_email(
+            "u@test.com", "2.0 <i>", '<a href="https://evil">click</a> & more', None, "en"
+        )
+    )
+    assert "&lt;a href=&quot;https://evil&quot;&gt;click&lt;/a&gt; &amp; more" in html
+    assert "2.0 &lt;i&gt;" in html
+    assert '<a href="https://evil"' not in html
+    assert "2.0 <i>" in subject
+
+
+def test_user_email_is_escaped():
+    to, _s, html = _captured(lambda: mail.send_registration_email("a<b>@test.com", "en"))
+    assert to == "a<b>@test.com"
+    assert "a&lt;b&gt;@test.com" in html
+    to, _s, html = _captured(lambda: mail.send_account_cancellation_email("a<b>@test.com", "en"))
+    assert to == "a<b>@test.com"
+    assert "a&lt;b&gt;@test.com" in html
+
+
+def test_activation_email_is_escaped(pending_user):
+    pending_user.email = "a<b>@test.com"
+    db.session.commit()
+    _to, _s, html = _captured(lambda: mail.send_activation_email(pending_user.id, "en"))
+    assert "a&lt;b&gt;@test.com" in html
+
+
+def test_support_ticket_subject_is_escaped():
+    with patch.object(mail, "ADMIN_EMAIL", "admin@test.com"):
+        _to, subject, html = _captured(
+            lambda: mail.send_new_support_ticket_email(1, "<script>x</script>", "u<i>@test.com")
+        )
+    assert "&lt;script&gt;x&lt;/script&gt;" in html
+    assert "u&lt;i&gt;@test.com" in html
+    assert "<script>" not in html
+    assert "<script>x</script>" in subject
+
+
+def test_admin_new_account_values_are_escaped():
+    with patch.object(mail, "ADMIN_EMAIL", "admin@test.com"):
+        _to, _s, html = _captured(
+            lambda: mail.send_admin_new_account_email("a<b>@test.com", "<u>google</u>")
+        )
+    assert "a&lt;b&gt;@test.com" in html
+    assert "&lt;u&gt;google&lt;/u&gt;" in html
+
+
+def test_gallery_finished_links_to_library_route():
+    _to, _s, html = _captured(
+        lambda: mail.send_gallery_finished_email("p@test.com", "Lib", "uu-1", 3, "en")
+    )
+    assert f'href="{mail.FRONTEND_URL}/library/uu-1"' in html
+    assert "/libraries/" not in html
