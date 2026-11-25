@@ -17,6 +17,7 @@ from unittest.mock import patch
 from models import (
     db,
     User,
+    VideoProcessingStatus,
     Library,
     Image,
     Notification,
@@ -578,14 +579,20 @@ class TestSetAdminPassword:
 # ---------------------------------------------------------------------------
 
 
+def _mark_ready(video_uuid):
+    video = db.session.execute(select(Video).where(Video.uuid == video_uuid)).scalar_one()
+    video.processing_status = VideoProcessingStatus.ready
+    db.session.commit()
+
+
 @pytest.fixture
 def pentest_env(monkeypatch):
-    monkeypatch.setenv("PENTEST_MODE", "true")
+    monkeypatch.setattr("config.PENTEST_MODE", True)
     with (
         patch("services.images.storage") as images_storage,
         patch("commands.storage") as commands_storage,
         patch("services.images.enqueue_library_cover"),
-        patch("services.videos.process_video") as process_video,
+        patch("services.videos.process_video", side_effect=_mark_ready) as process_video,
         patch("commands._pentest_mp4", return_value=b"fake-mp4"),
     ):
         yield {"images": images_storage, "commands": commands_storage, "video": process_video}
@@ -605,7 +612,7 @@ class TestSeedTestData:
 
 class TestSeedPentestData:
     def test_refuses_without_pentest_mode(self, app, monkeypatch):
-        monkeypatch.delenv("PENTEST_MODE", raising=False)
+        monkeypatch.setattr("config.PENTEST_MODE", False)
         result = _invoke(app, ["seed-pentest-data"])
         assert result.exit_code == 1
         assert "PENTEST_MODE" in result.output
@@ -670,3 +677,25 @@ class TestSeedPentestData:
         db.session.expire_all()
         assert (_count(User), _count(Library), _count(Image), _count(Video)) == before
         assert pentest_env["video"].call_count == 1
+
+    def test_rerun_repairs_partial_seed(self, app, pentest_env):
+        assert _invoke(app, ["seed-pentest-data"]).exit_code == 0
+        lib = db.session.execute(
+            select(Library).where(Library.uuid == "00000000-0000-4000-8000-00000000a001")
+        ).scalar_one()
+        # Simulate a crash: one image missing, the video stuck in `processing`.
+        db.session.delete(
+            db.session.execute(select(Image).where(Image.library_id == lib.id)).scalars().first()
+        )
+        video = db.session.execute(select(Video)).scalar_one()
+        video.processing_status = VideoProcessingStatus.processing
+        db.session.commit()
+
+        assert _invoke(app, ["seed-pentest-data"]).exit_code == 0
+        db.session.expire_all()
+        assert len(
+            db.session.execute(select(Image).where(Image.library_id == lib.id)).scalars().all()
+        ) == 3
+        # The stuck video was replaced by a fresh one that process_video is run for.
+        assert _count(Video) == 1
+        assert pentest_env["video"].call_count == 2

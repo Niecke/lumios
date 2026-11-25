@@ -6,6 +6,7 @@ import os
 import secrets, string
 
 DEBUG = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes")
+PENTEST_MODE = os.getenv("PENTEST_MODE", "false").lower() in ("1", "true", "yes")
 GIT_HASH = os.getenv("GIT_HASH", "dev")
 APP_VERSION = os.getenv("APP_VERSION", "dev")
 BUILD_TIMESTAMP = os.getenv("BUILD_TIMESTAMP", "unknown")

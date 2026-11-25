@@ -12,7 +12,7 @@ import sentry_sdk
 from datetime import datetime, timezone, timedelta
 from flask import current_app
 from flask.cli import with_appcontext
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 
 from models import (
     db,
@@ -399,14 +399,12 @@ def seed_pentest_data() -> None:
     Creates an admin, two photographers (cross-tenant tests), a pending account,
     four libraries with fixed UUIDs, sample images and one video. Idempotent.
     """
-    import os
-
-    from config import DEBUG, CURRENT_AGB_VERSION
+    from config import DEBUG, PENTEST_MODE, CURRENT_AGB_VERSION
 
     if not DEBUG:
         click.echo("ERROR: seed-pentest-data only runs when DEBUG=true", err=True)
         raise SystemExit(1)
-    if os.getenv("PENTEST_MODE", "false").lower() not in ("1", "true", "yes"):
+    if not PENTEST_MODE:
         click.echo("ERROR: seed-pentest-data only runs when PENTEST_MODE=true", err=True)
         raise SystemExit(1)
 
@@ -446,26 +444,35 @@ def seed_pentest_data() -> None:
     lib_b = _library(PENTEST_LIB_B_PUBLIC, user_b, "B public", download_enabled=True)
 
     from services.images import process_and_store_image
-    from models import Video
+    from models import Video, VideoProcessingStatus
 
     colours = [(180, 60, 60), (60, 140, 70), (60, 80, 180)]
     for library, owner in ((lib_a, user_a), (lib_b, user_b)):
-        has_images = db.session.execute(
-            select(Image.id).where(Image.library_id == library.id).limit(1)
-        ).first()
-        if has_images:
-            continue
-        for i in range(PENTEST_IMAGES_PER_LIBRARY):
+        existing = db.session.execute(
+            select(func.count(Image.id)).where(Image.library_id == library.id)
+        ).scalar_one()
+        for i in range(existing, PENTEST_IMAGES_PER_LIBRARY):
             name = f"{library.name} {i + 1}"
             process_and_store_image(
                 library, owner, _pentest_jpeg(name, colours[i % 3]), f"sample-{i + 1}.jpg",
                 "image/jpeg",
             )
 
-    has_video = db.session.execute(
-        select(Video.id).where(Video.library_id == lib_a.id).limit(1)
+    has_ready_video = db.session.execute(
+        select(Video.id)
+        .where(
+            Video.library_id == lib_a.id,
+            Video.processing_status == VideoProcessingStatus.ready,
+        )
+        .limit(1)
     ).first()
-    if not has_video:
+    if not has_ready_video:
+        # A leftover from a failed earlier run would stay in `processing` forever.
+        for stale in db.session.execute(
+            select(Video).where(Video.library_id == lib_a.id)
+        ).scalars():
+            db.session.delete(stale)
+        db.session.commit()
         _seed_pentest_video(lib_a, user_a)
 
     click.echo("Pentest data seeded.")
