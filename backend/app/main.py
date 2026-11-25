@@ -247,6 +247,7 @@ def create_app(test_config=None):
         purge_audit_logs,
         apply_agb_acceptance,
         seed_test_data,
+        seed_pentest_data,
         create_admin_user,
         set_admin_password,
     )
@@ -255,6 +256,7 @@ def create_app(test_config=None):
     app.cli.add_command(purge_audit_logs)
     app.cli.add_command(apply_agb_acceptance)
     app.cli.add_command(seed_test_data)
+    app.cli.add_command(seed_pentest_data)
     app.cli.add_command(create_admin_user)
     app.cli.add_command(set_admin_password)
 
