@@ -99,6 +99,9 @@ lumios/
 ├── e2e/                      # Playwright end-to-end tests (run by e2e-tests.yml)
 ├── cloudflare-waf-rules.md   # Cloudflare WAF rule documentation
 ├── .github/workflows/        # CI/CD pipelines
+├── docker-compose.pentest.yml # Isolated, seeded pentest target on 127.0.0.1 (see pentest/, scripts/pentest.sh)
+├── pentest/                  # Pentest target: description (target.yaml), README, seed.py + its tests (not in the backend image)
+├── scripts/pentest.sh        # up/down/reset/seed/status for the pentest target
 ├── docker-compose.yml        # Local dev: backend, workers, frontend, landingpage, postgres, redis, s3 (Versity Gateway), jaeger
 ├── CLAUDE.md                 # This file
 └── TODO.md                   # Contains the next steps
@@ -152,6 +155,10 @@ flask apply-agb-acceptance               # Apply AGB acceptance after effective 
 flask create-admin-user --email <email>  # New admin with a random password, printed once (fails if the email exists)
 flask set-admin-password [--email admin] # Set/reset an existing admin's password: hidden prompt on a TTY, else one line of stdin; never an argument
 flask seed-test-data                     # Seed demo data (only runs when DEBUG=true; also run by entrypoint if SEED_TEST_DATA=true)
+
+# Pentest target (throwaway VM only): isolated stack on 127.0.0.1:18080/18081/17070
+scripts/pentest.sh up|down|reset|seed|status   # seed = python3 /pentest/seed.py in the backend container (needs DEBUG=true and PENTEST_MODE=true; idempotent)
+cd backend && uv run python -m pytest ../pentest  # tests of pentest/seed.py (backend fixtures, same test database)
 
 # Docker image (CI pattern)
 docker build --build-arg GIT_SHA=$(git rev-parse --short HEAD) -t lumios-backend .

@@ -570,3 +570,20 @@ class TestSetAdminPassword:
         _admin_with_role("admin")
         result = _invoke(app, ["set-admin-password", "--password", "NewPassword1!"])
         assert result.exit_code == 2
+
+
+# ---------------------------------------------------------------------------
+# seed-test-data (the pentest seed is tested in pentest/test_seed.py)
+# ---------------------------------------------------------------------------
+
+
+class TestSeedTestData:
+    def test_still_creates_exactly_its_two_users(self, app):
+        result = _invoke(app, ["seed-test-data"])
+        assert result.exit_code == 0, result.output
+        # Leave out the system `admin` user the initial migration inserts.
+        emails = {
+            u.email
+            for u in db.session.execute(select(User).where(User.is_system.is_(False))).scalars()
+        }
+        assert emails == {"photographer@test.com", "admin@test.com"}

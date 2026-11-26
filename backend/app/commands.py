@@ -265,6 +265,27 @@ def apply_agb_acceptance() -> None:
         raise SystemExit(1) from exc
 
 
+def _get_or_create_role(name: str, description: str) -> Role:
+    role = db.session.execute(select(Role).where(Role.name == name)).scalar_one_or_none()
+    if not role:
+        role = Role(name=name, description=description)
+        db.session.add(role)
+        db.session.flush()
+    return role
+
+
+def _get_or_create_user(
+    email: str, password: str, roles: list, active: bool = True, **fields
+) -> User:
+    user = db.session.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    if not user:
+        user = User(email=email, active=active, **fields)
+        user.set_password(password)
+        user.roles = roles
+        db.session.add(user)
+    return user
+
+
 @click.command("seed-test-data")
 @with_appcontext
 def seed_test_data() -> None:
@@ -281,29 +302,8 @@ def seed_test_data() -> None:
         click.echo("ERROR: seed-test-data only runs when DEBUG=true", err=True)
         raise SystemExit(1)
 
-    def _get_or_create_role(name: str, description: str) -> Role:
-        role = db.session.execute(
-            select(Role).where(Role.name == name)
-        ).scalar_one_or_none()
-        if not role:
-            role = Role(name=name, description=description)
-            db.session.add(role)
-            db.session.flush()
-        return role
-
     photographer_role = _get_or_create_role("photographer", "Photographer")
     admin_role = _get_or_create_role("admin", "Administrator")
-
-    def _get_or_create_user(email: str, password: str, roles: list) -> User:
-        user = db.session.execute(
-            select(User).where(User.email == email)
-        ).scalar_one_or_none()
-        if not user:
-            user = User(email=email, active=True)
-            user.set_password(password)
-            user.roles = roles
-            db.session.add(user)
-        return user
 
     _get_or_create_user("photographer@test.com", "TestPass123!", [photographer_role])
     _get_or_create_user("admin@test.com", "AdminPass123!", [admin_role])
