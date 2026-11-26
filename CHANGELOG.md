@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.1](https://github.com/Niecke/lumios/compare/v0.6.0...v0.6.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* apply procrastinate 3.12 queue schema migrations ([#687](https://github.com/Niecke/lumios/issues/687)) ([7f17a91](https://github.com/Niecke/lumios/commit/7f17a91a4996733f058d336b2961e3360fcd8fb3))
+* **deps:** update dependency authlib to v1.9.10 ([#672](https://github.com/Niecke/lumios/issues/672)) ([254c2dd](https://github.com/Niecke/lumios/commit/254c2dd7614d03537346ce30b5ff7b379820ba73))
+* **deps:** update dependency boto3 to v1.44.9 ([#671](https://github.com/Niecke/lumios/issues/671)) ([3770344](https://github.com/Niecke/lumios/commit/377034426137023187805e1d5aeb6ab77e9dfd6e))
+* **deps:** update dependency procrastinate to v3.12.0 ([#683](https://github.com/Niecke/lumios/issues/683)) ([6649b88](https://github.com/Niecke/lumios/commit/6649b884427c63d56e14959219145139f8c9c1bd))
+* **deps:** update dependency redis to v8.2.0 ([#684](https://github.com/Niecke/lumios/issues/684)) ([dcff8fd](https://github.com/Niecke/lumios/commit/dcff8fdab5bdf5a1b15d8f71977fa8e477b4f414))
+* **deps:** update dependency sentry-sdk to v2.75.0 ([#669](https://github.com/Niecke/lumios/issues/669)) ([535a329](https://github.com/Niecke/lumios/commit/535a3298893b38664267d42d67befdddf80a56d6))
+* **deps:** update dependency sentry-sdk to v2.76.0 ([#685](https://github.com/Niecke/lumios/issues/685)) ([3b1d198](https://github.com/Niecke/lumios/commit/3b1d1980582ebac006a3f58b4e95eabb81d6176a))
+
 ## [0.6.0](https://github.com/Niecke/lumios/compare/v0.5.0...v0.6.0) (2026-11-16)
 
 
