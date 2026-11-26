@@ -21,7 +21,7 @@ down_revision = "93dccb13ea4a"
 branch_labels = None
 depends_on = None
 
-# Highest migration shipped by procrastinate 3.10.0 (the pinned version).
+# Highest migration shipped by procrastinate 3.10.0 (pinned at the time of this revision).
 PROCRASTINATE_VERSION = "03.04.00"
 
 

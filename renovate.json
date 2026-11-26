@@ -45,6 +45,16 @@
         "pinDigest"
       ],
       "minimumReleaseAge": null
+    },
+    {
+      "description": "A procrastinate release can ship new queue schema migrations: its PR needs an Alembic revision calling ensure_schema with the new highest migration version (CLAUDE.md, Background Worker, Schema and upgrades). Never automerge it.",
+      "matchPackageNames": [
+        "procrastinate"
+      ],
+      "automerge": false,
+      "labels": [
+        "needs-schema-revision"
+      ]
     }
   ]
 }

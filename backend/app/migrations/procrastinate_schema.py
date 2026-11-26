@@ -6,6 +6,13 @@ record of what a database has applied and has no API that applies the files,
 so this module records the applied version in its own table and replays the
 missing files. Alembic revisions call ``ensure_schema`` with the highest
 migration version of the library release they expect.
+
+Some migration files build or drop an index ``CONCURRENTLY``, which PostgreSQL
+refuses inside a transaction block. Alembic runs every revision in one
+transaction, so ``CONCURRENTLY`` is stripped from migration files before they
+run (never from ``schema.sql``): the upgrade stays atomic, and the plain index
+lock is short because the queue table is small (finished jobs are purged) and
+the migrate Job runs before new workers start.
 """
 
 import os
@@ -16,6 +23,7 @@ from procrastinate.schema import SchemaManager
 VERSION_TABLE = "procrastinate_schema_version"
 
 _MIGRATION_FILE = re.compile(r"^(\d\d\.\d\d\.\d\d)_(\d\d)_.+\.sql$")
+_CONCURRENTLY = re.compile(r"\b((?:CREATE(?:\s+UNIQUE)?|DROP)\s+INDEX)\s+CONCURRENTLY\b", re.IGNORECASE)
 
 
 def include_object(obj, name, type_, reflected, compare_to):
@@ -29,6 +37,11 @@ def _run_script(bind, script: str) -> None:
     # exec_driver_sql hands psycopg a parameter set, so a literal % (RAISE
     # format strings in the library's functions) has to be doubled.
     bind.exec_driver_sql(script.replace("%", "%%"))
+
+
+def _without_concurrently(script: str) -> str:
+    """``CREATE/DROP INDEX CONCURRENTLY`` -> ``CREATE/DROP INDEX``, so it runs in a transaction."""
+    return _CONCURRENTLY.sub(r"\1", script)
 
 
 def _migration_files(migrations_path: str) -> list[tuple[str, int, str]]:
@@ -48,6 +61,8 @@ def ensure_schema(bind, target: str, migrations_path: str | None = None) -> None
     calling revision was written for, e.g. ``"03.04.00"``. ``pre`` and ``post``
     scripts of one version are applied together: the migrate Job runs while no
     new pod is up, which is the "easy" upgrade path of the Procrastinate docs.
+    Index builds and drops of the migration files run without ``CONCURRENTLY``
+    inside the caller's transaction (see the module docstring).
     """
     migrations_path = migrations_path or SchemaManager.get_migrations_path()
     files = _migration_files(migrations_path)
@@ -85,7 +100,7 @@ def ensure_schema(bind, target: str, migrations_path: str | None = None) -> None
     for version, _serial, name in files:
         if recorded < version <= target:
             with open(os.path.join(migrations_path, name), encoding="utf-8") as fh:
-                _run_script(bind, fh.read())
+                _run_script(bind, _without_concurrently(fh.read()))
     bind.exec_driver_sql(
         f"UPDATE {VERSION_TABLE} SET version = %(v)s", {"v": target}
     )
@@ -115,5 +130,6 @@ def drop_schema(bind) -> None:
     )
     bind.exec_driver_sql(
         "DROP TYPE IF EXISTS procrastinate_job_to_defer_v1, "
+        "procrastinate_job_to_defer_v2, procrastinate_lock_mode, "
         "procrastinate_job_event_type, procrastinate_job_status CASCADE"
     )
