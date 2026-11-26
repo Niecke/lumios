@@ -581,5 +581,9 @@ class TestSeedTestData:
     def test_still_creates_exactly_its_two_users(self, app):
         result = _invoke(app, ["seed-test-data"])
         assert result.exit_code == 0, result.output
-        emails = {u.email for u in db.session.execute(select(User)).scalars()}
+        # Leave out the system `admin` user the initial migration inserts.
+        emails = {
+            u.email
+            for u in db.session.execute(select(User).where(User.is_system.is_(False))).scalars()
+        }
         assert emails == {"photographer@test.com", "admin@test.com"}
