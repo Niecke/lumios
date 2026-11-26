@@ -12,7 +12,7 @@ import sentry_sdk
 from datetime import datetime, timezone, timedelta
 from flask import current_app
 from flask.cli import with_appcontext
-from sqlalchemy import select, delete, func
+from sqlalchemy import select, delete
 
 from models import (
     db,
@@ -274,10 +274,12 @@ def _get_or_create_role(name: str, description: str) -> Role:
     return role
 
 
-def _get_or_create_user(email: str, password: str, roles: list, **fields) -> User:
+def _get_or_create_user(
+    email: str, password: str, roles: list, active: bool = True, **fields
+) -> User:
     user = db.session.execute(select(User).where(User.email == email)).scalar_one_or_none()
     if not user:
-        user = User(email=email, active=True, **fields)
+        user = User(email=email, active=active, **fields)
         user.set_password(password)
         user.roles = roles
         db.session.add(user)
@@ -308,182 +310,6 @@ def seed_test_data() -> None:
 
     db.session.commit()
     click.echo("Test data seeded: photographer@test.com, admin@test.com")
-
-
-# Fixed identities of the pentest target (see pentest/target.yaml).
-PENTEST_ADMIN = ("admin@pentest.local", "PentestAdmin123!")
-PENTEST_PHOTOGRAPHER_A = ("photographer-a@pentest.local", "PentestPhotoA123!")
-PENTEST_PHOTOGRAPHER_B = ("photographer-b@pentest.local", "PentestPhotoB123!")
-PENTEST_PENDING = ("pending@pentest.local", "PentestPending123!")
-
-PENTEST_LIB_A_PUBLIC = "00000000-0000-4000-8000-00000000a001"
-PENTEST_LIB_A_PRIVATE = "00000000-0000-4000-8000-00000000a002"
-PENTEST_LIB_A_UPLOAD = "00000000-0000-4000-8000-00000000a003"
-PENTEST_LIB_B_PUBLIC = "00000000-0000-4000-8000-00000000b001"
-
-PENTEST_IMAGES_PER_LIBRARY = 3
-
-
-def _pentest_jpeg(label: str, colour: tuple) -> bytes:
-    import io
-
-    from PIL import Image as PilImage, ImageDraw
-
-    img = PilImage.new("RGB", (800, 600), colour)
-    ImageDraw.Draw(img).text((40, 40), label, fill=(255, 255, 255))
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=85)
-    return buf.getvalue()
-
-
-def _pentest_mp4() -> bytes:
-    """A 2 s test-pattern MP4 made with the bundled ffmpeg."""
-    import os
-    import subprocess
-    import tempfile
-
-    import imageio_ffmpeg
-
-    fd, path = tempfile.mkstemp(suffix=".mp4")
-    os.close(fd)
-    try:
-        subprocess.run(
-            [
-                imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error",
-                "-f", "lavfi", "-i", "testsrc=size=320x240:rate=10",
-                "-t", "2", "-pix_fmt", "yuv420p", path,
-            ],
-            check=True,
-            timeout=60,
-        )
-        with open(path, "rb") as f:
-            return f.read()
-    finally:
-        if os.path.exists(path):
-            os.unlink(path)
-
-
-def _seed_pentest_video(library: Library, owner: User) -> None:
-    import io
-    import uuid as uuid_module
-
-    from models import Video, VideoProcessingStatus
-    from services import videos as video_service
-
-    data = _pentest_mp4()
-    video_uuid = str(uuid_module.uuid4())
-    s3_key = f"{video_uuid}.mp4"
-    video = Video(
-        uuid=video_uuid,
-        library_id=library.id,
-        s3_key=s3_key,
-        original_filename="pentest-sample.mp4",
-        content_type="video/mp4",
-        size=len(data),
-        processing_status=VideoProcessingStatus.processing,
-    )
-    db.session.add(video)
-    db.session.flush()  # loads video.library, which storage_path needs
-    storage.ensure_bucket()
-    storage.upload_fileobj(io.BytesIO(data), video.storage_path("originals"), "video/mp4")
-    db.session.commit()
-    # Synchronously, so the video is `ready` without depending on the worker.
-    video_service.process_video(video.uuid)
-
-
-@click.command("seed-pentest-data")
-@with_appcontext
-def seed_pentest_data() -> None:
-    """Seed the pentest target. Only runs with DEBUG=true and PENTEST_MODE=true.
-
-    Creates an admin, two photographers (cross-tenant tests), a pending account,
-    four libraries with fixed UUIDs, sample images and one video. Idempotent.
-    """
-    from config import DEBUG, PENTEST_MODE, CURRENT_AGB_VERSION
-
-    if not DEBUG:
-        click.echo("ERROR: seed-pentest-data only runs when DEBUG=true", err=True)
-        raise SystemExit(1)
-    if not PENTEST_MODE:
-        click.echo("ERROR: seed-pentest-data only runs when PENTEST_MODE=true", err=True)
-        raise SystemExit(1)
-
-    photographer_role = _get_or_create_role("photographer", "Photographer")
-    admin_role = _get_or_create_role("admin", "Administrator")
-
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    common = dict(agb_accepted_at=now, agb_version=CURRENT_AGB_VERSION, language="en")
-    _get_or_create_user(PENTEST_ADMIN[0], PENTEST_ADMIN[1], [admin_role], **common)
-    user_a = _get_or_create_user(
-        PENTEST_PHOTOGRAPHER_A[0], PENTEST_PHOTOGRAPHER_A[1], [photographer_role], **common
-    )
-    user_b = _get_or_create_user(
-        PENTEST_PHOTOGRAPHER_B[0], PENTEST_PHOTOGRAPHER_B[1], [photographer_role], **common
-    )
-    pending = _get_or_create_user(
-        PENTEST_PENDING[0], PENTEST_PENDING[1], [photographer_role], **common
-    )
-    if pending.id is None:
-        pending.active = False
-        pending.activation_pending = True
-    db.session.commit()
-
-    def _library(uuid: str, owner: User, name: str, **flags) -> Library:
-        library = db.session.execute(
-            select(Library).where(Library.uuid == uuid)
-        ).scalar_one_or_none()
-        if not library:
-            library = Library(uuid=uuid, user_id=owner.id, name=name, **flags)
-            db.session.add(library)
-            db.session.commit()
-        return library
-
-    lib_a = _library(PENTEST_LIB_A_PUBLIC, user_a, "A public", download_enabled=True)
-    _library(PENTEST_LIB_A_PRIVATE, user_a, "A private", is_private=True)
-    _library(PENTEST_LIB_A_UPLOAD, user_a, "A customer upload", public_upload_enabled=True)
-    lib_b = _library(PENTEST_LIB_B_PUBLIC, user_b, "B public", download_enabled=True)
-
-    from services.images import process_and_store_image
-    from models import Video, VideoProcessingStatus
-
-    colours = [(180, 60, 60), (60, 140, 70), (60, 80, 180)]
-    for library, owner in ((lib_a, user_a), (lib_b, user_b)):
-        existing = db.session.execute(
-            select(func.count(Image.id)).where(Image.library_id == library.id)
-        ).scalar_one()
-        for i in range(existing, PENTEST_IMAGES_PER_LIBRARY):
-            name = f"{library.name} {i + 1}"
-            process_and_store_image(
-                library, owner, _pentest_jpeg(name, colours[i % 3]), f"sample-{i + 1}.jpg",
-                "image/jpeg",
-            )
-
-    has_ready_video = db.session.execute(
-        select(Video.id)
-        .where(
-            Video.library_id == lib_a.id,
-            Video.processing_status == VideoProcessingStatus.ready,
-        )
-        .limit(1)
-    ).first()
-    if not has_ready_video:
-        # A leftover from a failed earlier run would stay in `processing` forever.
-        for stale in db.session.execute(
-            select(Video).where(Video.library_id == lib_a.id)
-        ).scalars():
-            db.session.delete(stale)
-        db.session.commit()
-        _seed_pentest_video(lib_a, user_a)
-
-    click.echo("Pentest data seeded.")
-    for email, password in (
-        PENTEST_ADMIN, PENTEST_PHOTOGRAPHER_A, PENTEST_PHOTOGRAPHER_B, PENTEST_PENDING
-    ):
-        click.echo(f"  {email} / {password}")
-    for uuid in (
-        PENTEST_LIB_A_PUBLIC, PENTEST_LIB_A_PRIVATE, PENTEST_LIB_A_UPLOAD, PENTEST_LIB_B_PUBLIC
-    ):
-        click.echo(f"  share link: /library/{uuid}")
 
 
 def _purge_user(user: User) -> None:

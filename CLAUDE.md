@@ -100,7 +100,7 @@ lumios/
 ├── cloudflare-waf-rules.md   # Cloudflare WAF rule documentation
 ├── .github/workflows/        # CI/CD pipelines
 ├── docker-compose.pentest.yml # Isolated, seeded pentest target on 127.0.0.1 (see pentest/, scripts/pentest.sh)
-├── pentest/                  # Pentest target description (target.yaml) and README
+├── pentest/                  # Pentest target: description (target.yaml), README, seed.py + its tests (not in the backend image)
 ├── scripts/pentest.sh        # up/down/reset/seed/status for the pentest target
 ├── docker-compose.yml        # Local dev: backend, workers, frontend, landingpage, postgres, redis, s3 (Versity Gateway), jaeger
 ├── CLAUDE.md                 # This file
@@ -155,10 +155,10 @@ flask apply-agb-acceptance               # Apply AGB acceptance after effective 
 flask create-admin-user --email <email>  # New admin with a random password, printed once (fails if the email exists)
 flask set-admin-password [--email admin] # Set/reset an existing admin's password: hidden prompt on a TTY, else one line of stdin; never an argument
 flask seed-test-data                     # Seed demo data (only runs when DEBUG=true; also run by entrypoint if SEED_TEST_DATA=true)
-flask seed-pentest-data                  # Seed the pentest target (needs DEBUG=true and PENTEST_MODE=true; idempotent)
 
 # Pentest target (throwaway VM only): isolated stack on 127.0.0.1:18080/18081/17070
-scripts/pentest.sh up|down|reset|seed|status
+scripts/pentest.sh up|down|reset|seed|status   # seed = python3 /pentest/seed.py in the backend container (needs DEBUG=true and PENTEST_MODE=true; idempotent)
+cd backend && uv run python -m pytest ../pentest  # tests of pentest/seed.py (backend fixtures, same test database)
 
 # Docker image (CI pattern)
 docker build --build-arg GIT_SHA=$(git rev-parse --short HEAD) -t lumios-backend .
@@ -246,7 +246,6 @@ Also read in `backend/app/config.py`, `backend/entrypoint.py` or `services/stora
 | `PASSWORD_HASHER_PARALLELISM` | `4` | Argon2id parallelism |
 | `RATELIMIT_ENABLED` | `true` | Rate limiter switch; only disabled in tests |
 | `GUNICORN_WORKERS` | `2*cpu+1` | Gunicorn worker count |
-| `PENTEST_MODE` | `false` | `true` lets `flask seed-pentest-data` run; set only by `docker-compose.pentest.yml` |
 | `SEED_TEST_DATA` | unset | `true` makes the entrypoint run `flask seed-test-data` (needs `DEBUG=true`) |
 | `SQLALCHEMY_TRACK_MODIFICATIONS` | `false` | Flask-SQLAlchemy modification tracking |
 | `SQLALCHEMY_ENGINE_OPTIONS_POOL_PRE_PING` | `true` | Engine option `pool_pre_ping` |

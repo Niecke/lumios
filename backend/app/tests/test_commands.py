@@ -17,7 +17,6 @@ from unittest.mock import patch
 from models import (
     db,
     User,
-    VideoProcessingStatus,
     Library,
     Image,
     Notification,
@@ -29,7 +28,6 @@ from models import (
     AgbUpdate,
     AuditLog,
     AuditLogType,
-    Video,
 )
 from sqlalchemy import select
 
@@ -575,31 +573,8 @@ class TestSetAdminPassword:
 
 
 # ---------------------------------------------------------------------------
-# seed-test-data / seed-pentest-data
+# seed-test-data (the pentest seed is tested in pentest/test_seed.py)
 # ---------------------------------------------------------------------------
-
-
-def _mark_ready(video_uuid):
-    video = db.session.execute(select(Video).where(Video.uuid == video_uuid)).scalar_one()
-    video.processing_status = VideoProcessingStatus.ready
-    db.session.commit()
-
-
-@pytest.fixture
-def pentest_env(monkeypatch):
-    monkeypatch.setattr("config.PENTEST_MODE", True)
-    with (
-        patch("services.images.storage") as images_storage,
-        patch("commands.storage") as commands_storage,
-        patch("services.images.enqueue_library_cover"),
-        patch("services.videos.process_video", side_effect=_mark_ready) as process_video,
-        patch("commands._pentest_mp4", return_value=b"fake-mp4"),
-    ):
-        yield {"images": images_storage, "commands": commands_storage, "video": process_video}
-
-
-def _count(model):
-    return len(db.session.execute(select(model)).scalars().all())
 
 
 class TestSeedTestData:
@@ -608,94 +583,3 @@ class TestSeedTestData:
         assert result.exit_code == 0, result.output
         emails = {u.email for u in db.session.execute(select(User)).scalars()}
         assert emails == {"photographer@test.com", "admin@test.com"}
-
-
-class TestSeedPentestData:
-    def test_refuses_without_pentest_mode(self, app, monkeypatch):
-        monkeypatch.setattr("config.PENTEST_MODE", False)
-        result = _invoke(app, ["seed-pentest-data"])
-        assert result.exit_code == 1
-        assert "PENTEST_MODE" in result.output
-        assert _count(User) == 0
-
-    def test_refuses_when_debug_is_off(self, app, pentest_env):
-        with patch("config.DEBUG", False):
-            result = _invoke(app, ["seed-pentest-data"])
-        assert result.exit_code == 1
-        assert "DEBUG" in result.output
-        assert _count(User) == 0
-
-    def test_happy_path(self, app, pentest_env):
-        result = _invoke(app, ["seed-pentest-data"])
-        assert result.exit_code == 0, result.output
-
-        users = {u.email: u for u in db.session.execute(select(User)).scalars()}
-        assert set(users) == {
-            "admin@pentest.local",
-            "photographer-a@pentest.local",
-            "photographer-b@pentest.local",
-            "pending@pentest.local",
-        }
-        assert users["admin@pentest.local"].verify_password("PentestAdmin123!")
-        assert users["photographer-a@pentest.local"].verify_password("PentestPhotoA123!")
-        assert users["photographer-b@pentest.local"].verify_password("PentestPhotoB123!")
-        assert [r.name for r in users["admin@pentest.local"].roles] == ["admin"]
-        assert [r.name for r in users["photographer-a@pentest.local"].roles] == ["photographer"]
-        assert users["admin@pentest.local"].active
-        assert not users["pending@pentest.local"].active
-        assert users["pending@pentest.local"].activation_pending
-
-        libs = {l.uuid: l for l in db.session.execute(select(Library)).scalars()}
-        assert set(libs) == {
-            "00000000-0000-4000-8000-00000000a001",
-            "00000000-0000-4000-8000-00000000a002",
-            "00000000-0000-4000-8000-00000000a003",
-            "00000000-0000-4000-8000-00000000b001",
-        }
-        assert libs["00000000-0000-4000-8000-00000000a002"].is_private
-        assert libs["00000000-0000-4000-8000-00000000a003"].public_upload_enabled
-        assert libs["00000000-0000-4000-8000-00000000a001"].user_id == users[
-            "photographer-a@pentest.local"
-        ].id
-        assert libs["00000000-0000-4000-8000-00000000b001"].user_id == users[
-            "photographer-b@pentest.local"
-        ].id
-        for key in ("a001", "b001"):
-            lib = libs[f"00000000-0000-4000-8000-00000000{key}"]
-            images = db.session.execute(
-                select(Image).where(Image.library_id == lib.id)
-            ).scalars().all()
-            assert len(images) >= 3
-
-        pentest_env["video"].assert_called_once()
-        assert _count(Video) == 1
-
-    def test_second_run_changes_nothing(self, app, pentest_env):
-        assert _invoke(app, ["seed-pentest-data"]).exit_code == 0
-        before = (_count(User), _count(Library), _count(Image), _count(Video))
-        assert _invoke(app, ["seed-pentest-data"]).exit_code == 0
-        db.session.expire_all()
-        assert (_count(User), _count(Library), _count(Image), _count(Video)) == before
-        assert pentest_env["video"].call_count == 1
-
-    def test_rerun_repairs_partial_seed(self, app, pentest_env):
-        assert _invoke(app, ["seed-pentest-data"]).exit_code == 0
-        lib = db.session.execute(
-            select(Library).where(Library.uuid == "00000000-0000-4000-8000-00000000a001")
-        ).scalar_one()
-        # Simulate a crash: one image missing, the video stuck in `processing`.
-        db.session.delete(
-            db.session.execute(select(Image).where(Image.library_id == lib.id)).scalars().first()
-        )
-        video = db.session.execute(select(Video)).scalar_one()
-        video.processing_status = VideoProcessingStatus.processing
-        db.session.commit()
-
-        assert _invoke(app, ["seed-pentest-data"]).exit_code == 0
-        db.session.expire_all()
-        assert len(
-            db.session.execute(select(Image).where(Image.library_id == lib.id)).scalars().all()
-        ) == 3
-        # The stuck video was replaced by a fresh one that process_video is run for.
-        assert _count(Video) == 1
-        assert pentest_env["video"].call_count == 2

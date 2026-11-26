@@ -72,4 +72,7 @@ jobs:
           PASSWORD_HASHER_TIME_COST: "1"
           PASSWORD_HASHER_MEMORY_COST: "8"
           PASSWORD_HASHER_PARALLELISM: "1"
-        run: uv run python -m pytest
+        run: |
+          uv run python -m pytest
+          # pentest/seed.py lives outside the image; its tests reuse the backend fixtures
+          uv run python -m pytest ../pentest
