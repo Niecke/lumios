@@ -1417,6 +1417,16 @@ body {
   z-index: 1001;
 }
 
+.lightbox__alert {
+  position: absolute;
+  top: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 8rem);
+  z-index: 1001;
+  cursor: default;
+}
+
 .lightbox__like:hover {
   background: rgba(0, 0, 0, 0.75);
   transform: scale(1.1);
