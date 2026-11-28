@@ -751,7 +751,8 @@ lumios-api.niecke-it.de   → backend Service
 - Traefik (shipped with k3s) is the ingress controller, one Ingress per host plus Traefik Middlewares (`charts/lumios/templates/ingress.yaml`)
 - cert-manager issues one Let's Encrypt certificate per host (ClusterIssuer `letsencrypt`)
 - Thumbnails and previews cached at Cloudflare edge (Cache-Control: public, max-age=31536000)
-- API and HTML responses: Cache-Control: no-store
+- API responses: Cache-Control: no-store; the SPA's `index.html`: `no-cache` (always revalidated)
+- SPA bundles under `/assets/` (Vite, content-hashed): `public, max-age=31536000, immutable`; a missing chunk is a 404 with `no-store`, never the SPA fallback (`frontend/nginx.conf.template`)
 
 ---
 
