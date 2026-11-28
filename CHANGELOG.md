@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.7.0](https://github.com/Niecke/lumios/compare/v0.6.1...v0.7.0) (2026-11-28)
+
+
+### Features
+
+* **dev:** add isolated, seeded pentest target mode ([#680](https://github.com/Niecke/lumios/issues/680)) ([c864138](https://github.com/Niecke/lumios/commit/c86413872626b667c77fd6cd1a12d7f35ad43107))
+* **notifications:** add retention job for seen notifications ([#703](https://github.com/Niecke/lumios/issues/703)) ([5861c0c](https://github.com/Niecke/lumios/commit/5861c0c73c2d17f8e01702d4dee6cf7a3363eb9e))
+
+
+### Bug Fixes
+
+* **deps:** update dependency boto3 to v1.44.11 ([#696](https://github.com/Niecke/lumios/issues/696)) ([6c44269](https://github.com/Niecke/lumios/commit/6c442694f28eb4e2d2f9b6353ff573b4f6ec4538))
+
+
+### Performance Improvements
+
+* **db:** add indexes on library, image, video, notification and audit_log foreign keys ([#699](https://github.com/Niecke/lumios/issues/699)) ([b39497e](https://github.com/Niecke/lumios/commit/b39497e44da0c30ae6d16854bbae005d5ff4f9de))
+* **frontend:** cache hashed assets immutably and revalidate index.html ([#700](https://github.com/Niecke/lumios/issues/700)) ([0386b11](https://github.com/Niecke/lumios/commit/0386b11d77a32f130caae8d29d4e3bc9d9e77937))
+
 ## [0.6.1](https://github.com/Niecke/lumios/compare/v0.6.0...v0.6.1) (2026-11-26)
 
 
