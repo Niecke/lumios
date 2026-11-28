@@ -900,6 +900,13 @@ class TestAdminSystem:
                 status="success",
             )
         )
+        db.session.add(
+            JobRun(
+                job_name="purge-notifications",
+                ran_at=datetime.now(timezone.utc) - timedelta(hours=1),
+                status="success",
+            )
+        )
         db.session.commit()
         login_admin(client, admin_user)
         with patch("services.system.storage._client"), patch(

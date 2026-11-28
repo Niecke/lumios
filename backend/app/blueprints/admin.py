@@ -81,7 +81,7 @@ def index():
             User.deleted_at.is_(None),
         )
     )
-    job_names = ["purge-deleted-accounts", "purge-audit-logs"]
+    job_names = ["purge-deleted-accounts", "purge-audit-logs", "purge-notifications"]
     job_runs = {}
     for name in job_names:
         run = db.session.execute(
