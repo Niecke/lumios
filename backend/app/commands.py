@@ -31,7 +31,7 @@ from models import (
 )
 from sqlalchemy import update
 import services.storage as storage
-from config import MIN_PASSWORD_LENGTH
+from config import MIN_PASSWORD_LENGTH, NOTIFICATION_RETENTION_DAYS
 from services.audit import write_audit_log
 
 ACCOUNT_RETENTION_DAYS = 30
@@ -159,6 +159,60 @@ def purge_audit_logs() -> None:
         db.session.add(
             JobRun(
                 job_name="purge-audit-logs",
+                ran_at=ran_at,
+                status="error",
+                error_message=str(exc),
+            )
+        )
+        db.session.commit()
+        raise SystemExit(1) from exc
+
+
+@click.command("purge-notifications")
+@with_appcontext
+def purge_notifications() -> None:
+    """Delete notifications seen more than NOTIFICATION_RETENTION_DAYS ago.
+
+    Unseen notifications are kept, however old they are.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=NOTIFICATION_RETENTION_DAYS)
+    ran_at = datetime.now(timezone.utc)
+
+    try:
+        result = db.session.execute(
+            delete(Notification).where(
+                Notification.seen_at.is_not(None),
+                Notification.seen_at < cutoff,
+            )
+        )
+        count = result.rowcount
+
+        current_app.logger.info(
+            "purge-notifications: deleted %d seen notification(s) older than %s",
+            count,
+            cutoff.date(),
+            extra={"log_type": "cleanup"},
+        )
+
+        db.session.add(
+            JobRun(
+                job_name="purge-notifications",
+                ran_at=ran_at,
+                status="success",
+                records_affected=count,
+            )
+        )
+        db.session.commit()
+    except Exception as exc:
+        current_app.logger.exception(
+            "purge-notifications: failed", extra={"log_type": "cleanup"}
+        )
+        sentry_sdk.capture_exception(exc)
+        sentry_sdk.flush(timeout=2.0)
+        db.session.rollback()
+        db.session.add(
+            JobRun(
+                job_name="purge-notifications",
                 ran_at=ran_at,
                 status="error",
                 error_message=str(exc),

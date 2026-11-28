@@ -245,6 +245,7 @@ def create_app(test_config=None):
     from commands import (
         purge_deleted_accounts,
         purge_audit_logs,
+        purge_notifications,
         apply_agb_acceptance,
         seed_test_data,
         create_admin_user,
@@ -253,6 +254,7 @@ def create_app(test_config=None):
 
     app.cli.add_command(purge_deleted_accounts)
     app.cli.add_command(purge_audit_logs)
+    app.cli.add_command(purge_notifications)
     app.cli.add_command(apply_agb_acceptance)
     app.cli.add_command(seed_test_data)
     app.cli.add_command(create_admin_user)
