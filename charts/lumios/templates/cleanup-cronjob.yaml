@@ -1,10 +1,10 @@
 {{- if .Values.cleanup.enabled }}
 {{- /*
-The two retention jobs (purge-deleted-accounts, purge-audit-logs), one CronJob each so a
-failure in one does not hide the other. The command is the interpreter itself
+The three retention jobs (purge-deleted-accounts, purge-audit-logs, purge-notifications),
+one CronJob each so a failure in one does not hide the others. The command is the interpreter itself
 (/usr/bin/python3) rather than a shell wrapper.
 */}}
-{{- range $job := list "purge-deleted-accounts" "purge-audit-logs" }}
+{{- range $job := list "purge-deleted-accounts" "purge-audit-logs" "purge-notifications" }}
 ---
 apiVersion: batch/v1
 kind: CronJob

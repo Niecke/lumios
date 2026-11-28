@@ -45,6 +45,9 @@ VIDEO_JOB_TIMEOUT_SECONDS = int(os.getenv("VIDEO_JOB_TIMEOUT_SECONDS", "600"))
 # Finished jobs (and their events) older than this are deleted by the daily clean_old_jobs task
 WORKER_JOB_RETENTION_DAYS = int(os.getenv("WORKER_JOB_RETENTION_DAYS", "30"))
 
+# Seen notifications older than this (by seen_at) are deleted by `flask purge-notifications`
+NOTIFICATION_RETENTION_DAYS = int(os.getenv("NOTIFICATION_RETENTION_DAYS", "90"))
+
 # Database
 POSTGRES_USER = str(os.getenv("POSTGRES_USER", "lumios"))
 POSTGRES_PASSWORD = str(os.getenv("POSTGRES_PASSWORD"))

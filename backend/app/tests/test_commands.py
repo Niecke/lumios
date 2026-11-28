@@ -1,7 +1,7 @@
 """
 Tests for Flask CLI commands (commands.py).
 
-Covers the purge-deleted-accounts command:
+Covers the purge-deleted-accounts command (purge-notifications further below):
 - accounts past retention window are hard-deleted
 - accounts within retention window are kept
 - active (non-deleted) accounts are untouched
@@ -28,6 +28,7 @@ from models import (
     AgbUpdate,
     AuditLog,
     AuditLogType,
+    JobRun,
 )
 from sqlalchemy import select
 
@@ -380,6 +381,115 @@ class TestApplyAgbAcceptance:
 
 
 # ---------------------------------------------------------------------------
+# purge-notifications
+# ---------------------------------------------------------------------------
+
+
+def _notification(user: User, seen_days_ago: int | None, created_days_ago: int = 0):
+    now = datetime.now(timezone.utc)
+    n = Notification(
+        user_id=user.id,
+        type=NotificationType.library_viewed,
+        created_at=now - timedelta(days=created_days_ago),
+        seen_at=None if seen_days_ago is None else now - timedelta(days=seen_days_ago),
+    )
+    db.session.add(n)
+    db.session.commit()
+    return n.id
+
+
+def _run_purge_notifications(app):
+    return app.test_cli_runner().invoke(args=["purge-notifications"])
+
+
+class TestPurgeNotifications:
+    def test_deletes_notification_seen_91_days_ago(self, app):
+        user = _active_user("notif-old@test.com")
+        nid = _notification(user, seen_days_ago=91, created_days_ago=100)
+
+        result = _run_purge_notifications(app)
+
+        assert result.exit_code == 0
+        db.session.expire_all()
+        assert db.session.get(Notification, nid) is None
+
+    def test_keeps_notification_seen_89_days_ago(self, app):
+        user = _active_user("notif-recent@test.com")
+        nid = _notification(user, seen_days_ago=89, created_days_ago=200)
+
+        result = _run_purge_notifications(app)
+
+        assert result.exit_code == 0
+        db.session.expire_all()
+        assert db.session.get(Notification, nid) is not None
+
+    def test_keeps_old_unseen_notification(self, app):
+        user = _active_user("notif-unseen@test.com")
+        nid = _notification(user, seen_days_ago=None, created_days_ago=200)
+
+        result = _run_purge_notifications(app)
+
+        assert result.exit_code == 0
+        db.session.expire_all()
+        assert db.session.get(Notification, nid) is not None
+
+    def test_honours_configured_retention(self, app):
+        user = _active_user("notif-config@test.com")
+        old = _notification(user, seen_days_ago=8)
+        recent = _notification(user, seen_days_ago=6)
+
+        with patch("commands.NOTIFICATION_RETENTION_DAYS", 7):
+            result = _run_purge_notifications(app)
+
+        assert result.exit_code == 0
+        db.session.expire_all()
+        assert db.session.get(Notification, old) is None
+        assert db.session.get(Notification, recent) is not None
+
+    def test_records_successful_job_run(self, app):
+        user = _active_user("notif-jobrun@test.com")
+        _notification(user, seen_days_ago=120)
+        _notification(user, seen_days_ago=95)
+        _notification(user, seen_days_ago=10)
+        _notification(user, seen_days_ago=None, created_days_ago=300)
+
+        result = _run_purge_notifications(app)
+
+        assert result.exit_code == 0
+        runs = db.session.execute(
+            select(JobRun).where(JobRun.job_name == "purge-notifications")
+        ).scalars().all()
+        assert len(runs) == 1
+        assert runs[0].status == "success"
+        assert runs[0].records_affected == 2
+        assert db.session.scalar(select(db.func.count(Notification.id))) == 2
+
+    def test_empty_table_exits_cleanly(self, app):
+        result = _run_purge_notifications(app)
+
+        assert result.exit_code == 0
+        run = db.session.execute(
+            select(JobRun).where(JobRun.job_name == "purge-notifications")
+        ).scalar_one()
+        assert run.status == "success"
+        assert run.records_affected == 0
+
+    def test_failure_records_error_job_run(self, app):
+        with (
+            patch("commands.delete", side_effect=RuntimeError("boom")),
+            patch("commands.sentry_sdk"),
+        ):
+            result = _run_purge_notifications(app)
+
+        assert result.exit_code == 1
+        run = db.session.execute(
+            select(JobRun).where(JobRun.job_name == "purge-notifications")
+        ).scalar_one()
+        assert run.status == "error"
+        assert run.error_message == "boom"
+
+
+# ---------------------------------------------------------------------------
 # Sentry reporting on failure
 # ---------------------------------------------------------------------------
 
@@ -390,6 +500,7 @@ class TestFailureReportedToSentry:
         [
             ("purge-deleted-accounts", "commands._purge_user"),
             ("purge-audit-logs", "commands.delete"),
+            ("purge-notifications", "commands.delete"),
             ("apply-agb-acceptance", "commands.select"),
         ],
     )

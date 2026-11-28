@@ -23,7 +23,7 @@ from services import storage
 from services.backups import get_backup_status, has_backup_problem
 from services.redis_client import get_redis
 
-JOB_NAMES = ["purge-deleted-accounts", "purge-audit-logs"]
+JOB_NAMES = ["purge-deleted-accounts", "purge-audit-logs", "purge-notifications"]
 JOB_OVERDUE_SECONDS = 36 * 3600
 REMOTE_TIMEOUT_SECONDS = 2.0
 DETAIL_MAX_LENGTH = 200

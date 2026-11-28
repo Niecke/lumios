@@ -67,7 +67,7 @@ lumios/
 │   │   ├── static/
 │   │   ├── templates/
 │   │   ├── tests/
-│   │   ├── commands.py       # CLI commands: purge_deleted_accounts, purge_audit_logs, apply_agb_acceptance, seed_test_data, create_admin_user, set_admin_password
+│   │   ├── commands.py       # CLI commands: purge_deleted_accounts, purge_audit_logs, purge_notifications, apply_agb_acceptance, seed_test_data, create_admin_user, set_admin_password
 │   │   ├── config.py         # All env vars loaded here — fail-fast on missing
 │   │   ├── current_user.py   # Thread-local current user helper
 │   │   ├── log.py            # Structured JSON logging
@@ -151,6 +151,7 @@ python -m procrastinate --app=worker.worker_app shell         # inspect/retry jo
 # CLI commands (registered in main.py)
 flask purge-deleted-accounts             # Hard-delete accounts soft-deleted > 1 year
 flask purge-audit-logs                   # Purge audit logs older than 90 days
+flask purge-notifications                # Purge notifications seen more than NOTIFICATION_RETENTION_DAYS (90) days ago
 flask apply-agb-acceptance               # Apply AGB acceptance after effective date
 flask create-admin-user --email <email>  # New admin with a random password, printed once (fails if the email exists)
 flask set-admin-password [--email admin] # Set/reset an existing admin's password: hidden prompt on a TTY, else one line of stdin; never an argument
@@ -238,6 +239,7 @@ Also read in `backend/app/config.py`, `backend/entrypoint.py` or `services/stora
 | `OTEL_SERVICE_NAME` | `lumios-backend` | Service name reported to tracing |
 | `OTEL_SERVICE_VERSION` | `$GIT_HASH` | Service version reported to tracing |
 | `VIDEO_JOB_TIMEOUT_SECONDS` | `600` | Upper bound for one ffmpeg call of a video job; a hung process is killed and the job retried |
+| `NOTIFICATION_RETENTION_DAYS` | `90` | Notifications seen (`seen_at`) longer ago than this are deleted by the daily `flask purge-notifications` CronJob; unseen ones are kept (Helm: `backend.notificationRetentionDays`) |
 | `WORKER_JOB_RETENTION_DAYS` | `30` | Finished Procrastinate jobs (`succeeded`, `failed`, `cancelled`, `aborted`) and their events are deleted by the daily `clean_old_jobs` task once the job finished this many days ago (Helm: `backend.jobRetentionDays`) |
 | `INIT_ADMIN_PASSWORD` | random | Password of the seeded admin; generated (16 chars, letters, digits and `!@#\$%&*`) if empty |
 | `MIN_PASSWORD_LENGTH` | `8` | Minimum password length |
@@ -334,6 +336,7 @@ Quota limits come solely from the subscription tier (`SUBSCRIPTION_LIMITS` in `c
 - `deleted_at` is set when a user/library/image is soft-deleted. Hard delete runs after 1 year via `flask purge-deleted-accounts`.
 - `archived_at` on libraries is currently not set by any lifecycle job (the column exists, nothing populates it; issue #435 was closed as not planned). The object storage provider has no storage tiers, so there is no lifecycle rule either; the column stays unused.
 - Audit logs retain for 90 days then are purged via `flask purge-audit-logs` (IP address is personal data under GDPR).
+- Seen notifications are deleted `NOTIFICATION_RETENTION_DAYS` (90) days after `seen_at` by `flask purge-notifications`; unseen notifications are kept.
 
 ---
 

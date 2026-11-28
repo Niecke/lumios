@@ -260,7 +260,7 @@ jobs:
           [ "$(video_env prod backend VIDEO_UPLOADS_ENABLED)" = true ]
           [ "$(video_env staging-talos backend S3_BUCKET)" = lumios-staging ]
           [ "$(video_env staging-talos backend PUBLIC_BASE_URL)" = https://lumios-api-staging.niecke-it.de ]
-          [ "$(grep -c 'kind: CronJob' "$RUNNER_TEMP/prod.yaml")" -eq 4 ]
+          [ "$(grep -c 'kind: CronJob' "$RUNNER_TEMP/prod.yaml")" -eq 5 ]
 
   # The sha under test. For a pull_request event github.sha is the ephemeral
   # merge commit, which no image should ever be tagged with — promote looks the
