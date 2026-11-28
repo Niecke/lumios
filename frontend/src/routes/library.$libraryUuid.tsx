@@ -4,7 +4,7 @@
 // Unauthenticated visitors see a read-only public gallery.
 
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useQueryClient, useMutation, type InfiniteData } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
@@ -14,7 +14,8 @@ import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { librariesApi } from "../api/libraries";
 import { imagesApi, type Image } from "../api/images";
 import { dedupeMedia } from "../uploads/appendMedia";
-import { publicApi, type PublicImage } from "../api/public";
+import { publicApi, type PublicImage, type PublicLibraryPage } from "../api/public";
+import { setItemState } from "../public/customerState.ts";
 import { videosApi } from "../api/videos";
 import { isVideoFile, uploadStatusIcon, type UploadItem } from "../uploads/uploadStore.ts";
 import { useUploadStore } from "../uploads/UploadContext.tsx";
@@ -223,6 +224,7 @@ interface PublicLightboxProps {
   onClose: () => void;
   onNavigate: (index: number) => void;
   onToggleLike: (img: PublicImage) => void;
+  likeError: string | null;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
   fetchNextPage: () => void;
@@ -234,6 +236,7 @@ function PublicLightbox({
   onClose,
   onNavigate,
   onToggleLike,
+  likeError,
   hasNextPage,
   isFetchingNextPage,
   fetchNextPage,
@@ -329,6 +332,12 @@ function PublicLightbox({
           <span className="material-icons lightbox__spinner">refresh</span>
         </div>
       ) : null}
+
+      {likeError && (
+        <div className="alert alert--error lightbox__alert" role="alert" onClick={(e) => e.stopPropagation()}>
+          {likeError}
+        </div>
+      )}
 
       <button
         className={`lightbox__like ${isLiked ? "lightbox__like--active" : ""}`}
@@ -1155,6 +1164,7 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
   const [viewImageIndex, setViewImageIndex] = useState<number | null>(null);
   const [showLikedOnly, setShowLikedOnly] = useState(false);
   const [finishError, setFinishError] = useState<DisplayError | null>(null);
+  const [likeError, setLikeError] = useState<DisplayError | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [publicQueue, setPublicQueue] = useState<UploadItem[]>([]);
 
@@ -1196,14 +1206,55 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
     }
   }, [viewImageIndex, visibleImages.length]);
 
+  // Items with a PATCH in flight: a second click waits for the first to settle,
+  // so two opposite requests can never land on the server in the wrong order.
+  const likesInFlight = useRef(new Set<string>());
+
+  // Optimistic: flip only this item in the cache, no refetch of the loaded pages (#661).
+  // A failed request restores this item alone, so likes on other items stay.
   async function toggleLike(img: PublicImage) {
-    const newState = img.customer_state === "liked" ? "none" : "liked";
-    if (img.media_type === "video") {
-      await publicApi.setVideoCustomerState(libraryUuid, img.uuid, newState);
-    } else {
-      await publicApi.setCustomerState(libraryUuid, img.uuid, newState);
+    const itemKey = `${img.media_type}:${img.uuid}`;
+    if (likesInFlight.current.has(itemKey)) return;
+    likesInFlight.current.add(itemKey);
+    const queryKey = ["public-library", libraryUuid];
+    const prevState = img.customer_state;
+    const newState = prevState === "liked" ? "none" : "liked";
+    function setState(state: string) {
+      queryClient.setQueryData<InfiniteData<PublicLibraryPage, number>>(queryKey, (d) =>
+        setItemState(d, img.media_type, img.uuid, state)
+      );
     }
-    queryClient.invalidateQueries({ queryKey: ["public-library", libraryUuid] });
+    // A fetch in flight writes back the pages it read when it started, which would
+    // overwrite our cache write. Cancel it; returns true when it was a full refetch
+    // (upload batch, finish, focus), which must run again once the PATCH settled.
+    // A cancelled next-page fetch restarts by itself (sentinel / lightbox re-arm).
+    async function cancelFetch(): Promise<boolean> {
+      const state = queryClient.getQueryState(queryKey);
+      if (state?.fetchStatus !== "fetching") return false;
+      const fullRefetch = !state.fetchMeta?.fetchMore;
+      await queryClient.cancelQueries({ queryKey });
+      return fullRefetch;
+    }
+    let refetch = await cancelFetch();
+    setState(newState);
+    let finalState = prevState;
+    try {
+      const res = img.media_type === "video"
+        ? await publicApi.setVideoCustomerState(libraryUuid, img.uuid, newState)
+        : await publicApi.setCustomerState(libraryUuid, img.uuid, newState);
+      finalState = res.customer_state;
+      setLikeError(null);
+    } catch (err) {
+      // A network failure is a TypeError ("Failed to fetch"): show our own text.
+      setLikeError(err instanceof Error && !(err instanceof TypeError)
+        ? { error: err }
+        : { key: "public.likeFailed" });
+    } finally {
+      if (await cancelFetch()) refetch = true;
+      setState(finalState);
+      likesInFlight.current.delete(itemKey);
+      if (refetch) queryClient.invalidateQueries({ queryKey });
+    }
   }
 
   async function handleFinish() {
@@ -1346,6 +1397,11 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
           {displayErrorMessage(finishError, t)}
         </div>
       )}
+      {likeError && (
+        <div className="alert alert--error" style={{ margin: "0.5rem 1.5rem" }}>
+          {displayErrorMessage(likeError, t)}
+        </div>
+      )}
 
       <main className="page-content">
         {library?.public_upload_enabled && !isFinished && (
@@ -1459,6 +1515,7 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
             onClose={() => setViewImageIndex(null)}
             onNavigate={setViewImageIndex}
             onToggleLike={toggleLike}
+            likeError={likeError ? displayErrorMessage(likeError, t) : null}
             hasNextPage={hasNextPage}
             isFetchingNextPage={isFetchingNextPage}
             fetchNextPage={fetchNextPage}

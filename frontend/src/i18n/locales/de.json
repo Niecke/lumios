@@ -249,7 +249,8 @@
     "likeVideo": "Dieses Video merken",
     "notFound": "Leider haben wir Ihre Fotos nicht gefunden.",
     "empty": "In dieser Galerie sind noch keine Fotos.",
-    "finishFailed": "Die Auswahl konnte nicht abgeschlossen werden"
+    "finishFailed": "Die Auswahl konnte nicht abgeschlossen werden",
+    "likeFailed": "Die Auswahl konnte nicht gespeichert werden. Bitte versuchen Sie es erneut."
   },
   "errors": {
     "unknown": "Etwas ist schiefgelaufen",
