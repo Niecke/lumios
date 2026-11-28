@@ -4,7 +4,7 @@
 // Unauthenticated visitors see a read-only public gallery.
 
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useQueryClient, useMutation, type InfiniteData } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
@@ -14,7 +14,8 @@ import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { librariesApi } from "../api/libraries";
 import { imagesApi, type Image } from "../api/images";
 import { dedupeMedia } from "../uploads/appendMedia";
-import { publicApi, type PublicImage } from "../api/public";
+import { publicApi, type PublicImage, type PublicLibraryPage } from "../api/public";
+import { setItemState } from "../public/customerState.ts";
 import { videosApi } from "../api/videos";
 import { isVideoFile, uploadStatusIcon, type UploadItem } from "../uploads/uploadStore.ts";
 import { useUploadStore } from "../uploads/UploadContext.tsx";
@@ -1155,6 +1156,7 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
   const [viewImageIndex, setViewImageIndex] = useState<number | null>(null);
   const [showLikedOnly, setShowLikedOnly] = useState(false);
   const [finishError, setFinishError] = useState<DisplayError | null>(null);
+  const [likeError, setLikeError] = useState<DisplayError | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [publicQueue, setPublicQueue] = useState<UploadItem[]>([]);
 
@@ -1196,14 +1198,30 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
     }
   }, [viewImageIndex, visibleImages.length]);
 
+  // Optimistic: flip only this item in the cache, no refetch of the loaded pages (#661).
+  // A failed request restores this item alone, so likes on other items stay.
   async function toggleLike(img: PublicImage) {
-    const newState = img.customer_state === "liked" ? "none" : "liked";
-    if (img.media_type === "video") {
-      await publicApi.setVideoCustomerState(libraryUuid, img.uuid, newState);
-    } else {
-      await publicApi.setCustomerState(libraryUuid, img.uuid, newState);
+    const queryKey = ["public-library", libraryUuid];
+    const prevState = img.customer_state;
+    const newState = prevState === "liked" ? "none" : "liked";
+    function setState(state: string) {
+      queryClient.setQueryData<InfiniteData<PublicLibraryPage, number>>(queryKey, (d) =>
+        setItemState(d, img.media_type, img.uuid, state)
+      );
     }
-    queryClient.invalidateQueries({ queryKey: ["public-library", libraryUuid] });
+    // A fetch in flight would overwrite the optimistic value with the old state.
+    await queryClient.cancelQueries({ queryKey });
+    setState(newState);
+    try {
+      const res = img.media_type === "video"
+        ? await publicApi.setVideoCustomerState(libraryUuid, img.uuid, newState)
+        : await publicApi.setCustomerState(libraryUuid, img.uuid, newState);
+      if (res.customer_state !== newState) setState(res.customer_state);
+      setLikeError(null);
+    } catch (err) {
+      setState(prevState);
+      setLikeError(err instanceof Error ? { error: err } : { key: "public.likeFailed" });
+    }
   }
 
   async function handleFinish() {
@@ -1344,6 +1362,11 @@ function PublicLibraryView({ libraryUuid }: { libraryUuid: string }) {
       {finishError && (
         <div className="alert alert--error" style={{ margin: "0.5rem 1.5rem" }}>
           {displayErrorMessage(finishError, t)}
+        </div>
+      )}
+      {likeError && (
+        <div className="alert alert--error" style={{ margin: "0.5rem 1.5rem" }}>
+          {displayErrorMessage(likeError, t)}
         </div>
       )}
 

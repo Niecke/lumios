@@ -249,7 +249,8 @@
     "likeVideo": "Like this video",
     "notFound": "Sorry, we haven't found your photos.",
     "empty": "No photos in this library yet.",
-    "finishFailed": "Failed to mark as complete"
+    "finishFailed": "Failed to mark as complete",
+    "likeFailed": "Could not save your selection. Please try again."
   },
   "errors": {
     "unknown": "Something went wrong",
