@@ -33,6 +33,7 @@ function parse(src: string): Block {
     }
     if (c === "$" && src[i + 1] === "{") {
       const end = src.indexOf("}", i);
+      assert.ok(end > i, "unterminated ${ in nginx template");
       current += src.slice(i, end + 1);
       i = end + 1;
       continue;
@@ -95,12 +96,21 @@ test("server level sends the four security headers", () => {
 
 test("/assets/ is cached immutably for a year and has no SPA fallback", () => {
   const assets = location("/assets/");
-  // Without "always": nginx skips the header on errors, so a 404 is not cached for a year.
   assert.deepEqual(
     assets.directives.filter((d) => d.startsWith("add_header Cache-Control ")),
-    ['add_header Cache-Control "public, max-age=31536000, immutable"'],
+    ["add_header Cache-Control $assets_cache_control always"],
   );
   assert.ok(assets.directives.includes("try_files $uri =404"));
+});
+
+test("/assets/ caches only hits; a 404 is no-store", () => {
+  const map = root.children.find((b) => b.header === "map $status $assets_cache_control");
+  assert.ok(map, "map $status $assets_cache_control not found");
+  assert.deepEqual(map.directives, [
+    '200 "public, max-age=31536000, immutable"',
+    '304 "public, max-age=31536000, immutable"',
+    'default "no-store"',
+  ]);
 });
 
 test("index.html is always revalidated", () => {
