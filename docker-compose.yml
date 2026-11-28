@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: docker.io/library/postgres:18.7-alpine@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71
+    image: docker.io/library/postgres:19.0-alpine@sha256:cac45fb483caee3668946088a1c0532db89d5285c28dbfeac889b4068296e06f
     container_name: lumios-postgres
     env_file: .env
     environment:
@@ -20,7 +20,7 @@ services:
 
   postgres-test:
     profiles: ["test"]
-    image: docker.io/library/postgres:18.7-alpine@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71
+    image: docker.io/library/postgres:19.0-alpine@sha256:cac45fb483caee3668946088a1c0532db89d5285c28dbfeac889b4068296e06f
     container_name: lumios-postgres-test
     command: ["-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
     environment:
