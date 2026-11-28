@@ -88,3 +88,66 @@ def test_env_py_does_not_call_deprecated_get_engine():
     with open(os.path.join(MIGRATIONS_DIR, "env.py")) as f:
         source = f.read()
     assert "db.get_engine(" not in source
+
+
+FK_INDEXES = {
+    "ix_image_library_id_created_at": ("image", "(library_id, created_at)", True),
+    "ix_video_library_id_created_at": ("video", "(library_id, created_at)", True),
+    "ix_library_user_id_created_at": ("library", "(user_id, created_at)", False),
+    "ix_notification_user_id_created_at": (
+        "notification",
+        "(user_id, created_at)",
+        False,
+    ),
+    "ix_audit_log_creator_id": ("audit_log", "(creator_id)", False),
+}
+
+
+def test_fk_indexes_exist(app):
+    """The foreign-key lookups of gallery, library list and notifications are indexed."""
+    with db.engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT indexname, tablename, indexdef FROM pg_indexes "
+                "WHERE schemaname = 'public' AND indexname = ANY(:names)"
+            ),
+            {"names": list(FK_INDEXES)},
+        ).all()
+    found = {name: (table, indexdef) for name, table, indexdef in rows}
+    assert set(found) == set(FK_INDEXES)
+    for name, (table, columns, partial) in FK_INDEXES.items():
+        found_table, indexdef = found[name]
+        assert found_table == table
+        assert f"USING btree {columns}" in indexdef
+        assert ("WHERE (deleted_at IS NULL)" in indexdef) is partial
+
+
+def test_gallery_queries_use_indexes(app):
+    """Gallery, library list and notification list are planned on the new indexes.
+
+    The tables are empty, so a sequential scan is disabled to see which index
+    the planner would pick once they grow.
+    """
+    queries = {
+        "ix_image_library_id_created_at": (
+            "SELECT id FROM image WHERE library_id = 1 AND deleted_at IS NULL "
+            "ORDER BY created_at DESC"
+        ),
+        "ix_video_library_id_created_at": (
+            "SELECT id FROM video WHERE library_id = 1 AND deleted_at IS NULL "
+            "ORDER BY created_at DESC"
+        ),
+        "ix_library_user_id_created_at": (
+            "SELECT id FROM library WHERE user_id = 1 AND deleted_at IS NULL "
+            "ORDER BY created_at DESC"
+        ),
+        "ix_notification_user_id_created_at": (
+            "SELECT id FROM notification WHERE user_id = 1 ORDER BY created_at DESC"
+        ),
+        "ix_audit_log_creator_id": "SELECT id FROM audit_log WHERE creator_id = 1",
+    }
+    with db.engine.connect() as conn, conn.begin():
+        conn.execute(text("SET LOCAL enable_seqscan = off"))
+        for index, query in queries.items():
+            plan = "\n".join(row[0] for row in conn.execute(text(f"EXPLAIN {query}")))
+            assert index in plan, f"{index} not used:\n{plan}"

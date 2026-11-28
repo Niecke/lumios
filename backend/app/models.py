@@ -136,6 +136,10 @@ class User(db.Model):
 
 
 class Library(db.Model):
+    __table_args__ = (
+        db.Index("ix_library_user_id_created_at", "user_id", "created_at"),
+    )
+
     id = db.Column(db.Integer(), primary_key=True)
     uuid = db.Column(
         db.String(36),
@@ -193,6 +197,15 @@ class Library(db.Model):
 
 
 class Image(db.Model):
+    __table_args__ = (
+        db.Index(
+            "ix_image_library_id_created_at",
+            "library_id",
+            "created_at",
+            postgresql_where=db.text("deleted_at IS NULL"),
+        ),
+    )
+
     id = db.Column(db.Integer(), primary_key=True)
     uuid = db.Column(
         db.String(36),
@@ -332,6 +345,10 @@ class SupportTicketComment(db.Model):
 
 
 class Notification(db.Model):
+    __table_args__ = (
+        db.Index("ix_notification_user_id_created_at", "user_id", "created_at"),
+    )
+
     id = db.Column(db.Integer(), primary_key=True)
     created_at = db.Column(
         db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
@@ -372,6 +389,15 @@ class VideoProcessingStatus(enum.Enum):
 
 
 class Video(db.Model):
+    __table_args__ = (
+        db.Index(
+            "ix_video_library_id_created_at",
+            "library_id",
+            "created_at",
+            postgresql_where=db.text("deleted_at IS NULL"),
+        ),
+    )
+
     id = db.Column(db.Integer(), primary_key=True)
     uuid = db.Column(
         db.String(36),
@@ -505,7 +531,9 @@ class AuditLog(db.Model):
         default=lambda: datetime.now(timezone.utc),
         index=True,
     )
-    creator_id = db.Column(db.Integer(), db.ForeignKey("user.id"), nullable=True)
+    creator_id = db.Column(
+        db.Integer(), db.ForeignKey("user.id"), nullable=True, index=True
+    )
     related_object_type = db.Column(db.String(16), nullable=True)
     related_object_id = db.Column(db.String(255), nullable=True)
 
