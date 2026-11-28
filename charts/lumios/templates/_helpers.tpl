@@ -120,6 +120,8 @@ they are not repeated here.
   value: {{ .Values.backend.jwtExpirySeconds | quote }}
 - name: WORKER_JOB_RETENTION_DAYS
   value: {{ .Values.backend.jobRetentionDays | quote }}
+- name: NOTIFICATION_RETENTION_DAYS
+  value: {{ .Values.backend.notificationRetentionDays | quote }}
 - name: GUNICORN_WORKERS
   value: {{ .Values.backend.gunicornWorkers | quote }}
 - name: VIDEO_UPLOADS_ENABLED
