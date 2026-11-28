@@ -15,7 +15,7 @@ export interface PublicImage {
   download_url: string | null;
 }
 
-interface PublicLibraryPage {
+export interface PublicLibraryPage {
   library: {
     uuid: string;
     name: string;
